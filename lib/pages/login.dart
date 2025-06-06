@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'admin/admin_dashboard.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -48,50 +49,28 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final input = _usernameOrEmailController.text.trim();
-      String? email;
+      final password = _passwordController.text;
       
-      // Determine if input is email or username
-      if (RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(input)) {
-        // Input is email
-        email = input;
-      } else {
-        // Input is username, need to find the associated email
-        final userResponse = await Supabase.instance.client
-            .from('User')
-            .select('person_id')
-            .eq('username', input)
-            .maybeSingle();
+      // Query the User table directly using username
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id, username, password, person_id')
+          .eq('username', input)
+          .maybeSingle();
 
-        if (userResponse == null) {
-          throw Exception('Username not found');
-        }
-
-        // Get the email from Person table
-        final personResponse = await Supabase.instance.client
-            .from('Person')
-            .select('email')
-            .eq('id', userResponse['person_id'])
-            .single();
-
-        email = personResponse['email'];
+      if (userResponse == null) {
+        throw Exception('Username not found');
       }
 
-      if (email == null) {
-        throw Exception('Unable to find account');
+      // Verify password (convert to string if needed)
+      final storedPassword = userResponse['password']?.toString() ?? '';
+      if (storedPassword != password) {
+        throw Exception('Invalid password');
       }
 
-      // Authenticate with Supabase Auth using email
-      final authResponse = await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: _passwordController.text,
-      );
-
-      if (authResponse.user == null) {
-        throw Exception('Authentication failed');
-      }
-
-      // Get comprehensive user details including organization info
-      final userDetails = await _getComprehensiveUserDetails(authResponse.user!.id);
+      // Get comprehensive user details (convert person_id to string if needed)
+      final personId = userResponse['person_id']?.toString() ?? '';
+      final userDetails = await _getComprehensiveUserDetails(personId);
       
       // Check if user is an organization user
       final isOrgUser = userDetails['organization_users'] != null && 
@@ -107,12 +86,12 @@ class _LoginPageState extends State<LoginPage> {
       
       _showSuccessSnackBar(welcomeMessage);
       
-      // Store user session data if needed
+      // Store user session data
       await _storeUserSession(userDetails);
       
       // Navigate based on user type
       if (isOrgUser) {
-        Navigator.pushReplacementNamed(context, '/organization_dashboard');
+        Navigator.pushReplacementNamed(context, '/admin_dashboard');
       } else {
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
@@ -122,19 +101,12 @@ class _LoginPageState extends State<LoginPage> {
       
       String errorMessage = 'Login failed: ';
       
-      if (e.toString().contains('Invalid login credentials') || 
-          e.toString().contains('Email not confirmed')) {
-        errorMessage += 'Invalid username/email or password.';
-      } else if (e.toString().contains('Username not found') || 
-                 e.toString().contains('Unable to find account')) {
-        errorMessage += 'Account not found. Please check your username or email.';
-      } else if (e.toString().contains('Too many requests') || 
-                 e.toString().contains('429')) {
+      if (e.toString().contains('Username not found')) {
+        errorMessage += 'Username not found. Please check your username.';
+      } else if (e.toString().contains('Invalid password')) {
+        errorMessage += 'Invalid password. Please check your password.';
+      } else if (e.toString().contains('Too many requests')) {
         errorMessage += 'Too many login attempts. Please wait before trying again.';
-      } else if (e.toString().contains('Email not confirmed')) {
-        errorMessage += 'Please check your email and verify your account first.';
-      } else if (e.toString().contains('AuthException')) {
-        errorMessage += 'Authentication error. Please check your credentials.';
       } else {
         errorMessage += 'Something went wrong. Please try again.';
       }
@@ -147,54 +119,46 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<Map<String, dynamic>> _getComprehensiveUserDetails(String authUserId) async {
+  Future<Map<String, dynamic>> _getComprehensiveUserDetails(String personId) async {
     try {
       // Get Person details
       final personResponse = await Supabase.instance.client
           .from('Person')
           .select('*')
-          .eq('id', authUserId)
+          .eq('id', personId)
           .single();
 
-      // Get User details
+      // Get User details (using person_id as foreign key)
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('*')
-          .eq('person_id', authUserId)
-          .maybeSingle();
+          .eq('person_id', personId)
+          .single();
 
-      if (userResponse == null) {
-        // User might only exist in Person table
-        return {
-          'person': personResponse,
-          'user': null,
-          'organization_users': [],
-          'organizations': [],
-        };
-      }
-
-      // Get Organization_User details if they exist
+      // Get Organization_User details if they exist (using user_id as foreign key)
+      final userId = userResponse['id']?.toString() ?? '';
       final orgUserResponse = await Supabase.instance.client
           .from('Organization_User')
-          .select('*, Organization!organization_id(*)')
-          .eq('user_id', userResponse['id']);
+          .select('*')
+          .eq('user_id', userId);
 
       List<Map<String, dynamic>> organizationUsers = [];
       List<Map<String, dynamic>> organizations = [];
 
       if (orgUserResponse.isNotEmpty) {
         for (var orgUser in orgUserResponse) {
-          organizationUsers.add({
-            'id': orgUser['id'],
-            'position': orgUser['position'],
-            'department': orgUser['department'],
-            'organization_id': orgUser['organization_id'],
-            'user_id': orgUser['user_id'],
-            'created_at': orgUser['created_at'],
-          });
+          organizationUsers.add(orgUser);
           
-          if (orgUser['Organization'] != null) {
-            organizations.add(orgUser['Organization']);
+          // Get organization details using organization_id as foreign key
+          final orgId = orgUser['organization_id']?.toString() ?? '';
+          if (orgId.isNotEmpty) {
+            final orgResponse = await Supabase.instance.client
+                .from('Organization')
+                .select('*')
+                .eq('id', orgId)
+                .single();
+            
+            organizations.add(orgResponse);
           }
         }
       }
@@ -212,72 +176,64 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _storeUserSession(Map<String, dynamic> userDetails) async {
-    // You can store session data in SharedPreferences or another local storage
-    // This is useful for maintaining user context throughout the app
     try {
-      // Example: Store essential user info for quick access
       final prefs = await SharedPreferences.getInstance();
       
-      await prefs.setString('user_id', userDetails['user']?['id']?.toString() ?? '');
-      await prefs.setString('person_id', userDetails['person']['id'].toString());
-      await prefs.setString('user_name', userDetails['person']['first_name'] + ' ' + userDetails['person']['last_name']);
-      await prefs.setString('user_email', userDetails['person']['email']);
+      await prefs.setString('user_id', userDetails['user']['id']?.toString() ?? '');
+      await prefs.setString('person_id', userDetails['person']['id']?.toString() ?? '');
+      await prefs.setString('username', userDetails['user']['username']?.toString() ?? '');
+      await prefs.setString('user_name', '${userDetails['person']['first_name'] ?? ''} ${userDetails['person']['last_name'] ?? ''}');
+      await prefs.setString('user_email', userDetails['person']['email']?.toString() ?? '');
       
       if (userDetails['organization_users'].isNotEmpty) {
         await prefs.setBool('is_organization_user', true);
-        await prefs.setString('organization_id', userDetails['organization_users'][0]['organization_id'].toString());
-        await prefs.setString('user_position', userDetails['organization_users'][0]['position'] ?? '');
-        await prefs.setString('user_department', userDetails['organization_users'][0]['department'] ?? '');
-        await prefs.setString('organization_name', userDetails['organizations'][0]['name'] ?? '');
+        await prefs.setString('organization_id', userDetails['organization_users'][0]['organization_id']?.toString() ?? '');
+        await prefs.setString('user_position', userDetails['organization_users'][0]['position']?.toString() ?? '');
+        await prefs.setString('user_department', userDetails['organization_users'][0]['department']?.toString() ?? '');
+        await prefs.setString('organization_name', userDetails['organizations'][0]['name']?.toString() ?? '');
       } else {
         await prefs.setBool('is_organization_user', false);
       }
     } catch (e) {
       print('Error storing session data: $e');
-      // Don't throw error here as login was successful
     }
   }
 
   Future<void> _forgotPassword() async {
-    final input = _usernameOrEmailController.text.trim();
+    final username = _usernameOrEmailController.text.trim();
     
-    if (input.isEmpty) {
-      _showErrorSnackBar('Please enter your username or email first.');
+    if (username.isEmpty) {
+      _showErrorSnackBar('Please enter your username first.');
       return;
     }
 
     try {
-      String? email;
-      
-      // Determine if input is email or username
-      if (RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(input)) {
-        email = input;
-      } else {
-        // Find email by username
-        final userResponse = await Supabase.instance.client
-            .from('User')
-            .select('person_id')
-            .eq('username', input)
-            .maybeSingle();
+      // Get user by username
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('person_id')
+          .eq('username', username)
+          .maybeSingle();
 
-        if (userResponse != null) {
-          final personResponse = await Supabase.instance.client
-              .from('Person')
-              .select('email')
-              .eq('id', userResponse['person_id'])
-              .single();
-          email = personResponse['email'];
-        }
-      }
-
-      if (email == null) {
-        _showErrorSnackBar('Account not found.');
+      if (userResponse == null) {
+        _showErrorSnackBar('Username not found.');
         return;
       }
 
+      // Get email from Person table using person_id as foreign key
+      final personId = userResponse['person_id']?.toString() ?? '';
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('email')
+          .eq('id', personId)
+          .single();
+
+      final email = personResponse['email']?.toString() ?? '';
+      
+      // Send reset email using Supabase Auth
       await Supabase.instance.client.auth.resetPasswordForEmail(email);
       
-      _showSuccessSnackBar('Password reset email sent! Please check your inbox.');
+      _showSuccessSnackBar('Password reset email sent to your registered email!');
       
     } catch (e) {
       print('Password reset error: $e');
@@ -349,20 +305,20 @@ class _LoginPageState extends State<LoginPage> {
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
-                      // Username or Email Field
+                      // Username Field (changed from Username or Email)
                       TextFormField(
                         controller: _usernameOrEmailController,
                         decoration: const InputDecoration(
-                          labelText: 'Username or Email',
+                          labelText: 'Username',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.person),
-                          helperText: 'Enter your username or email address',
+                          helperText: 'Enter your username',
                         ),
-                        keyboardType: TextInputType.emailAddress,
+                        keyboardType: TextInputType.text,
                         textInputAction: TextInputAction.next,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your username or email';
+                            return 'Please enter your username';
                           }
                           return null;
                         },

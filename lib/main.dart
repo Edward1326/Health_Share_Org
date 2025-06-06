@@ -3,6 +3,7 @@ import 'pages/admin/admin_dashboard.dart';
 import 'pages/signup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/login.dart';
+import 'pages/admin/admin_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -24,8 +25,14 @@ class MyApp extends StatelessWidget {
       title: 'Flutter Demo',
       theme: ThemeData(
       ),
-      home: const LoginPage(),
-
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const LoginPage(),
+        '/login': (context) => const LoginPage(),
+        '/signup': (context) => const SignupPage(),
+        '/admin_dashboard': (context) => const Dashboard(),
+      },
+      // Handle unknown routes
     );
   }
 }
