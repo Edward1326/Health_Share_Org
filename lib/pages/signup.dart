@@ -70,47 +70,164 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
-  Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedOrganizationId == null) {
-      _showErrorSnackBar('Please select an organization');
+Future<void> _signup() async {
+  if (!_formKey.currentState!.validate()) return;
+  if (_selectedOrganizationId == null) {
+    _showErrorSnackBar('Please select an organization');
+    return;
+  }
+
+  // Check rate limiting
+  if (_lastSignupAttempt != null) {
+    final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
+    if (timeSinceLastAttempt < _signupCooldownSeconds) {
+      final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
+      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
       return;
     }
+  }
 
-    // Check rate limiting
-    if (_lastSignupAttempt != null) {
-      final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
-      if (timeSinceLastAttempt < _signupCooldownSeconds) {
-        final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
-        _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
-        return;
-      }
+  setState(() {
+    _isLoading = true;
+  });
+
+  _lastSignupAttempt = DateTime.now();
+
+  try {
+    // Step 1: Create user account with Supabase Auth
+    final authResponse = await Supabase.instance.client.auth.signUp(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+      emailRedirectTo: null,
+    );
+
+    if (authResponse.user == null) {
+      throw Exception('Failed to create user account');
     }
 
-    setState(() {
-      _isLoading = true;
+    final authUserId = authResponse.user!.id; // This is the UUID from Supabase Auth
+    final currentTime = DateTime.now().toIso8601String();
+
+    // Step 2: Create Person record (let database auto-generate the ID)
+    final personResponse = await Supabase.instance.client.from('Person').insert({
+      // Don't include 'id' - let it auto-generate
+      'first_name': _firstNameController.text.trim(),
+      'middle_name': _middleNameController.text.trim().isEmpty 
+          ? null 
+          : _middleNameController.text.trim(),
+      'last_name': _lastNameController.text.trim(),
+      'address': _addressController.text.trim(),
+      'contact_number': _contactNumberController.text.trim(),
+      'email': _emailController.text.trim(),
+      'created_at': currentTime,
+    }).select().single();
+
+    final personId = personResponse['id']; // Get the auto-generated Person ID
+    print('Person created with ID: $personId');
+
+    // Step 3: Create User record (let database auto-generate the ID)
+    final userResponse = await Supabase.instance.client.from('User').insert({
+      // Don't include 'id' - let it auto-generate
+      'username': _usernameController.text.trim(),
+      'password': null, // Let Supabase Auth handle password
+      'person_id': personId, // Use the auto-generated Person ID
+      'created_at': currentTime,
+      'connected_organization_id': int.parse(_selectedOrganizationId!),
+    }).select().single();
+
+    final userId = userResponse['id']; // Get the auto-generated User ID
+    print('User created with ID: $userId');
+
+    // Step 4: Create Organization_User record
+    await Supabase.instance.client.from('Organization_User').insert({
+      'position': _positionController.text.trim(),
+      'department': _departmentController.text.trim(),
+      'created_at': currentTime,
+      'organization_id': int.parse(_selectedOrganizationId!),
+      'user_id': userId, // Use the auto-generated User ID
     });
 
-    _lastSignupAttempt = DateTime.now();
+    print('Organization_User created successfully');
 
-    try {
-      // Step 1: Create user account with Supabase Auth
-      final authResponse = await Supabase.instance.client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        emailRedirectTo: null, // Optional: specify redirect URL
-      );
+    _showSuccessSnackBar('Employee account created successfully! Please check your email to verify your account.');
+    
+    // Navigate back or to login page after successful signup
+    Navigator.pop(context);
 
-      if (authResponse.user == null) {
-        throw Exception('Failed to create user account');
+  } catch (e) {
+    print('Signup error: $e');
+    print('Error type: ${e.runtimeType}');
+    
+    // Handle specific Supabase errors
+    String errorMessage = 'Signup failed: ';
+    
+    if (e.toString().contains('duplicate key')) {
+      if (e.toString().contains('email')) {
+        errorMessage += 'An account with this email already exists.';
+      } else if (e.toString().contains('username')) {
+        errorMessage += 'This username is already taken. Please choose another.';
+      } else {
+        errorMessage += 'An account with this information already exists.';
       }
+    } else if (e.toString().contains('foreign key') || e.toString().contains('violates foreign key constraint')) {
+      errorMessage += 'Invalid organization selected or database constraint violation.';
+    } else if (e.toString().contains('invalid input syntax')) {
+      errorMessage += 'Invalid data format. Please check your input.';
+    } else if (e.toString().contains('For security purposes') || e.toString().contains('429')) {
+      errorMessage += 'Too many signup attempts. Please wait a moment before trying again.';
+    } else if (e.toString().contains('AuthException')) {
+      errorMessage += 'Authentication error. Please check your email and password.';
+    } else if (e.toString().contains('invalid UUID')) {
+      errorMessage += 'System error with user ID generation. Please try again.';
+    } else if (e.toString().contains('400')) {
+      errorMessage += 'Bad request. Please check all required fields are filled correctly.';
+    } else {
+      errorMessage += e.toString();
+    }
+    
+    _showErrorSnackBar(errorMessage);
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
 
-      final userId = authResponse.user!.id;
-      final currentTime = DateTime.now().toIso8601String();
+Future<void> _debugSignup() async {
+  if (!_formKey.currentState!.validate()) return;
+  if (_selectedOrganizationId == null) {
+    _showErrorSnackBar('Please select an organization');
+    return;
+  }
 
-      // Step 2: Create Person record first (since User references Person)
-      await Supabase.instance.client.from('Person').insert({
-        'id': userId, // Using the same UUID from auth for consistency
+  setState(() {
+    _isLoading = true;
+  });
+
+  try {
+    print('=== Starting signup process ===');
+    
+    // Step 1: Create user account with Supabase Auth
+    print('Step 1: Creating auth user...');
+    final authResponse = await Supabase.instance.client.auth.signUp(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+      emailRedirectTo: null,
+    );
+
+    if (authResponse.user == null) {
+      throw Exception('Failed to create user account');
+    }
+
+    final userId = authResponse.user!.id;
+    final currentTime = DateTime.now().toIso8601String();
+    print('Auth user created with ID: $userId');
+
+    // Step 2: Create Person record
+    print('Step 2: Creating Person record...');
+    try {
+      final personResponse = await Supabase.instance.client.from('Person').insert({
+        'id': userId,
         'first_name': _firstNameController.text.trim(),
         'middle_name': _middleNameController.text.trim().isEmpty 
             ? null 
@@ -120,55 +237,78 @@ class _SignupPageState extends State<SignupPage> {
         'contact_number': _contactNumberController.text.trim(),
         'email': _emailController.text.trim(),
         'created_at': currentTime,
-      });
-
-      // Step 3: Create User record (with proper FK to Person and Organization)
-      await Supabase.instance.client.from('User').insert({
-        'id': userId,
-        'username': _usernameController.text.trim(),
-        // Note: Don't store plain text passwords in production
-        // Supabase Auth already handles password hashing
-        'password': null, // Let Supabase Auth handle this
-        'user_id': userId, // FK to Person table
-        'created_at': currentTime,
-        'connected_organizat': int.parse(_selectedOrganizationId!), // Ensure proper type conversion
-      });
-
-      // Step 4: Create Organization_User record (linking User to Organization with role info)
-      await Supabase.instance.client.from('Organization_User').insert({
-        'position': _positionController.text.trim(),
-        'department': _departmentController.text.trim(),
-        'created_at': currentTime,
-        'organization_id': int.parse(_selectedOrganizationId!), // FK to Organization
-        'user_id': userId, // FK to User
-      });
-
-      _showSuccessSnackBar('Employee account created successfully! Please check your email to verify your account.');
-      
-      // Navigate back or to login page after successful signup
-      Navigator.pop(context);
-
+      }).select();
+      print('Person created successfully: $personResponse');
     } catch (e) {
-      // Handle specific Supabase errors
-      String errorMessage = 'Signup failed: ';
-      if (e.toString().contains('duplicate key')) {
-        errorMessage += 'An account with this email already exists.';
-      } else if (e.toString().contains('foreign key')) {
-        errorMessage += 'Invalid organization selected.';
-      } else if (e.toString().contains('For security purposes') || e.toString().contains('429')) {
-        errorMessage += 'Too many signup attempts. Please wait a moment before trying again.';
-      } else if (e.toString().contains('AuthException')) {
-        errorMessage += 'Authentication error. Please check your email and password.';
+      print('ERROR in Person creation: $e');
+      throw Exception('Failed to create Person record: $e');
+    }
+
+    // Step 3: Create User record (test different approaches)
+    print('Step 3: Creating User record...');
+    try {
+      // First, let's try without the 'id' field
+      final userResponse = await Supabase.instance.client.from('User').insert({
+        'username': _usernameController.text.trim(),
+        'password': null,
+        'person_id': userId,
+        'created_at': currentTime,
+        'connected_organization_id': int.parse(_selectedOrganizationId!),
+      }).select().single();
+      
+      print('User created successfully: $userResponse');
+      final numericUserId = userResponse['id'];
+      print('Numeric user ID: $numericUserId');
+      
+      // Step 4: Create Organization_User record
+      print('Step 4: Creating Organization_User record...');
+      try {
+        final orgUserResponse = await Supabase.instance.client.from('Organization_User').insert({
+          'position': _positionController.text.trim(),
+          'department': _departmentController.text.trim(),
+          'created_at': currentTime,
+          'organization_id': int.parse(_selectedOrganizationId!),
+          'user_id': numericUserId,
+        }).select();
+        
+        print('Organization_User created successfully: $orgUserResponse');
+        
+      } catch (e) {
+        print('ERROR in Organization_User creation: $e');
+        throw Exception('Failed to create Organization_User record: $e');
+      }
+      
+    } catch (e) {
+      print('ERROR in User creation: $e');
+      throw Exception('Failed to create User record: $e');
+    }
+
+    _showSuccessSnackBar('Employee account created successfully! Please check your email to verify your account.');
+    Navigator.pop(context);
+
+  } catch (e) {
+    print('=== FINAL ERROR ===');
+    print('Error: $e');
+    print('Error type: ${e.runtimeType}');
+    
+    String errorMessage = 'Signup failed: ';
+    if (e.toString().contains('PostgrestException')) {
+      if (e.toString().contains('invalid input syntax for type bigint')) {
+        errorMessage += 'Database column type mismatch. Please contact support.';
       } else {
         errorMessage += e.toString();
       }
-      _showErrorSnackBar(errorMessage);
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+    } else {
+      errorMessage += e.toString();
     }
+    
+    _showErrorSnackBar(errorMessage);
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
   }
+}
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
