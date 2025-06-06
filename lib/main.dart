@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'pages/admin/admin_dashboard.dart';
 import 'pages/signup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'pages/login.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
       title: 'Flutter Demo',
       theme: ThemeData(
       ),
-      home: const SignupPage(),
+      home: const LoginPage(),
 
     );
   }
