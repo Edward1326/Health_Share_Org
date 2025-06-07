@@ -13,7 +13,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameOrEmailController = TextEditingController();
+  final _emailOrUsernameController = TextEditingController();
   final _passwordController = TextEditingController();
   
   bool _isLoading = false;
@@ -23,103 +23,162 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _usernameOrEmailController.dispose();
+    _emailOrUsernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+Future<void> _login() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    // Check rate limiting
-    if (_lastLoginAttempt != null) {
-      final timeSinceLastAttempt = DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-      if (timeSinceLastAttempt < _loginCooldownSeconds) {
-        final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
-        _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
-        return;
-      }
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    _lastLoginAttempt = DateTime.now();
-
-    try {
-      final input = _usernameOrEmailController.text.trim();
-      final password = _passwordController.text;
-      
-      // Query the User table directly using username
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('id, username, password, person_id')
-          .eq('username', input)
-          .maybeSingle();
-
-      if (userResponse == null) {
-        throw Exception('Username not found');
-      }
-
-      // Verify password (convert to string if needed)
-      final storedPassword = userResponse['password']?.toString() ?? '';
-      if (storedPassword != password) {
-        throw Exception('Invalid password');
-      }
-
-      // Get comprehensive user details (convert person_id to string if needed)
-      final personId = userResponse['person_id']?.toString() ?? '';
-      final userDetails = await _getComprehensiveUserDetails(personId);
-      
-      // Check if user is an organization user
-      final isOrgUser = userDetails['organization_users'] != null && 
-                       userDetails['organization_users'].isNotEmpty;
-      
-      String welcomeMessage = 'Login successful! Welcome ${userDetails['person']['first_name']}!';
-      
-      if (isOrgUser) {
-        final orgUser = userDetails['organization_users'][0];
-        final organization = userDetails['organizations'][0];
-        welcomeMessage += ' (${orgUser['position']} at ${organization['name']})';
-      }
-      
-      _showSuccessSnackBar(welcomeMessage);
-      
-      // Store user session data
-      await _storeUserSession(userDetails);
-      
-      // Navigate based on user type
-      if (isOrgUser) {
-        Navigator.pushReplacementNamed(context, '/admin_dashboard');
-      } else {
-        Navigator.pushReplacementNamed(context, '/dashboard');
-      }
-
-    } catch (e) {
-      print('Login error: $e');
-      
-      String errorMessage = 'Login failed: ';
-      
-      if (e.toString().contains('Username not found')) {
-        errorMessage += 'Username not found. Please check your username.';
-      } else if (e.toString().contains('Invalid password')) {
-        errorMessage += 'Invalid password. Please check your password.';
-      } else if (e.toString().contains('Too many requests')) {
-        errorMessage += 'Too many login attempts. Please wait before trying again.';
-      } else {
-        errorMessage += 'Something went wrong. Please try again.';
-      }
-      
-      _showErrorSnackBar(errorMessage);
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+  // Check rate limiting
+  if (_lastLoginAttempt != null) {
+    final timeSinceLastAttempt = DateTime.now().difference(_lastLoginAttempt!).inSeconds;
+    if (timeSinceLastAttempt < _loginCooldownSeconds) {
+      final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
+      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
+      return;
     }
   }
 
-  Future<Map<String, dynamic>> _getComprehensiveUserDetails(String personId) async {
+  setState(() {
+    _isLoading = true;
+  });
+
+  _lastLoginAttempt = DateTime.now();
+
+  try {
+    final input = _emailOrUsernameController.text.trim();
+    final password = _passwordController.text;
+    
+    print('DEBUG: Input received: $input'); // DEBUG LINE
+    
+    String email = input;
+    
+    // If input doesn't contain @, it's likely a username - we need to find the email
+    if (!input.contains('@')) {
+      print('DEBUG: Treating input as username, looking up email...'); // DEBUG LINE
+      
+      // Query the User table to find the email associated with this username
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('person_id')
+          .eq('username', input)
+          .maybeSingle();
+
+      print('DEBUG: User lookup response: $userResponse'); // DEBUG LINE
+
+      if (userResponse == null) {
+        print('DEBUG: Username not found in database'); // DEBUG LINE
+        throw Exception('Username not found');
+      }
+
+      // Get email from Person table
+      final personId = userResponse['person_id'];
+      print('DEBUG: Found person_id: $personId'); // DEBUG LINE
+      
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('email')
+          .eq('id', personId)
+          .single();
+
+      print('DEBUG: Person lookup response: $personResponse'); // DEBUG LINE
+      email = personResponse['email'];
+      print('DEBUG: Email found: $email'); // DEBUG LINE
+    } else {
+      print('DEBUG: Treating input as email directly'); // DEBUG LINE
+    }
+
+    print('DEBUG: Attempting to sign in with email: $email'); // DEBUG LINE
+
+    // Use Supabase Auth to sign in
+    final authResponse = await Supabase.instance.client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+
+    print('DEBUG: Auth response received: ${authResponse.user?.id}'); // DEBUG LINE
+
+    if (authResponse.user == null) {
+      throw Exception('Login failed');
+    }
+
+    final user = authResponse.user!;
+    print('Auth user signed in: ${user.id}');
+
+    // ... rest of your existing code
+    
+  } catch (e) {
+    print('Login error: $e');
+    
+    String errorMessage = 'Login failed: ';
+    
+    if (e.toString().contains('Username not found')) {
+      errorMessage += 'Username not found. Please check your username.';
+    } else if (e.toString().contains('Invalid login credentials') || 
+               e.toString().contains('Email not confirmed')) {
+      errorMessage += 'Invalid email or password. Please check your credentials.';
+    } else if (e.toString().contains('Email not confirmed')) {
+      errorMessage += 'Please verify your email address before signing in.';
+    } else if (e.toString().contains('Too many requests')) {
+      errorMessage += 'Too many login attempts. Please wait before trying again.';
+    } else {
+      errorMessage += 'Something went wrong. Please try again.';
+    }
+    
+    _showErrorSnackBar(errorMessage);
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
+
+  Future<Map<String, dynamic>> _getUserDetailsFromMetadata(User user) async {
+    try {
+      final userId = user.userMetadata?['user_id'];
+      final personId = user.userMetadata?['person_id'];
+      
+      if (userId == null || personId == null) {
+        throw Exception('User metadata incomplete');
+      }
+
+      return await _getComprehensiveUserDetails(personId.toString(), userId.toString());
+    } catch (e) {
+      print('Error getting user details from metadata: $e');
+      // Fallback to email lookup
+      return await _getUserDetailsByEmail(user.email!);
+    }
+  }
+
+  Future<Map<String, dynamic>> _getUserDetailsByEmail(String email) async {
+    try {
+      // Find Person by email
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('*')
+          .eq('email', email)
+          .single();
+
+      // Find User by person_id
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('*')
+          .eq('person_id', personResponse['id'])
+          .single();
+
+      return await _getComprehensiveUserDetails(
+        personResponse['id'].toString(), 
+        userResponse['id'].toString()
+      );
+    } catch (e) {
+      print('Error getting user details by email: $e');
+      throw Exception('Failed to load user information');
+    }
+  }
+
+  Future<Map<String, dynamic>> _getComprehensiveUserDetails(String personId, String userId) async {
     try {
       // Get Person details
       final personResponse = await Supabase.instance.client
@@ -128,15 +187,14 @@ class _LoginPageState extends State<LoginPage> {
           .eq('id', personId)
           .single();
 
-      // Get User details (using person_id as foreign key)
+      // Get User details
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('*')
-          .eq('person_id', personId)
+          .eq('id', userId)
           .single();
 
-      // Get Organization_User details if they exist (using user_id as foreign key)
-      final userId = userResponse['id']?.toString() ?? '';
+      // Get Organization_User details if they exist
       final orgUserResponse = await Supabase.instance.client
           .from('Organization_User')
           .select('*')
@@ -149,17 +207,15 @@ class _LoginPageState extends State<LoginPage> {
         for (var orgUser in orgUserResponse) {
           organizationUsers.add(orgUser);
           
-          // Get organization details using organization_id as foreign key
-          final orgId = orgUser['organization_id']?.toString() ?? '';
-          if (orgId.isNotEmpty) {
-            final orgResponse = await Supabase.instance.client
-                .from('Organization')
-                .select('*')
-                .eq('id', orgId)
-                .single();
-            
-            organizations.add(orgResponse);
-          }
+          // Get organization details
+          final orgId = orgUser['organization_id'].toString();
+          final orgResponse = await Supabase.instance.client
+              .from('Organization')
+              .select('*')
+              .eq('id', orgId)
+              .single();
+          
+          organizations.add(orgResponse);
         }
       }
 
@@ -170,15 +226,20 @@ class _LoginPageState extends State<LoginPage> {
         'organizations': organizations,
       };
     } catch (e) {
-      print('Error fetching user details: $e');
+      print('Error fetching comprehensive user details: $e');
       throw Exception('Failed to load user information');
     }
   }
 
-  Future<void> _storeUserSession(Map<String, dynamic> userDetails) async {
+  Future<void> _storeUserSession(Map<String, dynamic> userDetails, User authUser) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
+      // Store auth user info
+      await prefs.setString('auth_user_id', authUser.id);
+      await prefs.setString('auth_user_email', authUser.email ?? '');
+      
+      // Store internal user info
       await prefs.setString('user_id', userDetails['user']['id']?.toString() ?? '');
       await prefs.setString('person_id', userDetails['person']['id']?.toString() ?? '');
       await prefs.setString('username', userDetails['user']['username']?.toString() ?? '');
@@ -200,40 +261,45 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _forgotPassword() async {
-    final username = _usernameOrEmailController.text.trim();
+    final input = _emailOrUsernameController.text.trim();
     
-    if (username.isEmpty) {
-      _showErrorSnackBar('Please enter your username first.');
+    if (input.isEmpty) {
+      _showErrorSnackBar('Please enter your email or username first.');
       return;
     }
 
     try {
-      // Get user by username
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('person_id')
-          .eq('username', username)
-          .maybeSingle();
+      String email = input;
+      
+      // If input doesn't contain @, it's likely a username - we need to find the email
+      if (!input.contains('@')) {
+        // Get user by username
+        final userResponse = await Supabase.instance.client
+            .from('User')
+            .select('person_id')
+            .eq('username', input)
+            .maybeSingle();
 
-      if (userResponse == null) {
-        _showErrorSnackBar('Username not found.');
-        return;
+        if (userResponse == null) {
+          _showErrorSnackBar('Username not found.');
+          return;
+        }
+
+        // Get email from Person table
+        final personId = userResponse['person_id'];
+        final personResponse = await Supabase.instance.client
+            .from('Person')
+            .select('email')
+            .eq('id', personId)
+            .single();
+
+        email = personResponse['email'];
       }
-
-      // Get email from Person table using person_id as foreign key
-      final personId = userResponse['person_id']?.toString() ?? '';
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('email')
-          .eq('id', personId)
-          .single();
-
-      final email = personResponse['email']?.toString() ?? '';
       
       // Send reset email using Supabase Auth
       await Supabase.instance.client.auth.resetPasswordForEmail(email);
       
-      _showSuccessSnackBar('Password reset email sent to your registered email!');
+      _showSuccessSnackBar('Password reset email sent to $email!');
       
     } catch (e) {
       print('Password reset error: $e');
@@ -305,20 +371,20 @@ class _LoginPageState extends State<LoginPage> {
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
-                      // Username Field (changed from Username or Email)
+                      // Email or Username Field
                       TextFormField(
-                        controller: _usernameOrEmailController,
+                        controller: _emailOrUsernameController,
                         decoration: const InputDecoration(
-                          labelText: 'Username',
+                          labelText: 'Email or Username',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.person),
-                          helperText: 'Enter your username',
+                          helperText: 'Enter your email address or username',
                         ),
                         keyboardType: TextInputType.text,
                         textInputAction: TextInputAction.next,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your username';
+                            return 'Please enter your email or username';
                           }
                           return null;
                         },

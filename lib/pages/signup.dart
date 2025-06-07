@@ -94,23 +94,10 @@ Future<void> _signup() async {
   _lastSignupAttempt = DateTime.now();
 
   try {
-    // Step 1: Create user account with Supabase Auth
-    final authResponse = await Supabase.instance.client.auth.signUp(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-      emailRedirectTo: null,
-    );
-
-    if (authResponse.user == null) {
-      throw Exception('Failed to create user account');
-    }
-
-    final authUserId = authResponse.user!.id; // This is the UUID from Supabase Auth
     final currentTime = DateTime.now().toIso8601String();
 
-    // Step 2: Create Person record (let database auto-generate the ID)
+    // Step 1: Create Person record first (with auto-generated numeric ID)
     final personResponse = await Supabase.instance.client.from('Person').insert({
-      // Don't include 'id' - let it auto-generate
       'first_name': _firstNameController.text.trim(),
       'middle_name': _middleNameController.text.trim().isEmpty 
           ? null 
@@ -122,219 +109,142 @@ Future<void> _signup() async {
       'created_at': currentTime,
     }).select().single();
 
-    final personId = personResponse['id']; // Get the auto-generated Person ID
-    print('Person created with ID: $personId');
+    final numericPersonId = personResponse['id']; // Get the auto-generated numeric Person ID
+    print('Person created with numeric ID: $numericPersonId');
 
-    // Step 3: Create User record (let database auto-generate the ID)
+    // Step 2: Create User record using the numeric Person ID
     final userResponse = await Supabase.instance.client.from('User').insert({
-      // Don't include 'id' - let it auto-generate
       'username': _usernameController.text.trim(),
-      'password': null, // Let Supabase Auth handle password
-      'person_id': personId, // Use the auto-generated Person ID
+      'person_id': numericPersonId, // Use the numeric Person ID
       'created_at': currentTime,
       'connected_organization_id': int.parse(_selectedOrganizationId!),
     }).select().single();
 
-    final userId = userResponse['id']; // Get the auto-generated User ID
-    print('User created with ID: $userId');
+    final numericUserId = userResponse['id']; // Get the auto-generated numeric User ID
+    print('User created with numeric ID: $numericUserId');
 
-    // Step 4: Create Organization_User record
-    await Supabase.instance.client.from('Organization_User').insert({
-      'position': _positionController.text.trim(),
-      'department': _departmentController.text.trim(),
-      'created_at': currentTime,
-      'organization_id': int.parse(_selectedOrganizationId!),
-      'user_id': userId, // Use the auto-generated User ID
-    });
-
-    print('Organization_User created successfully');
-
-    _showSuccessSnackBar('Employee account created successfully! Please check your email to verify your account.');
-    
-    // Navigate back or to login page after successful signup
-    Navigator.pop(context);
-
-  } catch (e) {
-    print('Signup error: $e');
-    print('Error type: ${e.runtimeType}');
-    
-    // Handle specific Supabase errors
-    String errorMessage = 'Signup failed: ';
-    
-    if (e.toString().contains('duplicate key')) {
-      if (e.toString().contains('email')) {
-        errorMessage += 'An account with this email already exists.';
-      } else if (e.toString().contains('username')) {
-        errorMessage += 'This username is already taken. Please choose another.';
-      } else {
-        errorMessage += 'An account with this information already exists.';
-      }
-    } else if (e.toString().contains('foreign key') || e.toString().contains('violates foreign key constraint')) {
-      errorMessage += 'Invalid organization selected or database constraint violation.';
-    } else if (e.toString().contains('invalid input syntax')) {
-      errorMessage += 'Invalid data format. Please check your input.';
-    } else if (e.toString().contains('For security purposes') || e.toString().contains('429')) {
-      errorMessage += 'Too many signup attempts. Please wait a moment before trying again.';
-    } else if (e.toString().contains('AuthException')) {
-      errorMessage += 'Authentication error. Please check your email and password.';
-    } else if (e.toString().contains('invalid UUID')) {
-      errorMessage += 'System error with user ID generation. Please try again.';
-    } else if (e.toString().contains('400')) {
-      errorMessage += 'Bad request. Please check all required fields are filled correctly.';
-    } else {
-      errorMessage += e.toString();
-    }
-    
-    _showErrorSnackBar(errorMessage);
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
-  }
-}
-
-Future<void> _debugSignup() async {
-  if (!_formKey.currentState!.validate()) return;
-  if (_selectedOrganizationId == null) {
-    _showErrorSnackBar('Please select an organization');
-    return;
-  }
-
-  setState(() {
-    _isLoading = true;
-  });
-
-  try {
-    print('=== Starting signup process ===');
-    
-    // Step 1: Create user account with Supabase Auth
-    print('Step 1: Creating auth user...');
+    // Step 3: Create user account with Supabase Auth, storing the numeric User ID in metadata
     final authResponse = await Supabase.instance.client.auth.signUp(
       email: _emailController.text.trim(),
       password: _passwordController.text,
-      emailRedirectTo: null,
+      data: {
+        // Store references to your internal records
+        'username': _usernameController.text.trim(),
+        'first_name': _firstNameController.text.trim(),
+        'last_name': _lastNameController.text.trim(),
+        'user_id': numericUserId, // Store the numeric User ID for reference
+        'person_id': numericPersonId, // Store the numeric Person ID for reference
+        'role': 'employee', // Set default role
+      },
     );
 
     if (authResponse.user == null) {
       throw Exception('Failed to create user account');
     }
 
-    final userId = authResponse.user!.id;
-    final currentTime = DateTime.now().toIso8601String();
-    print('Auth user created with ID: $userId');
+    final authUserId = authResponse.user!.id; // This is the UUID from Supabase Auth
+    print('Auth user created with ID: $authUserId');
 
-    // Step 2: Create Person record
-    print('Step 2: Creating Person record...');
-    try {
-      final personResponse = await Supabase.instance.client.from('Person').insert({
-        'id': userId,
-        'first_name': _firstNameController.text.trim(),
-        'middle_name': _middleNameController.text.trim().isEmpty 
-            ? null 
-            : _middleNameController.text.trim(),
-        'last_name': _lastNameController.text.trim(),
-        'address': _addressController.text.trim(),
-        'contact_number': _contactNumberController.text.trim(),
-        'email': _emailController.text.trim(),
-        'created_at': currentTime,
-      }).select();
-      print('Person created successfully: $personResponse');
-    } catch (e) {
-      print('ERROR in Person creation: $e');
-      throw Exception('Failed to create Person record: $e');
+    // Step 4: Optionally, create a mapping table or update Person record with Auth UUID
+    // You might want to add an auth_user_id field to Person table to link them
+    await Supabase.instance.client.from('Person').update({
+      'auth_user_id': authUserId, // Add this field to Person table if needed
+    }).eq('id', numericPersonId);
+
+    // Step 5: Create Organization_User record
+    await Supabase.instance.client.from('Organization_User').insert({
+      'position': _positionController.text.trim(),
+      'department': _departmentController.text.trim(),
+      'created_at': currentTime,
+      'organization_id': int.parse(_selectedOrganizationId!),
+      'user_id': numericUserId, // Use the numeric User ID
+    });
+
+    print('Organization_User created successfully');
+
+    _showSuccessSnackBar(
+      'Employee account created successfully! Please check your email to verify your account before signing in.'
+    );
+    
+    // Navigate back to login page
+    if (mounted) {
+      Navigator.pop(context);
     }
-
-    // Step 3: Create User record (test different approaches)
-    print('Step 3: Creating User record...');
-    try {
-      // First, let's try without the 'id' field
-      final userResponse = await Supabase.instance.client.from('User').insert({
-        'username': _usernameController.text.trim(),
-        'password': null,
-        'person_id': userId,
-        'created_at': currentTime,
-        'connected_organization_id': int.parse(_selectedOrganizationId!),
-      }).select().single();
-      
-      print('User created successfully: $userResponse');
-      final numericUserId = userResponse['id'];
-      print('Numeric user ID: $numericUserId');
-      
-      // Step 4: Create Organization_User record
-      print('Step 4: Creating Organization_User record...');
-      try {
-        final orgUserResponse = await Supabase.instance.client.from('Organization_User').insert({
-          'position': _positionController.text.trim(),
-          'department': _departmentController.text.trim(),
-          'created_at': currentTime,
-          'organization_id': int.parse(_selectedOrganizationId!),
-          'user_id': numericUserId,
-        }).select();
-        
-        print('Organization_User created successfully: $orgUserResponse');
-        
-      } catch (e) {
-        print('ERROR in Organization_User creation: $e');
-        throw Exception('Failed to create Organization_User record: $e');
-      }
-      
-    } catch (e) {
-      print('ERROR in User creation: $e');
-      throw Exception('Failed to create User record: $e');
-    }
-
-    _showSuccessSnackBar('Employee account created successfully! Please check your email to verify your account.');
-    Navigator.pop(context);
 
   } catch (e) {
-    print('=== FINAL ERROR ===');
-    print('Error: $e');
+    print('Signup error: $e');
     print('Error type: ${e.runtimeType}');
     
-    String errorMessage = 'Signup failed: ';
-    if (e.toString().contains('PostgrestException')) {
-      if (e.toString().contains('invalid input syntax for type bigint')) {
-        errorMessage += 'Database column type mismatch. Please contact support.';
-      } else {
-        errorMessage += e.toString();
-      }
-    } else {
-      errorMessage += e.toString();
-    }
-    
+    // Handle specific Supabase errors
+    String errorMessage = _getErrorMessage(e);
     _showErrorSnackBar(errorMessage);
+    
   } finally {
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 }
 
+  String _getErrorMessage(dynamic error) {
+    String errorString = error.toString().toLowerCase();
+    
+    if (errorString.contains('duplicate key')) {
+      if (errorString.contains('email') || errorString.contains('users_email_key')) {
+        return 'An account with this email already exists.';
+      } else if (errorString.contains('username')) {
+        return 'This username is already taken. Please choose another.';
+      } else {
+        return 'An account with this information already exists.';
+      }
+    } else if (errorString.contains('foreign key') || errorString.contains('violates foreign key constraint')) {
+      return 'Invalid organization selected. Please try again.';
+    } else if (errorString.contains('invalid input syntax')) {
+      return 'Invalid data format. Please check your input.';
+    } else if (errorString.contains('rate limit') || errorString.contains('429') || errorString.contains('too many')) {
+      return 'Too many signup attempts. Please wait a moment before trying again.';
+    } else if (errorString.contains('weak password') || errorString.contains('password')) {
+      return 'Password is too weak. Please use a stronger password with at least 6 characters.';
+    } else if (errorString.contains('invalid email') || errorString.contains('email')) {
+      return 'Invalid email address. Please check your email and try again.';
+    } else if (errorString.contains('network') || errorString.contains('connection')) {
+      return 'Network error. Please check your internet connection and try again.';
+    } else {
+      return 'Signup failed. Please check your information and try again.';
+    }
+  }
+
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sign Up'),
+        title: const Text('Employee Registration'),
         elevation: 0,
       ),
       body: _isLoadingOrgs
@@ -347,334 +257,222 @@ Future<void> _debugSignup() async {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Employee Registration',
+                      'Create Your Account',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
                     ),
+                    const SizedBox(height: 8),
                     const Text(
-                      'Create your employee account',
+                      'Join your organization\'s hospital management system',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
 
                     // Organization Selection
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Select Organization',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<String>(
-                              value: _selectedOrganizationId,
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                hintText: 'Select your organization',
-                                prefixIcon: Icon(Icons.business),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please select an organization';
-                                }
-                                return null;
-                              },
-                              items: _organizations.map((org) {
-                                return DropdownMenuItem<String>(
-                                  value: org['id'].toString(),
-                                  child: Text(org['name']),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedOrganizationId = value;
-                                });
-                              },
-                            ),
-                          ],
+                    _buildSectionCard(
+                      title: 'Organization',
+                      icon: Icons.business,
+                      children: [
+                        DropdownButtonFormField<String>(
+                          value: _selectedOrganizationId,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: 'Select your organization',
+                            prefixIcon: Icon(Icons.business),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please select an organization';
+                            }
+                            return null;
+                          },
+                          items: _organizations.map((org) {
+                            return DropdownMenuItem<String>(
+                              value: org['id'].toString(),
+                              child: Text(org['name']),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedOrganizationId = value;
+                            });
+                          },
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
 
                     // Personal Information
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Personal Information',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _firstNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'First Name',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your first name';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _middleNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Middle Name (Optional)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person_outline),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _lastNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Last Name',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your last name';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _addressController,
-                              decoration: const InputDecoration(
-                                labelText: 'Address',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.home),
-                              ),
-                              maxLines: 2,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your address';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _contactNumberController,
-                              decoration: const InputDecoration(
-                                labelText: 'Contact Number',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.phone),
-                              ),
-                              keyboardType: TextInputType.phone,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your contact number';
-                                }
-                                // Basic phone number validation
-                                if (!RegExp(r'^[\+]?[0-9]{10,15}$').hasMatch(value.replaceAll(RegExp(r'[\s\-\(\)]'), ''))) {
-                                  return 'Please enter a valid contact number';
-                                }
-                                return null;
-                              },
-                            ),
-                          ],
+                    _buildSectionCard(
+                      title: 'Personal Information',
+                      icon: Icons.person,
+                      children: [
+                        _buildTextField(
+                          controller: _firstNameController,
+                          label: 'First Name',
+                          icon: Icons.person,
+                          validator: (value) => value?.trim().isEmpty ?? true 
+                              ? 'Please enter your first name' : null,
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _middleNameController,
+                          label: 'Middle Name (Optional)',
+                          icon: Icons.person_outline,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _lastNameController,
+                          label: 'Last Name',
+                          icon: Icons.person,
+                          validator: (value) => value?.trim().isEmpty ?? true 
+                              ? 'Please enter your last name' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _addressController,
+                          label: 'Address',
+                          icon: Icons.home,
+                          maxLines: 2,
+                          validator: (value) => value?.trim().isEmpty ?? true 
+                              ? 'Please enter your address' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _contactNumberController,
+                          label: 'Contact Number',
+                          icon: Icons.phone,
+                          keyboardType: TextInputType.phone,
+                          validator: (value) {
+                            if (value?.trim().isEmpty ?? true) {
+                              return 'Please enter your contact number';
+                            }
+                            final cleanNumber = value!.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+                            if (!RegExp(r'^[\+]?[0-9]{10,15}$').hasMatch(cleanNumber)) {
+                              return 'Please enter a valid contact number';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
 
                     // Work Information
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Work Information',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _positionController,
-                              decoration: const InputDecoration(
-                                labelText: 'Position/Job Title',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.work),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your position';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _departmentController,
-                              decoration: const InputDecoration(
-                                labelText: 'Department',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.group_work),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your department';
-                                }
-                                return null;
-                              },
-                            ),
-                          ],
+                    _buildSectionCard(
+                      title: 'Work Information',
+                      icon: Icons.work,
+                      children: [
+                        _buildTextField(
+                          controller: _positionController,
+                          label: 'Position/Job Title',
+                          icon: Icons.work,
+                          validator: (value) => value?.trim().isEmpty ?? true 
+                              ? 'Please enter your position' : null,
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _departmentController,
+                          label: 'Department',
+                          icon: Icons.group_work,
+                          validator: (value) => value?.trim().isEmpty ?? true 
+                              ? 'Please enter your department' : null,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
 
                     // Account Credentials
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Employee Credentials',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _usernameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Username',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.account_circle),
-                                helperText: 'Choose a unique username for login',
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter a username';
-                                }
-                                if (value.trim().length < 3) {
-                                  return 'Username must be at least 3 characters long';
-                                }
-                                if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
-                                  return 'Username can only contain letters, numbers, and underscores';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _emailController,
-                              decoration: const InputDecoration(
-                                labelText: 'Email Address',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.email),
-                                helperText: 'Used for account verification and notifications',
-                              ),
-                              keyboardType: TextInputType.emailAddress,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(value)) {
-                                  return 'Please enter a valid email address';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _passwordController,
-                              decoration: const InputDecoration(
-                                labelText: 'Password',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.lock),
-                                helperText: 'Minimum 6 characters',
-                              ),
-                              obscureText: true,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter a password';
-                                }
-                                if (value.length < 6) {
-                                  return 'Password must be at least 6 characters long';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _confirmPasswordController,
-                              decoration: const InputDecoration(
-                                labelText: 'Confirm Password',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.lock_outline),
-                              ),
-                              obscureText: true,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please confirm your password';
-                                }
-                                if (value != _passwordController.text) {
-                                  return 'Passwords do not match';
-                                }
-                                return null;
-                              },
-                            ),
-                          ],
+                    _buildSectionCard(
+                      title: 'Account Credentials',
+                      icon: Icons.security,
+                      children: [
+                        _buildTextField(
+                          controller: _usernameController,
+                          label: 'Username',
+                          icon: Icons.account_circle,
+                          helperText: 'Choose a unique username for login',
+                          validator: (value) {
+                            if (value?.trim().isEmpty ?? true) {
+                              return 'Please enter a username';
+                            }
+                            if (value!.trim().length < 3) {
+                              return 'Username must be at least 3 characters long';
+                            }
+                            if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
+                              return 'Username can only contain letters, numbers, and underscores';
+                            }
+                            return null;
+                          },
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _emailController,
+                          label: 'Email Address',
+                          icon: Icons.email,
+                          keyboardType: TextInputType.emailAddress,
+                          helperText: 'Used for account verification and notifications',
+                          validator: (value) {
+                            if (value?.trim().isEmpty ?? true) {
+                              return 'Please enter your email';
+                            }
+                            if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(value!)) {
+                              return 'Please enter a valid email address';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _passwordController,
+                          label: 'Password',
+                          icon: Icons.lock,
+                          obscureText: true,
+                          helperText: 'Minimum 6 characters',
+                          validator: (value) {
+                            if (value?.isEmpty ?? true) {
+                              return 'Please enter a password';
+                            }
+                            if (value!.length < 6) {
+                              return 'Password must be at least 6 characters long';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _confirmPasswordController,
+                          label: 'Confirm Password',
+                          icon: Icons.lock_outline,
+                          obscureText: true,
+                          validator: (value) {
+                            if (value?.isEmpty ?? true) {
+                              return 'Please confirm your password';
+                            }
+                            if (value != _passwordController.text) {
+                              return 'Passwords do not match';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
+
+                    const SizedBox(height: 32),
 
                     // Sign Up Button
                     ElevatedButton(
-                      onPressed: _isLoading ? null : () {
-                        // Check if we're still in cooldown
-                        if (_lastSignupAttempt != null) {
-                          final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
-                          if (timeSinceLastAttempt < _signupCooldownSeconds) {
-                            final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
-                            _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
-                            return;
-                          }
-                        }
-                        _signup();
-                      },
+                      onPressed: _isLoading ? null : _signup,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 2,
                       ),
                       child: _isLoading
                           ? const SizedBox(
@@ -697,9 +495,7 @@ Future<void> _debugSignup() async {
 
                     // Login Link
                     TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
+                      onPressed: () => Navigator.pop(context),
                       child: const Text(
                         'Already have an account? Sign In',
                         style: TextStyle(fontSize: 14),
@@ -709,6 +505,66 @@ Future<void> _debugSignup() async {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    int maxLines = 1,
+    String? helperText,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        prefixIcon: Icon(icon),
+        helperText: helperText,
+      ),
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      maxLines: maxLines,
+      validator: validator,
     );
   }
 }
