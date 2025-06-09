@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'admin/admin_dashboard.dart';
+import 'staff/staff_dashboard.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -15,7 +16,7 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailOrUsernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   DateTime? _lastLoginAttempt;
@@ -28,123 +29,146 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-Future<void> _login() async {
-  if (!_formKey.currentState!.validate()) return;
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  // Check rate limiting
-  if (_lastLoginAttempt != null) {
-    final timeSinceLastAttempt = DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-    if (timeSinceLastAttempt < _loginCooldownSeconds) {
-      final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
-      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
-      return;
+    // Check rate limiting
+    if (_lastLoginAttempt != null) {
+      final timeSinceLastAttempt =
+          DateTime.now().difference(_lastLoginAttempt!).inSeconds;
+      if (timeSinceLastAttempt < _loginCooldownSeconds) {
+        final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
+        _showErrorSnackBar(
+            'Please wait $remainingTime seconds before trying again.');
+        return;
+      }
     }
-  }
 
-  setState(() {
-    _isLoading = true;
-  });
+    setState(() {
+      _isLoading = true;
+    });
 
-  _lastLoginAttempt = DateTime.now();
+    _lastLoginAttempt = DateTime.now();
 
-  try {
-    final input = _emailOrUsernameController.text.trim();
-    final password = _passwordController.text;
-    
-    print('DEBUG: Input received: $input'); // DEBUG LINE
-    
-    String email = input;
-    
-    // If input doesn't contain @, it's likely a username - we need to find the email
-    if (!input.contains('@')) {
-      print('DEBUG: Treating input as username, looking up email...'); // DEBUG LINE
-      
-      // Query the User table to find the email associated with this username
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('person_id')
-          .eq('username', input)
-          .maybeSingle();
+    try {
+      final input = _emailOrUsernameController.text.trim();
+      final password = _passwordController.text;
 
-      print('DEBUG: User lookup response: $userResponse'); // DEBUG LINE
+      print('DEBUG: Input received: $input'); // DEBUG LINE
 
-      if (userResponse == null) {
-        print('DEBUG: Username not found in database'); // DEBUG LINE
-        throw Exception('Username not found');
+      String email = input;
+
+      // If input doesn't contain @, it's likely a username - we need to find the email
+      if (!input.contains('@')) {
+        print(
+            'DEBUG: Treating input as username, looking up email...'); // DEBUG LINE
+
+        // Query the User table to find the email associated with this username
+        final userResponse = await Supabase.instance.client
+            .from('User')
+            .select('person_id')
+            .eq('username', input)
+            .maybeSingle();
+
+        print('DEBUG: User lookup response: $userResponse'); // DEBUG LINE
+
+        if (userResponse == null) {
+          print('DEBUG: Username not found in database'); // DEBUG LINE
+          throw Exception('Username not found');
+        }
+
+        // Get email from Person table
+        final personId = userResponse['person_id'];
+        print('DEBUG: Found person_id: $personId'); // DEBUG LINE
+
+        final personResponse = await Supabase.instance.client
+            .from('Person')
+            .select('email')
+            .eq('id', personId)
+            .single();
+
+        print('DEBUG: Person lookup response: $personResponse'); // DEBUG LINE
+        email = personResponse['email'];
+        print('DEBUG: Email found: $email'); // DEBUG LINE
+      } else {
+        print('DEBUG: Treating input as email directly'); // DEBUG LINE
       }
 
-      // Get email from Person table
-      final personId = userResponse['person_id'];
-      print('DEBUG: Found person_id: $personId'); // DEBUG LINE
-      
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('email')
-          .eq('id', personId)
-          .single();
+      print('DEBUG: Attempting to sign in with email: $email'); // DEBUG LINE
 
-      print('DEBUG: Person lookup response: $personResponse'); // DEBUG LINE
-      email = personResponse['email'];
-      print('DEBUG: Email found: $email'); // DEBUG LINE
-    } else {
-      print('DEBUG: Treating input as email directly'); // DEBUG LINE
+      // Use Supabase Auth to sign in
+      final authResponse =
+          await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      print(
+          'DEBUG: Auth response received: ${authResponse.user?.id}'); // DEBUG LINE
+
+      if (authResponse.user == null) {
+        throw Exception('Login failed');
+      }
+
+      final user = authResponse.user!;
+      print('Auth user signed in: ${user.id}');
+
+      // Get comprehensive user details after successful authentication
+      final userDetails = await _getUserDetailsFromMetadata(user);
+
+      // Store user session
+      await _storeUserSession(userDetails, user);
+
+      print('Login successful, navigating to dashboard...');
+
+      // Navigate to staff dashboard
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const StaffDashboard(),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Login error: $e');
+
+      String errorMessage = 'Login failed: ';
+
+      if (e.toString().contains('Username not found')) {
+        errorMessage += 'Username not found. Please check your username.';
+      } else if (e.toString().contains('Invalid login credentials') ||
+          e.toString().contains('Email not confirmed')) {
+        errorMessage +=
+            'Invalid email or password. Please check your credentials.';
+      } else if (e.toString().contains('Email not confirmed')) {
+        errorMessage += 'Please verify your email address before signing in.';
+      } else if (e.toString().contains('Too many requests')) {
+        errorMessage +=
+            'Too many login attempts. Please wait before trying again.';
+      } else {
+        errorMessage += 'Something went wrong. Please try again.';
+      }
+
+      _showErrorSnackBar(errorMessage);
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-
-    print('DEBUG: Attempting to sign in with email: $email'); // DEBUG LINE
-
-    // Use Supabase Auth to sign in
-    final authResponse = await Supabase.instance.client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-
-    print('DEBUG: Auth response received: ${authResponse.user?.id}'); // DEBUG LINE
-
-    if (authResponse.user == null) {
-      throw Exception('Login failed');
-    }
-
-    final user = authResponse.user!;
-    print('Auth user signed in: ${user.id}');
-
-    // ... rest of your existing code
-    
-  } catch (e) {
-    print('Login error: $e');
-    
-    String errorMessage = 'Login failed: ';
-    
-    if (e.toString().contains('Username not found')) {
-      errorMessage += 'Username not found. Please check your username.';
-    } else if (e.toString().contains('Invalid login credentials') || 
-               e.toString().contains('Email not confirmed')) {
-      errorMessage += 'Invalid email or password. Please check your credentials.';
-    } else if (e.toString().contains('Email not confirmed')) {
-      errorMessage += 'Please verify your email address before signing in.';
-    } else if (e.toString().contains('Too many requests')) {
-      errorMessage += 'Too many login attempts. Please wait before trying again.';
-    } else {
-      errorMessage += 'Something went wrong. Please try again.';
-    }
-    
-    _showErrorSnackBar(errorMessage);
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
   }
-}
 
   Future<Map<String, dynamic>> _getUserDetailsFromMetadata(User user) async {
     try {
       final userId = user.userMetadata?['user_id'];
       final personId = user.userMetadata?['person_id'];
-      
+
       if (userId == null || personId == null) {
         throw Exception('User metadata incomplete');
       }
 
-      return await _getComprehensiveUserDetails(personId.toString(), userId.toString());
+      return await _getComprehensiveUserDetails(
+          personId.toString(), userId.toString());
     } catch (e) {
       print('Error getting user details from metadata: $e');
       // Fallback to email lookup
@@ -169,16 +193,15 @@ Future<void> _login() async {
           .single();
 
       return await _getComprehensiveUserDetails(
-        personResponse['id'].toString(), 
-        userResponse['id'].toString()
-      );
+          personResponse['id'].toString(), userResponse['id'].toString());
     } catch (e) {
       print('Error getting user details by email: $e');
       throw Exception('Failed to load user information');
     }
   }
 
-  Future<Map<String, dynamic>> _getComprehensiveUserDetails(String personId, String userId) async {
+  Future<Map<String, dynamic>> _getComprehensiveUserDetails(
+      String personId, String userId) async {
     try {
       // Get Person details
       final personResponse = await Supabase.instance.client
@@ -206,7 +229,7 @@ Future<void> _login() async {
       if (orgUserResponse.isNotEmpty) {
         for (var orgUser in orgUserResponse) {
           organizationUsers.add(orgUser);
-          
+
           // Get organization details
           final orgId = orgUser['organization_id'].toString();
           final orgResponse = await Supabase.instance.client
@@ -214,7 +237,7 @@ Future<void> _login() async {
               .select('*')
               .eq('id', orgId)
               .single();
-          
+
           organizations.add(orgResponse);
         }
       }
@@ -231,27 +254,42 @@ Future<void> _login() async {
     }
   }
 
-  Future<void> _storeUserSession(Map<String, dynamic> userDetails, User authUser) async {
+  Future<void> _storeUserSession(
+      Map<String, dynamic> userDetails, User authUser) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Store auth user info
       await prefs.setString('auth_user_id', authUser.id);
       await prefs.setString('auth_user_email', authUser.email ?? '');
-      
+
       // Store internal user info
-      await prefs.setString('user_id', userDetails['user']['id']?.toString() ?? '');
-      await prefs.setString('person_id', userDetails['person']['id']?.toString() ?? '');
-      await prefs.setString('username', userDetails['user']['username']?.toString() ?? '');
-      await prefs.setString('user_name', '${userDetails['person']['first_name'] ?? ''} ${userDetails['person']['last_name'] ?? ''}');
-      await prefs.setString('user_email', userDetails['person']['email']?.toString() ?? '');
-      
+      await prefs.setString(
+          'user_id', userDetails['user']['id']?.toString() ?? '');
+      await prefs.setString(
+          'person_id', userDetails['person']['id']?.toString() ?? '');
+      await prefs.setString(
+          'username', userDetails['user']['username']?.toString() ?? '');
+      await prefs.setString('user_name',
+          '${userDetails['person']['first_name'] ?? ''} ${userDetails['person']['last_name'] ?? ''}');
+      await prefs.setString(
+          'user_email', userDetails['person']['email']?.toString() ?? '');
+
       if (userDetails['organization_users'].isNotEmpty) {
         await prefs.setBool('is_organization_user', true);
-        await prefs.setString('organization_id', userDetails['organization_users'][0]['organization_id']?.toString() ?? '');
-        await prefs.setString('user_position', userDetails['organization_users'][0]['position']?.toString() ?? '');
-        await prefs.setString('user_department', userDetails['organization_users'][0]['department']?.toString() ?? '');
-        await prefs.setString('organization_name', userDetails['organizations'][0]['name']?.toString() ?? '');
+        await prefs.setString(
+            'organization_id',
+            userDetails['organization_users'][0]['organization_id']
+                    ?.toString() ??
+                '');
+        await prefs.setString('user_position',
+            userDetails['organization_users'][0]['position']?.toString() ?? '');
+        await prefs.setString(
+            'user_department',
+            userDetails['organization_users'][0]['department']?.toString() ??
+                '');
+        await prefs.setString('organization_name',
+            userDetails['organizations'][0]['name']?.toString() ?? '');
       } else {
         await prefs.setBool('is_organization_user', false);
       }
@@ -262,7 +300,7 @@ Future<void> _login() async {
 
   Future<void> _forgotPassword() async {
     final input = _emailOrUsernameController.text.trim();
-    
+
     if (input.isEmpty) {
       _showErrorSnackBar('Please enter your email or username first.');
       return;
@@ -270,7 +308,7 @@ Future<void> _login() async {
 
     try {
       String email = input;
-      
+
       // If input doesn't contain @, it's likely a username - we need to find the email
       if (!input.contains('@')) {
         // Get user by username
@@ -295,15 +333,15 @@ Future<void> _login() async {
 
         email = personResponse['email'];
       }
-      
+
       // Send reset email using Supabase Auth
       await Supabase.instance.client.auth.resetPasswordForEmail(email);
-      
+
       _showSuccessSnackBar('Password reset email sent to $email!');
-      
     } catch (e) {
       print('Password reset error: $e');
-      _showErrorSnackBar('Failed to send password reset email. Please try again.');
+      _showErrorSnackBar(
+          'Failed to send password reset email. Please try again.');
     }
   }
 
@@ -343,7 +381,7 @@ Future<void> _login() async {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 40),
-              
+
               // Welcome Text
               const Text(
                 'Welcome Back',
@@ -400,7 +438,9 @@ Future<void> _login() async {
                           prefixIcon: const Icon(Icons.lock),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                              _obscurePassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
                             ),
                             onPressed: () {
                               setState(() {
@@ -438,18 +478,26 @@ Future<void> _login() async {
 
                       // Login Button
                       ElevatedButton(
-                        onPressed: _isLoading ? null : () {
-                          // Check cooldown before attempting login
-                          if (_lastLoginAttempt != null) {
-                            final timeSinceLastAttempt = DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-                            if (timeSinceLastAttempt < _loginCooldownSeconds) {
-                              final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
-                              _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
-                              return;
-                            }
-                          }
-                          _login();
-                        },
+                        onPressed: _isLoading
+                            ? null
+                            : () {
+                                // Check cooldown before attempting login
+                                if (_lastLoginAttempt != null) {
+                                  final timeSinceLastAttempt = DateTime.now()
+                                      .difference(_lastLoginAttempt!)
+                                      .inSeconds;
+                                  if (timeSinceLastAttempt <
+                                      _loginCooldownSeconds) {
+                                    final remainingTime =
+                                        _loginCooldownSeconds -
+                                            timeSinceLastAttempt;
+                                    _showErrorSnackBar(
+                                        'Please wait $remainingTime seconds before trying again.');
+                                    return;
+                                  }
+                                }
+                                _login();
+                              },
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -462,7 +510,8 @@ Future<void> _login() async {
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : const Text(

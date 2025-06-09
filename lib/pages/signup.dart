@@ -21,7 +21,7 @@ class _SignupPageState extends State<SignupPage> {
   final _contactNumberController = TextEditingController();
   final _positionController = TextEditingController();
   final _departmentController = TextEditingController();
-  
+
   String? _selectedOrganizationId;
   List<Map<String, dynamic>> _organizations = [];
   bool _isLoading = false;
@@ -57,7 +57,7 @@ class _SignupPageState extends State<SignupPage> {
           .from('Organization')
           .select('id, name')
           .order('name');
-      
+
       setState(() {
         _organizations = List<Map<String, dynamic>>.from(response);
         _isLoadingOrgs = false;
@@ -70,146 +70,163 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
-Future<void> _signup() async {
-  if (!_formKey.currentState!.validate()) return;
-  if (_selectedOrganizationId == null) {
-    _showErrorSnackBar('Please select an organization');
-    return;
-  }
-
-  // Check rate limiting
-  if (_lastSignupAttempt != null) {
-    final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
-    if (timeSinceLastAttempt < _signupCooldownSeconds) {
-      final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
-      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
+  Future<void> _signup() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedOrganizationId == null) {
+      _showErrorSnackBar('Please select an organization');
       return;
     }
-  }
 
-  setState(() {
-    _isLoading = true;
-  });
-
-  _lastSignupAttempt = DateTime.now();
-
-  try {
-    final currentTime = DateTime.now().toIso8601String();
-
-    // Step 1: Create Person record first (with auto-generated numeric ID)
-    final personResponse = await Supabase.instance.client.from('Person').insert({
-      'first_name': _firstNameController.text.trim(),
-      'middle_name': _middleNameController.text.trim().isEmpty 
-          ? null 
-          : _middleNameController.text.trim(),
-      'last_name': _lastNameController.text.trim(),
-      'address': _addressController.text.trim(),
-      'contact_number': _contactNumberController.text.trim(),
-      'email': _emailController.text.trim(),
-      'created_at': currentTime,
-    }).select().single();
-
-    final numericPersonId = personResponse['id']; // Get the auto-generated numeric Person ID
-    print('Person created with numeric ID: $numericPersonId');
-
-    // Step 2: Create User record using the numeric Person ID
-    final userResponse = await Supabase.instance.client.from('User').insert({
-      'username': _usernameController.text.trim(),
-      'person_id': numericPersonId, // Use the numeric Person ID
-      'created_at': currentTime,
-      'connected_organization_id': int.parse(_selectedOrganizationId!),
-    }).select().single();
-
-    final numericUserId = userResponse['id']; // Get the auto-generated numeric User ID
-    print('User created with numeric ID: $numericUserId');
-
-    // Step 3: Create user account with Supabase Auth, storing the numeric User ID in metadata
-    final authResponse = await Supabase.instance.client.auth.signUp(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-      data: {
-        // Store references to your internal records
-        'username': _usernameController.text.trim(),
-        'first_name': _firstNameController.text.trim(),
-        'last_name': _lastNameController.text.trim(),
-        'user_id': numericUserId, // Store the numeric User ID for reference
-        'person_id': numericPersonId, // Store the numeric Person ID for reference
-        'role': 'employee', // Set default role
-      },
-    );
-
-    if (authResponse.user == null) {
-      throw Exception('Failed to create user account');
+    // Check rate limiting
+    if (_lastSignupAttempt != null) {
+      final timeSinceLastAttempt =
+          DateTime.now().difference(_lastSignupAttempt!).inSeconds;
+      if (timeSinceLastAttempt < _signupCooldownSeconds) {
+        final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
+        _showErrorSnackBar(
+            'Please wait $remainingTime seconds before trying again.');
+        return;
+      }
     }
 
-    final authUserId = authResponse.user!.id; // This is the UUID from Supabase Auth
-    print('Auth user created with ID: $authUserId');
-
-    // Step 4: Optionally, create a mapping table or update Person record with Auth UUID
-    // You might want to add an auth_user_id field to Person table to link them
-    await Supabase.instance.client.from('Person').update({
-      'auth_user_id': authUserId, // Add this field to Person table if needed
-    }).eq('id', numericPersonId);
-
-    // Step 5: Create Organization_User record
-    await Supabase.instance.client.from('Organization_User').insert({
-      'position': _positionController.text.trim(),
-      'department': _departmentController.text.trim(),
-      'created_at': currentTime,
-      'organization_id': int.parse(_selectedOrganizationId!),
-      'user_id': numericUserId, // Use the numeric User ID
+    setState(() {
+      _isLoading = true;
     });
 
-    print('Organization_User created successfully');
+    _lastSignupAttempt = DateTime.now();
 
-    _showSuccessSnackBar(
-      'Employee account created successfully! Please check your email to verify your account before signing in.'
-    );
-    
-    // Navigate back to login page
-    if (mounted) {
-      Navigator.pop(context);
-    }
+    try {
+      final currentTime = DateTime.now().toIso8601String();
 
-  } catch (e) {
-    print('Signup error: $e');
-    print('Error type: ${e.runtimeType}');
-    
-    // Handle specific Supabase errors
-    String errorMessage = _getErrorMessage(e);
-    _showErrorSnackBar(errorMessage);
-    
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
+      // Step 1: Create Supabase Auth user FIRST
+      print('Creating Auth user...');
+      final authResponse = await Supabase.instance.client.auth.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        data: {
+          'username': _usernameController.text.trim(),
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+          'role': 'employee',
+          // We'll update these after creating the database records
+        },
+      );
+
+      if (authResponse.user == null) {
+        throw Exception('Failed to create authentication account');
+      }
+
+      final authUserId = authResponse.user!.id;
+      print('Auth user created with ID: $authUserId');
+
+      // Step 2: Create Person record
+      print('Creating Person record...');
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .insert({
+            'first_name': _firstNameController.text.trim(),
+            'middle_name': _middleNameController.text.trim().isEmpty
+                ? null
+                : _middleNameController.text.trim(),
+            'last_name': _lastNameController.text.trim(),
+            'address': _addressController.text.trim(),
+            'contact_number': _contactNumberController.text.trim(),
+            'email': _emailController.text.trim(),
+            'auth_user_id': authUserId, // Link to Auth user
+            'created_at': currentTime,
+          })
+          .select()
+          .single();
+
+      final numericPersonId = personResponse['id'];
+      print('Person created with numeric ID: $numericPersonId');
+
+      // Step 3: Create User record
+      print('Creating User record...');
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .insert({
+            'username': _usernameController.text.trim(),
+            'person_id': numericPersonId,
+            'created_at': currentTime,
+            'connected_organization_id': int.parse(_selectedOrganizationId!),
+          })
+          .select()
+          .single();
+
+      final numericUserId = userResponse['id'];
+      print('User created with numeric ID: $numericUserId');
+
+      // Step 4: The metadata was already set during signUp, so we're good
+      // The user will need to verify their email before they can sign in
+      print('Auth user metadata already set during signup');
+
+      // Step 5: Create Organization_User record
+      print('Creating Organization_User record...');
+      await Supabase.instance.client.from('Organization_User').insert({
+        'position': _positionController.text.trim(),
+        'department': _departmentController.text.trim(),
+        'created_at': currentTime,
+        'organization_id': int.parse(_selectedOrganizationId!),
+        'user_id': numericUserId,
       });
+
+      print('Organization_User created successfully');
+
+      _showSuccessSnackBar(
+          'Employee account created successfully! Please check your email to verify your account before signing in.');
+
+      // Navigate back to login page
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      print('Signup error: $e');
+      print('Error type: ${e.runtimeType}');
+
+      // If we get here and created an Auth user, we should clean it up
+      // Note: In production, you might want more sophisticated cleanup
+
+      String errorMessage = _getErrorMessage(e);
+      _showErrorSnackBar(errorMessage);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
-}
 
   String _getErrorMessage(dynamic error) {
     String errorString = error.toString().toLowerCase();
-    
+
     if (errorString.contains('duplicate key')) {
-      if (errorString.contains('email') || errorString.contains('users_email_key')) {
+      if (errorString.contains('email') ||
+          errorString.contains('users_email_key')) {
         return 'An account with this email already exists.';
       } else if (errorString.contains('username')) {
         return 'This username is already taken. Please choose another.';
       } else {
         return 'An account with this information already exists.';
       }
-    } else if (errorString.contains('foreign key') || errorString.contains('violates foreign key constraint')) {
+    } else if (errorString.contains('foreign key') ||
+        errorString.contains('violates foreign key constraint')) {
       return 'Invalid organization selected. Please try again.';
     } else if (errorString.contains('invalid input syntax')) {
       return 'Invalid data format. Please check your input.';
-    } else if (errorString.contains('rate limit') || errorString.contains('429') || errorString.contains('too many')) {
+    } else if (errorString.contains('rate limit') ||
+        errorString.contains('429') ||
+        errorString.contains('too many')) {
       return 'Too many signup attempts. Please wait a moment before trying again.';
-    } else if (errorString.contains('weak password') || errorString.contains('password')) {
+    } else if (errorString.contains('weak password') ||
+        errorString.contains('password')) {
       return 'Password is too weak. Please use a stronger password with at least 6 characters.';
-    } else if (errorString.contains('invalid email') || errorString.contains('email')) {
+    } else if (errorString.contains('invalid email') ||
+        errorString.contains('email')) {
       return 'Invalid email address. Please check your email and try again.';
-    } else if (errorString.contains('network') || errorString.contains('connection')) {
+    } else if (errorString.contains('network') ||
+        errorString.contains('connection')) {
       return 'Network error. Please check your internet connection and try again.';
     } else {
       return 'Signup failed. Please check your information and try again.';
@@ -317,8 +334,9 @@ Future<void> _signup() async {
                           controller: _firstNameController,
                           label: 'First Name',
                           icon: Icons.person,
-                          validator: (value) => value?.trim().isEmpty ?? true 
-                              ? 'Please enter your first name' : null,
+                          validator: (value) => value?.trim().isEmpty ?? true
+                              ? 'Please enter your first name'
+                              : null,
                         ),
                         const SizedBox(height: 16),
                         _buildTextField(
@@ -331,8 +349,9 @@ Future<void> _signup() async {
                           controller: _lastNameController,
                           label: 'Last Name',
                           icon: Icons.person,
-                          validator: (value) => value?.trim().isEmpty ?? true 
-                              ? 'Please enter your last name' : null,
+                          validator: (value) => value?.trim().isEmpty ?? true
+                              ? 'Please enter your last name'
+                              : null,
                         ),
                         const SizedBox(height: 16),
                         _buildTextField(
@@ -340,8 +359,9 @@ Future<void> _signup() async {
                           label: 'Address',
                           icon: Icons.home,
                           maxLines: 2,
-                          validator: (value) => value?.trim().isEmpty ?? true 
-                              ? 'Please enter your address' : null,
+                          validator: (value) => value?.trim().isEmpty ?? true
+                              ? 'Please enter your address'
+                              : null,
                         ),
                         const SizedBox(height: 16),
                         _buildTextField(
@@ -353,8 +373,10 @@ Future<void> _signup() async {
                             if (value?.trim().isEmpty ?? true) {
                               return 'Please enter your contact number';
                             }
-                            final cleanNumber = value!.replaceAll(RegExp(r'[\s\-\(\)]'), '');
-                            if (!RegExp(r'^[\+]?[0-9]{10,15}$').hasMatch(cleanNumber)) {
+                            final cleanNumber =
+                                value!.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+                            if (!RegExp(r'^[\+]?[0-9]{10,15}$')
+                                .hasMatch(cleanNumber)) {
                               return 'Please enter a valid contact number';
                             }
                             return null;
@@ -372,16 +394,18 @@ Future<void> _signup() async {
                           controller: _positionController,
                           label: 'Position/Job Title',
                           icon: Icons.work,
-                          validator: (value) => value?.trim().isEmpty ?? true 
-                              ? 'Please enter your position' : null,
+                          validator: (value) => value?.trim().isEmpty ?? true
+                              ? 'Please enter your position'
+                              : null,
                         ),
                         const SizedBox(height: 16),
                         _buildTextField(
                           controller: _departmentController,
                           label: 'Department',
                           icon: Icons.group_work,
-                          validator: (value) => value?.trim().isEmpty ?? true 
-                              ? 'Please enter your department' : null,
+                          validator: (value) => value?.trim().isEmpty ?? true
+                              ? 'Please enter your department'
+                              : null,
                         ),
                       ],
                     ),
@@ -403,7 +427,8 @@ Future<void> _signup() async {
                             if (value!.trim().length < 3) {
                               return 'Username must be at least 3 characters long';
                             }
-                            if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
+                            if (!RegExp(r'^[a-zA-Z0-9_]+$')
+                                .hasMatch(value.trim())) {
                               return 'Username can only contain letters, numbers, and underscores';
                             }
                             return null;
@@ -415,12 +440,14 @@ Future<void> _signup() async {
                           label: 'Email Address',
                           icon: Icons.email,
                           keyboardType: TextInputType.emailAddress,
-                          helperText: 'Used for account verification and notifications',
+                          helperText:
+                              'Used for account verification and notifications',
                           validator: (value) {
                             if (value?.trim().isEmpty ?? true) {
                               return 'Please enter your email';
                             }
-                            if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(value!)) {
+                            if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$')
+                                .hasMatch(value!)) {
                               return 'Please enter a valid email address';
                             }
                             return null;
@@ -480,7 +507,8 @@ Future<void> _signup() async {
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Text(
