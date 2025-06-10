@@ -4,6 +4,7 @@ import 'signup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'admin/admin_dashboard.dart';
 import 'staff/staff_dashboard.dart';
+import 'reset_password.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -21,6 +22,32 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscurePassword = true;
   DateTime? _lastLoginAttempt;
   static const int _loginCooldownSeconds = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAuthListener();
+  }
+
+  void _setupAuthListener() {
+    // Listen for auth state changes (like password reset)
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final event = data.event;
+      if (event == AuthChangeEvent.passwordRecovery) {
+        // Navigate to reset password page when recovery link is clicked
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ResetPasswordPage(),
+              ),
+            );
+          }
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -306,6 +333,21 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Sending reset email...'),
+          ],
+        ),
+      ),
+    );
+
     try {
       String email = input;
 
@@ -319,6 +361,7 @@ class _LoginPageState extends State<LoginPage> {
             .maybeSingle();
 
         if (userResponse == null) {
+          Navigator.of(context).pop(); // Close loading dialog
           _showErrorSnackBar('Username not found.');
           return;
         }
@@ -334,15 +377,74 @@ class _LoginPageState extends State<LoginPage> {
         email = personResponse['email'];
       }
 
-      // Send reset email using Supabase Auth
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      // Send reset email using Supabase Auth with redirect URL
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo:
+            'your-app-scheme://reset-password', // Replace with your app's deep link scheme
+      );
 
-      _showSuccessSnackBar('Password reset email sent to $email!');
+      Navigator.of(context).pop(); // Close loading dialog
+
+      // Show success dialog with instructions
+      _showPasswordResetDialog(email);
     } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog
       print('Password reset error: $e');
       _showErrorSnackBar(
           'Failed to send password reset email. Please try again.');
     }
+  }
+
+  void _showPasswordResetDialog(String email) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.email, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Reset Email Sent'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('A password reset email has been sent to:'),
+            const SizedBox(height: 8),
+            Text(
+              email,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text('Please follow these steps:'),
+            const SizedBox(height: 8),
+            const Text('1. Check your email inbox (and spam folder)'),
+            const Text('2. Click the reset link in the email'),
+            const Text('3. Return to the app to set your new password'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ResetPasswordPage(),
+                ),
+              );
+            },
+            child: const Text('Reset Password'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorSnackBar(String message) {
