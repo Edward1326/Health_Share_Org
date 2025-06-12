@@ -13,130 +13,198 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> employees = [];
   List<Map<String, dynamic>> organizationMembers = [];
+  List<Map<String, dynamic>> availablePatients = []; // Changed to dynamic list
   bool isLoading = true;
   String? errorMessage;
-
-  final List<String> availablePatients = [
-    'John Smith',
-    'Mary Johnson', 
-    'Robert Davis',
-    'Lisa Wilson',
-    'David Brown',
-    'Sarah Miller',
-    'Tom Anderson'
-  ];
 
   @override
   void initState() {
     super.initState();
     _loadEmployeesFromSupabase();
+    _loadAvailablePatients(); // Load actual patients
+  }
+
+  // New method to load actual patients (excluding employees)
+  Future<void> _loadAvailablePatients() async {
+    try {
+      // First, get all employee person_ids to exclude them
+      final orgUsersResponse =
+          await supabase.from('Organization_User').select('*');
+      final userIds = orgUsersResponse.map((item) => item['user_id']).toList();
+
+      final usersResponse = await supabase
+          .from('User')
+          .select('id, person_id')
+          .in_('id', userIds);
+
+      final employeePersonIds =
+          usersResponse.map((user) => user['person_id']).toList();
+
+      // Get all persons who are NOT employees
+      final patientsResponse = await supabase
+          .from('Person')
+          .select('*')
+          .not('id', 'in', '(${employeePersonIds.join(',')})');
+
+      final List<Map<String, dynamic>> patients = [];
+      for (var person in patientsResponse) {
+        // Build patient name
+        String fullName = 'Unknown Patient';
+        if (person['first_name'] != null && person['last_name'] != null) {
+          fullName = '${person['first_name']} ${person['last_name']}';
+        } else if (person['name'] != null) {
+          fullName = person['name'];
+        } else if (person['first_name'] != null) {
+          fullName = person['first_name'];
+        }
+
+        patients.add({
+          'id': person['id'],
+          'name': fullName,
+          'email': person['email'] ?? '',
+          'phone': person['contact_number'] ?? '',
+          'address': person['address'] ?? '',
+        });
+      }
+
+      setState(() {
+        availablePatients = patients;
+      });
+
+      print('Available patients loaded: ${patients.length}');
+    } catch (e) {
+      print('Error loading patients: $e');
+    }
   }
 
   Future<void> _loadEmployeesFromSupabase() async {
-  try {
-    setState(() {
-      isLoading = true;
-      errorMessage = null;
-    });
-
-    // STEP 1: Debug - Check Organization_User table
-    print('=== DEBUG: Fetching Organization_User records ===');
-    final orgUsersResponse = await supabase
-        .from('Organization_User')
-        .select('*');
-    
-    print('Organization_User records found: ${orgUsersResponse.length}');
-    print('Organization_User data: $orgUsersResponse');
-
-    if (orgUsersResponse.isEmpty) {
-      print('No Organization_User records found!');
+    try {
       setState(() {
-        employees = [];
-        isLoading = false;
-        errorMessage = 'No Organization_User records found. Please check if employees are properly added to the organization.';
+        isLoading = true;
+        errorMessage = null;
       });
-      return;
+
+      // STEP 1: Get Organization_User records
+      print('=== DEBUG: Fetching Organization_User records ===');
+      final orgUsersResponse =
+          await supabase.from('Organization_User').select('*');
+
+      print('Organization_User records found: ${orgUsersResponse.length}');
+      print('Organization_User data: $orgUsersResponse');
+
+      if (orgUsersResponse.isEmpty) {
+        print('No Organization_User records found!');
+        setState(() {
+          employees = [];
+          isLoading = false;
+          errorMessage =
+              'No Organization_User records found. Please check if employees are properly added to the organization.';
+        });
+        return;
+      }
+
+      // STEP 2: Get User records to find person_ids
+      final userIds = orgUsersResponse.map((item) => item['user_id']).toList();
+      print('User IDs to fetch: $userIds');
+
+      final usersResponse = await supabase
+          .from('User')
+          .select('id, person_id')
+          .in_('id', userIds);
+
+      print('User records found: ${usersResponse.length}');
+      print('User data: $usersResponse');
+
+      // STEP 3: Get Person records using person_ids from User table
+      final personIds = usersResponse.map((user) => user['person_id']).toList();
+      print('Person IDs to fetch: $personIds');
+
+      final personsResponse =
+          await supabase.from('Person').select('*').in_('id', personIds);
+
+      print('Person records found: ${personsResponse.length}');
+      print('Person data: $personsResponse');
+
+      // STEP 4: Create lookup maps
+      final Map<dynamic, Map<String, dynamic>> usersMap = {};
+      for (var user in usersResponse) {
+        usersMap[user['id']] = user;
+      }
+
+      final Map<dynamic, Map<String, dynamic>> personsMap = {};
+      for (var person in personsResponse) {
+        personsMap[person['id']] = person;
+      }
+
+      // STEP 5: Build employee list with correct relationships
+      print('=== DEBUG: Building employee list ===');
+      final List<Map<String, dynamic>> builtEmployees = [];
+
+      for (var orgUser in orgUsersResponse) {
+        print('\nProcessing Organization_User: $orgUser');
+
+        // Get User record
+        final user = usersMap[orgUser['user_id']];
+        print('Found User for user_id ${orgUser['user_id']}: $user');
+
+        // Get Person record using person_id from User
+        final person = user != null ? personsMap[user['person_id']] : null;
+        print('Found Person for person_id ${user?['person_id']}: $person');
+
+        // Build full name - try different field combinations
+        String fullName = 'Unknown User';
+        if (person != null) {
+          if (person['first_name'] != null && person['last_name'] != null) {
+            fullName = '${person['first_name']} ${person['last_name']}';
+          } else if (person['name'] != null) {
+            fullName = person['name'];
+          } else if (person['first_name'] != null) {
+            fullName = person['first_name'];
+          }
+        }
+
+        final employee = {
+          'id': orgUser['id'].toString(),
+          'name': fullName,
+          'role': orgUser['position'] ?? 'Staff',
+          'department': orgUser['department'] ?? 'General',
+          'status': 'Active',
+          'assignedPatients': <String>[],
+          'email': person?['email'] ?? '',
+          'phone': person?['contact_number'] ?? '',
+          'address': person?['address'] ?? '',
+          'hireDate': orgUser['created_at'] != null
+              ? DateTime.parse(orgUser['created_at'])
+                  .toString()
+                  .substring(0, 10)
+              : DateTime.now().toString().substring(0, 10),
+          'user_id': orgUser['user_id'],
+          'person_id': user?['person_id'],
+          'organization_id': orgUser['organization_id'],
+        };
+
+        print('Built employee: $employee');
+        builtEmployees.add(employee);
+      }
+
+      print('\n=== DEBUG: Final Results ===');
+      print('Total employees built: ${builtEmployees.length}');
+
+      setState(() {
+        employees = builtEmployees;
+        isLoading = false;
+      });
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error occurred ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+
+      setState(() {
+        errorMessage = 'Error loading employees: $e';
+        isLoading = false;
+      });
     }
-
-    // STEP 2: Debug - Extract user IDs
-    final userIds = orgUsersResponse.map((item) => item['user_id']).toList();
-    print('User IDs to fetch: $userIds');
-
-    // STEP 3: Debug - Check Person records
-    print('=== DEBUG: Fetching Person records ===');
-    final personsResponse = await supabase
-        .from('Person')
-        .select('*')
-        .in_('id', userIds);
-    
-    print('Person records found: ${personsResponse.length}');
-    print('Person data: $personsResponse');
-
-    // STEP 4: Debug - Check if user_ids match person ids
-    final personIds = personsResponse.map((p) => p['id']).toList();
-    print('Person IDs found: $personIds');
-    print('Missing Person records for user_ids: ${userIds.where((id) => !personIds.contains(id)).toList()}');
-
-    // Create a map for quick person lookup
-    final Map<dynamic, Map<String, dynamic>> personsMap = {};
-    for (var person in personsResponse) {
-      personsMap[person['id']] = person;
-      print('Person mapped: ID=${person['id']}, Name=${person['name']}');
-    }
-
-    // STEP 5: Debug - Build employee list
-    print('=== DEBUG: Building employee list ===');
-    final List<Map<String, dynamic>> builtEmployees = [];
-    
-    for (var orgUser in orgUsersResponse) {
-      print('\nProcessing Organization_User: $orgUser');
-      final person = personsMap[orgUser['user_id']];
-      print('Found Person for user_id ${orgUser['user_id']}: $person');
-      
-      final fullName = person != null 
-          ? (person['name'] ?? person['first_name'] ?? 'Unknown') // Try both 'name' and 'first_name'
-          : 'Unknown User ID: ${orgUser['user_id']}';
-      
-      final employee = {
-        'id': orgUser['id'].toString(),
-        'name': fullName,
-        'role': orgUser['position'] ?? 'Staff',
-        'department': orgUser['department'] ?? 'General',
-        'status': 'Active',
-        'assignedPatients': <String>[],
-        'email': person?['email'] ?? '', // Check if email exists in Person table
-        'phone': person?['contact_number'] ?? '',
-        'address': person?['address'] ?? '',
-        'hireDate': orgUser['created_at'] != null 
-            ? DateTime.parse(orgUser['created_at']).toString().substring(0, 10)
-            : DateTime.now().toString().substring(0, 10),
-        'user_id': orgUser['user_id'],
-        'organization_id': orgUser['organization_id'],
-      };
-      
-      print('Built employee: $employee');
-      builtEmployees.add(employee);
-    }
-
-    print('\n=== DEBUG: Final Results ===');
-    print('Total employees built: ${builtEmployees.length}');
-
-    setState(() {
-      employees = builtEmployees;
-      isLoading = false;
-    });
-
-  } catch (e, stackTrace) {
-    print('=== DEBUG: Error occurred ===');
-    print('Error: $e');
-    print('Stack trace: $stackTrace');
-    
-    setState(() {
-      errorMessage = 'Error loading employees: $e';
-      isLoading = false;
-    });
   }
-}
 
   Future<void> _addEmployeeFromMember(Map<String, dynamic> member) async {
     try {
@@ -144,7 +212,8 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       final response = await supabase
           .from('Organization_User')
           .insert({
-            'user_id': member['user_id'], // You'll need to get this from the member data
+            'user_id': member[
+                'user_id'], // You'll need to get this from the member data
             'organization_id': 1, // Replace with actual organization ID
             'position': member['specialization'],
             'department': member['department'] ?? 'Medical',
@@ -155,12 +224,13 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       if (response != null) {
         // Reload the employees list
         await _loadEmployeesFromSupabase();
-        
+        await _loadAvailablePatients(); // Reload patients to exclude new employee
+
         // Remove from organization members (if you have a separate table for pending members)
         setState(() {
           organizationMembers.removeWhere((m) => m['email'] == member['email']);
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -185,14 +255,12 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
 
   Future<void> _deleteEmployee(String employeeId) async {
     try {
-      await supabase
-          .from('Organization_User')
-          .delete()
-          .eq('id', employeeId);
-      
+      await supabase.from('Organization_User').delete().eq('id', employeeId);
+
       // Reload the employees list
       await _loadEmployeesFromSupabase();
-      
+      await _loadAvailablePatients(); // Reload patients to include removed employee as patient
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -214,16 +282,16 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     }
   }
 
-  Future<void> _updateEmployeePosition(String employeeId, String newPosition) async {
+  Future<void> _updateEmployeePosition(
+      String employeeId, String newPosition) async {
     try {
       await supabase
           .from('Organization_User')
-          .update({'position': newPosition})
-          .eq('id', employeeId);
-      
+          .update({'position': newPosition}).eq('id', employeeId);
+
       // Reload the employees list
       await _loadEmployeesFromSupabase();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -315,14 +383,18 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadEmployeesFromSupabase,
+            onPressed: () {
+              _loadEmployeesFromSupabase();
+              _loadAvailablePatients();
+            },
             tooltip: 'Refresh',
           ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Manual add employee feature coming soon!')),
+                const SnackBar(
+                    content: Text('Manual add employee feature coming soon!')),
               );
             },
           ),
@@ -373,36 +445,46 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.people_outline, size: 64, color: Colors.grey),
+                            Icon(Icons.people_outline,
+                                size: 64, color: Colors.grey),
                             SizedBox(height: 16),
                             Text(
                               'No employees found',
-                              style: TextStyle(fontSize: 18, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 18, color: Colors.grey),
                             ),
                             SizedBox(height: 8),
                             Text(
                               'Add employees to your organization',
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey),
                             ),
                           ],
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadEmployeesFromSupabase,
+                        onRefresh: () async {
+                          await _loadEmployeesFromSupabase();
+                          await _loadAvailablePatients();
+                        },
                         child: ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           itemCount: employees.length,
                           itemBuilder: (context, index) {
                             final employee = employees[index];
-                            final assignedCount = (employee['assignedPatients'] as List).length;
-                            
+                            final assignedCount =
+                                (employee['assignedPatients'] as List).length;
+
                             return Card(
                               margin: const EdgeInsets.only(bottom: 8),
                               child: ListTile(
                                 leading: CircleAvatar(
-                                  backgroundColor: employee['status'] == 'Active' ? Colors.green : Colors.orange,
+                                  backgroundColor:
+                                      employee['status'] == 'Active'
+                                          ? Colors.green
+                                          : Colors.orange,
                                   child: Text(
-                                    employee['name']!.isNotEmpty 
+                                    employee['name']!.isNotEmpty
                                         ? employee['name']![0].toUpperCase()
                                         : '?',
                                   ),
@@ -412,14 +494,17 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(employee['role']!),
-                                    if (employee['department'] != null && employee['department']!.isNotEmpty)
+                                    if (employee['department'] != null &&
+                                        employee['department']!.isNotEmpty)
                                       Text(
                                         'Department: ${employee['department']}',
-                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                        style: const TextStyle(
+                                            fontSize: 12, color: Colors.grey),
                                       ),
                                     Text(
-                                      'Assigned Patients: $assignedCount', 
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      'Assigned Patients: $assignedCount',
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey),
                                     ),
                                   ],
                                 ),
@@ -428,9 +513,10 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                                   children: [
                                     Chip(
                                       label: Text(employee['status']!),
-                                      backgroundColor: employee['status'] == 'Active' 
-                                          ? Colors.green.withOpacity(0.2) 
-                                          : Colors.orange.withOpacity(0.2),
+                                      backgroundColor:
+                                          employee['status'] == 'Active'
+                                              ? Colors.green.withOpacity(0.2)
+                                              : Colors.orange.withOpacity(0.2),
                                     ),
                                     const SizedBox(width: 8),
                                     PopupMenuButton(
@@ -445,22 +531,28 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                                         const PopupMenuItem(
                                           value: 'delete',
                                           child: ListTile(
-                                            leading: Icon(Icons.delete, color: Colors.red),
-                                            title: Text('Remove Employee', style: TextStyle(color: Colors.red)),
+                                            leading: Icon(Icons.delete,
+                                                color: Colors.red),
+                                            title: Text('Remove Employee',
+                                                style: TextStyle(
+                                                    color: Colors.red)),
                                           ),
                                         ),
                                       ],
                                       onSelected: (value) {
                                         if (value == 'edit') {
-                                          _showEditPositionDialog(context, employee);
+                                          _showEditPositionDialog(
+                                              context, employee);
                                         } else if (value == 'delete') {
-                                          _showDeleteConfirmation(context, employee);
+                                          _showDeleteConfirmation(
+                                              context, employee);
                                         }
                                       },
                                     ),
                                   ],
                                 ),
-                                onTap: () => _showEmployeeDetails(context, employee),
+                                onTap: () =>
+                                    _showEmployeeDetails(context, employee),
                               ),
                             );
                           },
@@ -472,9 +564,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
-  void _showEditPositionDialog(BuildContext context, Map<String, dynamic> employee) {
-    final TextEditingController controller = TextEditingController(text: employee['role']);
-    
+  void _showEditPositionDialog(
+      BuildContext context, Map<String, dynamic> employee) {
+    final TextEditingController controller =
+        TextEditingController(text: employee['role']);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -503,12 +597,14 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, Map<String, dynamic> employee) {
+  void _showDeleteConfirmation(
+      BuildContext context, Map<String, dynamic> employee) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove Employee'),
-        content: Text('Are you sure you want to remove ${employee['name']} from the organization?'),
+        content: Text(
+            'Are you sure you want to remove ${employee['name']} from the organization?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -527,7 +623,8 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
-  void _showEmployeeDetails(BuildContext context, Map<String, dynamic> employee) {
+  void _showEmployeeDetails(
+      BuildContext context, Map<String, dynamic> employee) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -545,13 +642,15 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
               Text('Address: ${employee['address'] ?? 'Not provided'}'),
               Text('Hire Date: ${employee['hireDate']}'),
               const SizedBox(height: 16),
-              const Text('Assigned Patients:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Assigned Patients:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...(employee['assignedPatients'] as List<String>).map(
                 (patient) => Text('• $patient'),
               ),
               if ((employee['assignedPatients'] as List).isEmpty)
-                const Text('No patients assigned', style: TextStyle(color: Colors.grey)),
+                const Text('No patients assigned',
+                    style: TextStyle(color: Colors.grey)),
             ],
           ),
         ),
@@ -560,7 +659,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
-          if (employee['role'].toString().toLowerCase().contains('dr') || 
+          if (employee['role'].toString().toLowerCase().contains('dr') ||
               employee['role'].toString().toLowerCase().contains('doctor'))
             ElevatedButton(
               onPressed: () {
@@ -574,15 +673,18 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
-  void _showPatientAssignmentDialog(BuildContext context, Map<String, dynamic> employee) {
+  void _showPatientAssignmentDialog(
+      BuildContext context, Map<String, dynamic> employee) {
     showDialog(
       context: context,
       builder: (context) => PatientAssignmentDialog(
         employee: employee,
-        availablePatients: availablePatients,
+        availablePatients:
+            availablePatients.map((p) => p['name'] as String).toList(),
         onAssignmentChanged: (updatedEmployee) {
           setState(() {
-            final index = employees.indexWhere((e) => e['id'] == updatedEmployee['id']);
+            final index =
+                employees.indexWhere((e) => e['id'] == updatedEmployee['id']);
             if (index != -1) {
               employees[index] = updatedEmployee;
             }
@@ -607,7 +709,8 @@ class PatientAssignmentDialog extends StatefulWidget {
   });
 
   @override
-  State<PatientAssignmentDialog> createState() => _PatientAssignmentDialogState();
+  State<PatientAssignmentDialog> createState() =>
+      _PatientAssignmentDialogState();
 }
 
 class _PatientAssignmentDialogState extends State<PatientAssignmentDialog> {
@@ -629,31 +732,51 @@ class _PatientAssignmentDialogState extends State<PatientAssignmentDialog> {
         child: Column(
           children: [
             Text('Select patients to assign to ${widget.employee['name']}:',
-                 style: const TextStyle(fontSize: 14)),
+                style: const TextStyle(fontSize: 14)),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.builder(
-                itemCount: widget.availablePatients.length,
-                itemBuilder: (context, index) {
-                  final patient = widget.availablePatients[index];
-                  final isSelected = selectedPatients.contains(patient);
-                  
-                  return CheckboxListTile(
-                    title: Text(patient),
-                    subtitle: Text('Patient ID: PAT${(index + 1).toString().padLeft(3, '0')}'),
-                    value: isSelected,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        if (value == true) {
-                          selectedPatients.add(patient);
-                        } else {
-                          selectedPatients.remove(patient);
-                        }
-                      });
-                    },
-                  );
-                },
-              ),
+              child: widget.availablePatients.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.people_outline,
+                              size: 48, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No patients available',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                          Text(
+                            'All persons in the system are employees',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: widget.availablePatients.length,
+                      itemBuilder: (context, index) {
+                        final patient = widget.availablePatients[index];
+                        final isSelected = selectedPatients.contains(patient);
+
+                        return CheckboxListTile(
+                          title: Text(patient),
+                          subtitle: Text(
+                              'Patient ID: PAT${(index + 1).toString().padLeft(3, '0')}'),
+                          value: isSelected,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                selectedPatients.add(patient);
+                              } else {
+                                selectedPatients.remove(patient);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
             ),
             const SizedBox(height: 16),
             Container(
@@ -680,7 +803,8 @@ class _PatientAssignmentDialogState extends State<PatientAssignmentDialog> {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Successfully assigned ${selectedPatients.length} patients to ${widget.employee['name']}'),
+                content: Text(
+                    'Successfully assigned ${selectedPatients.length} patients to ${widget.employee['name']}'),
                 backgroundColor: Colors.green,
               ),
             );

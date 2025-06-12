@@ -149,13 +149,32 @@ class _LoginPageState extends State<LoginPage> {
       print('Login successful, navigating to dashboard...');
 
       // Navigate to staff dashboard
+      String userPosition = '';
+      if (userDetails['organization_users'].isNotEmpty) {
+        userPosition = userDetails['organization_users'][0]['position']
+                ?.toString()
+                .toLowerCase() ??
+            '';
+      }
+
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const StaffDashboard(),
-          ),
-        );
+        if (userPosition == 'admin') {
+          // Navigate to admin dashboard
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const Dashboard(), // Your admin dashboard
+            ),
+          );
+        } else {
+          // Navigate to staff dashboard for all other positions
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const StaffDashboard(),
+            ),
+          );
+        }
       }
     } catch (e) {
       print('Login error: $e');
