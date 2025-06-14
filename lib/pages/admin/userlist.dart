@@ -1,4 +1,4 @@
-// User/Patient List Page with Dynamic Doctor Assignment Feature
+// User/Patient List Page with Persistent Doctor Assignment Feature
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,41 +12,53 @@ class UserListPage extends StatefulWidget {
 class _UserListPageState extends State<UserListPage> {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> users = [];
-  List<Map<String, dynamic>> availableDoctors =
-      []; // Changed from hardcoded list
+  List<Map<String, dynamic>> availableDoctors = [];
   bool isLoading = true;
   String? errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadUsersFromSupabase();
-    _loadDoctorsFromSupabase(); // Load doctors from database
+    _loadAllData();
+  }
+
+  // Load all data in sequence
+  Future<void> _loadAllData() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      await _loadUsersFromSupabase();
+      await _loadDoctorsFromSupabase();
+      await _loadAssignmentsFromDatabase();
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Error loading data: $e';
+        isLoading = false;
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadUsersFromSupabase() async {
     try {
-      setState(() {
-        isLoading = true;
-        errorMessage = null;
-      });
-
       print('=== DEBUG: Starting user loading process ===');
 
       // First, get all Organization_User records to identify employees
       print('Step 1: Fetching Organization_User records...');
-      final orgUsersResponse = await supabase
-          .from('Organization_User')
-          .select('*'); // Get all fields to see the structure
+      final orgUsersResponse =
+          await supabase.from('Organization_User').select('*');
 
       print('Organization_User records found: ${orgUsersResponse.length}');
-      print('Organization_User full data: $orgUsersResponse');
 
       // Extract user IDs from Organization_User table
       final employeeUserIds = <dynamic>{};
       for (var orgUser in orgUsersResponse) {
-        print('Processing Organization_User record: $orgUser');
-        print('user_id field: ${orgUser['user_id']}');
         if (orgUser['user_id'] != null) {
           employeeUserIds.add(orgUser['user_id']);
         }
@@ -59,63 +71,27 @@ class _UserListPageState extends State<UserListPage> {
       final usersResponse = await supabase.from('User').select('*');
 
       print('User records found: ${usersResponse.length}');
-      print('User full data: $usersResponse');
 
       if (usersResponse.isEmpty) {
         print('No User records found!');
         setState(() {
           users = [];
-          isLoading = false;
-          errorMessage = 'No users found in database.';
         });
         return;
       }
 
-      // Debug: Check each user record
-      print('\nStep 3: Analyzing each User record...');
-      for (var user in usersResponse) {
-        print('User record: $user');
-        print('User person_id: ${user['person_id']}');
-        print(
-            'Is this person_id in employee list? ${employeeUserIds.contains(user['person_id'])}');
-
-        // Also check if the user ID itself is in the employee list
-        print('User id: ${user['id']}');
-        print(
-            'Is this user id in employee list? ${employeeUserIds.contains(user['id'])}');
-      }
-
-      // Let's try a different approach - check if Organization_User.user_id matches User.id instead of User.person_id
-      final employeeDirectUserIds = orgUsersResponse
-          .map((orgUser) => orgUser['user_id'])
-          .where((id) => id != null)
-          .toSet();
-
-      print('\nStep 4: Alternative filtering approach...');
-      print('Checking if Organization_User.user_id matches User.id...');
-
-      // Filter users - try both approaches
+      // Filter users - exclude employees
       final List<Map<String, dynamic>> potentialPatients = [];
 
       for (var user in usersResponse) {
-        final isEmployeeByPersonId =
-            employeeUserIds.contains(user['person_id']);
-        final isEmployeeByUserId = employeeDirectUserIds.contains(user['id']);
+        final isEmployee = employeeUserIds.contains(user['id']);
 
-        print('User ${user['id']} (person_id: ${user['person_id']}):');
-        print('  - Is employee by person_id? $isEmployeeByPersonId');
-        print('  - Is employee by user_id? $isEmployeeByUserId');
-
-        // If not an employee by either method, consider as patient
-        if (!isEmployeeByPersonId && !isEmployeeByUserId) {
+        if (!isEmployee) {
           potentialPatients.add(user);
-          print('  - ADDED as patient');
-        } else {
-          print('  - EXCLUDED as employee');
         }
       }
 
-      print('\nFiltered patient users: ${potentialPatients.length}');
+      print('Filtered patient users: ${potentialPatients.length}');
 
       // Extract person IDs from patient users only
       final personIds = potentialPatients
@@ -126,12 +102,11 @@ class _UserListPageState extends State<UserListPage> {
       print('Person IDs to fetch: $personIds');
 
       // Fetch corresponding Person records
-      print('\nStep 5: Fetching Person records...');
+      print('\nStep 3: Fetching Person records...');
       final personsResponse =
           await supabase.from('Person').select('*').in_('id', personIds);
 
       print('Person records found: ${personsResponse.length}');
-      print('Person data: $personsResponse');
 
       // Create a map for quick person lookup
       final Map<dynamic, Map<String, dynamic>> personsMap = {};
@@ -140,7 +115,7 @@ class _UserListPageState extends State<UserListPage> {
       }
 
       // Build the users list (only patients now)
-      print('\nStep 6: Building final users list...');
+      print('\nStep 4: Building final users list...');
       final List<Map<String, dynamic>> loadedUsers = [];
 
       for (var user in potentialPatients) {
@@ -156,55 +131,32 @@ class _UserListPageState extends State<UserListPage> {
             'id': user['id'].toString(),
             'name': fullName,
             'type': 'Patient',
-            'email': person['contact_number'] ?? '',
+            'email': person['email'] ?? '',
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
             'lastVisit': user['created_at'] != null
                 ? DateTime.parse(user['created_at']).toString().split(' ')[0]
                 : '2024-01-01',
             'assignedDoctor': null,
+            'assignedDoctorId': null,
+            'assignmentId': null,
           };
 
-          loadedUsers.add(userMap);
-          print('Built patient: $userMap');
-        } else {
-          print('No person found for user_id: ${user['id']}');
-          final userMap = {
-            'id': user['id'].toString(),
-            'name': 'Patient ${user['id']}',
-            'type': 'Patient',
-            'email': '',
-            'phone': '',
-            'address': '',
-            'lastVisit': user['created_at'] != null
-                ? DateTime.parse(user['created_at']).toString().split(' ')[0]
-                : '2024-01-01',
-            'assignedDoctor': null,
-          };
           loadedUsers.add(userMap);
         }
       }
 
-      print('\n=== DEBUG: Final Results ===');
+      print('\n=== DEBUG: User Loading Results ===');
       print('Total patients loaded: ${loadedUsers.length}');
-      print('Total users in database: ${usersResponse.length}');
-      print('Total employees in Organization_User: ${orgUsersResponse.length}');
-      print('Employee user IDs: $employeeUserIds');
-      print('Employee direct user IDs: $employeeDirectUserIds');
 
       setState(() {
         users = loadedUsers;
-        isLoading = false;
       });
     } catch (e, stackTrace) {
-      print('=== DEBUG: Error occurred ===');
+      print('=== DEBUG: Error loading users ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
-
-      setState(() {
-        errorMessage = 'Error loading users: $e';
-        isLoading = false;
-      });
+      rethrow;
     }
   }
 
@@ -217,10 +169,8 @@ class _UserListPageState extends State<UserListPage> {
           await supabase.from('Organization_User').select('*');
 
       print('Organization_User records found: ${orgUsersResponse.length}');
-      print('Organization_User data: $orgUsersResponse');
 
       if (orgUsersResponse.isEmpty) {
-        print('No Organization_User records found!');
         setState(() {
           availableDoctors = [];
         });
@@ -235,15 +185,12 @@ class _UserListPageState extends State<UserListPage> {
 
       print('User IDs from Organization_User: $userIds');
 
-      // Step 1: Get User records that match the Organization_User.user_id
-      print('DEBUG: Fetching User records for IDs: $userIds');
+      // Get User records that match the Organization_User.user_id
       final usersResponse =
           await supabase.from('User').select('*').in_('id', userIds);
-
       print('User records found: ${usersResponse.length}');
-      print('User data: $usersResponse');
 
-      // Step 2: Extract person_ids from the User records
+      // Extract person_ids from the User records
       final personIds = usersResponse
           .map((user) => user['person_id'])
           .where((id) => id != null)
@@ -251,15 +198,12 @@ class _UserListPageState extends State<UserListPage> {
 
       print('Person IDs to fetch: $personIds');
 
-      // Step 3: Get Person records using the person_ids
-      print('DEBUG: Fetching Person records for IDs: $personIds');
+      // Get Person records using the person_ids
       final personsResponse =
           await supabase.from('Person').select('*').in_('id', personIds);
-
       print('Person records found: ${personsResponse.length}');
-      print('Person data: $personsResponse');
 
-      // Step 4: Create lookup maps
+      // Create lookup maps
       final Map<dynamic, Map<String, dynamic>> usersMap = {};
       for (var user in usersResponse) {
         usersMap[user['id']] = user;
@@ -270,7 +214,7 @@ class _UserListPageState extends State<UserListPage> {
         personsMap[person['id']] = person;
       }
 
-      // Step 5: Build the doctors list
+      // Build the doctors list
       final List<Map<String, dynamic>> loadedDoctors = [];
 
       print('\n=== DEBUG: Processing each Organization_User record ===');
@@ -284,20 +228,13 @@ class _UserListPageState extends State<UserListPage> {
             orgUser['department']?.toString().toLowerCase() ?? '';
 
         print('Processing employee:');
-        print('  - Org_User ID: ${orgUser['id']}');
-        print('  - User ID: ${orgUser['user_id']}');
         print('  - Position: ${orgUser['position']}');
         print('  - Department: ${orgUser['department']}');
-        print('  - User found: ${user != null}');
-        print('  - Person found: ${person != null}');
-        if (user != null) {
-          print('  - User person_id: ${user['person_id']}');
-        }
 
-        // More flexible doctor identification
+        // Doctor identification
         bool isDoctor = false;
 
-        // Check position field (convert to lowercase for comparison)
+        // Check position field
         if (position.contains('doctor') ||
             position.contains('dr.') ||
             position.contains('dr ') ||
@@ -305,136 +242,287 @@ class _UserListPageState extends State<UserListPage> {
             position.contains('specialist') ||
             position.contains('surgeon') ||
             position.contains('md') ||
-            position.contains('medical') ||
-            position.contains('cardiologist') ||
-            position.contains('neurologist') ||
-            position.contains('pediatrician') ||
-            position.contains('psychiatrist') ||
-            position.contains('radiologist') ||
-            position.contains('pathologist') ||
-            position.contains('anesthesiologist') ||
-            position.contains('dermatologist') ||
-            position.contains('urologist') ||
-            position.contains('gynecologist') ||
-            position.contains('orthopedic') ||
-            position.contains('oncologist')) {
+            position.contains('medical')) {
           isDoctor = true;
           print('  - Identified as doctor by POSITION: "$position"');
         }
 
-        // Check department field (convert to lowercase for comparison)
+        // Check department field
         if (department.contains('medical') ||
             department.contains('clinical') ||
             department.contains('surgery') ||
             department.contains('cardiology') ||
             department.contains('neurology') ||
             department.contains('pediatrics') ||
-            department.contains('psychiatry') ||
-            department.contains('radiology') ||
-            department.contains('pathology') ||
-            department.contains('anesthesia') ||
-            department.contains('dermatology') ||
-            department.contains('urology') ||
-            department.contains('gynecology') ||
-            department.contains('orthopedics') ||
-            department.contains('oncology') ||
             department.contains('internal medicine') ||
-            department.contains('emergency') ||
-            department.contains('icu') ||
-            department.contains('intensive care')) {
+            department.contains('emergency')) {
           isDoctor = true;
           print('  - Identified as doctor by DEPARTMENT: "$department"');
         }
 
         if (isDoctor) {
+          String doctorName = 'Unknown Doctor';
+
           if (person != null) {
-            final fullName =
+            doctorName =
                 person['first_name'] != null && person['last_name'] != null
                     ? '${person['first_name']} ${person['last_name']}'
                     : person['first_name'] ??
                         person['last_name'] ??
-                        'Unknown Doctor';
-
-            final doctorMap = {
-              'id': orgUser['id'].toString(),
-              'name': fullName,
-              'position': orgUser['position'] ?? 'Medical Staff',
-              'department': orgUser['department'] ?? 'General',
-              'user_id': orgUser['user_id'],
-              'specialization': orgUser['position'] ?? 'General Practitioner',
-            };
-
-            loadedDoctors.add(doctorMap);
-            print('  - ADDED as doctor: $doctorMap');
+                        'Dr. ${orgUser['position']}';
           } else {
-            print('  - Could not add as doctor: Person record not found');
-            print('  - This indicates a data integrity issue in your database');
-
-            // Optional: Add doctor with placeholder name if you still want to show them
-            final doctorMap = {
-              'id': orgUser['id'].toString(),
-              'name': 'Dr. ${orgUser['position'] ?? 'Unknown'}',
-              'position': orgUser['position'] ?? 'Medical Staff',
-              'department': orgUser['department'] ?? 'General',
-              'user_id': orgUser['user_id'],
-              'specialization': orgUser['position'] ?? 'General Practitioner',
-            };
-
-            loadedDoctors.add(doctorMap);
-            print('  - ADDED as doctor with placeholder name: $doctorMap');
+            doctorName = 'Dr. ${orgUser['position'] ?? 'Unknown'}';
           }
-        } else {
-          print('  - NOT identified as doctor');
+
+          final doctorMap = {
+            'id': orgUser['id'].toString(),
+            'name': doctorName,
+            'position': orgUser['position'] ?? 'Medical Staff',
+            'department': orgUser['department'] ?? 'General',
+            'user_id': orgUser['user_id'],
+            'specialization': orgUser['position'] ?? 'General Practitioner',
+          };
+
+          loadedDoctors.add(doctorMap);
+          print('  - ADDED as doctor: $doctorMap');
         }
       }
 
       print('\n=== DEBUG: Doctor Loading Results ===');
-      print('Total employees processed: ${orgUsersResponse.length}');
       print('Total doctors identified: ${loadedDoctors.length}');
-      print('Doctor list: $loadedDoctors');
 
       setState(() {
         availableDoctors = loadedDoctors;
       });
-
-      // If no doctors found, let's show what we have for debugging
-      if (loadedDoctors.isEmpty) {
-        print(
-            '\n=== DEBUG: No doctors found - showing all employee positions ===');
-        for (var orgUser in orgUsersResponse) {
-          print(
-              'Employee position: "${orgUser['position']}" | Department: "${orgUser['department']}"');
-        }
-      }
     } catch (e, stackTrace) {
       print('=== DEBUG: Error loading doctors ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
 
-      // Set empty list on error so UI doesn't break
       setState(() {
         availableDoctors = [];
       });
     }
   }
 
-  void _assignDoctor(int userIndex, Map<String, dynamic> doctor) {
-    setState(() {
-      users[userIndex]['assignedDoctor'] = doctor['name'];
-      users[userIndex]['assignedDoctorId'] = doctor['id'];
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content:
-            Text('Assigned ${users[userIndex]['name']} to ${doctor['name']}'),
-        backgroundColor: Colors.green,
-      ),
-    );
+  Future<void> _loadAssignmentsFromDatabase() async {
+    try {
+      print('=== DEBUG: Loading assignments from database ===');
+
+      // Get all active assignments
+      final assignmentsResponse = await supabase
+          .from('Doctor_User_Assignment')
+          .select('*')
+          .eq('status', 'active');
+
+      print('Assignments found: ${assignmentsResponse.length}');
+      print('Assignments data: $assignmentsResponse');
+
+      if (assignmentsResponse.isEmpty) {
+        print('No active assignments found');
+        return;
+      }
+
+      // Create a map of doctor assignments for quick lookup
+      final Map<String, Map<String, dynamic>> patientAssignments = {};
+
+      for (var assignment in assignmentsResponse) {
+        final patientId = assignment['patient_id'].toString();
+        final doctorId = assignment['doctor_id'].toString();
+
+        // Find the doctor info
+        final doctor = availableDoctors.firstWhere(
+          (doc) => doc['id'] == doctorId,
+          orElse: () => {},
+        );
+
+        if (doctor.isNotEmpty) {
+          patientAssignments[patientId] = {
+            'doctorName': doctor['name'],
+            'doctorId': doctorId,
+            'assignmentId': assignment['id'],
+          };
+        }
+      }
+
+      // Apply assignments to users
+      print('Applying assignments to users...');
+      for (int i = 0; i < users.length; i++) {
+        final patientId = users[i]['id'];
+        final assignment = patientAssignments[patientId];
+
+        if (assignment != null) {
+          users[i]['assignedDoctor'] = assignment['doctorName'];
+          users[i]['assignedDoctorId'] = assignment['doctorId'];
+          users[i]['assignmentId'] = assignment['assignmentId'];
+
+          print(
+              'Applied assignment: ${users[i]['name']} -> ${assignment['doctorName']}');
+        }
+      }
+
+      print('=== DEBUG: Assignment loading completed ===');
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error loading assignments ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _saveAssignmentToDatabase(
+      String patientUserId, String doctorOrgUserId) async {
+    try {
+      print('=== DEBUG: Saving assignment to database ===');
+      print('Patient User ID: $patientUserId');
+      print('Doctor Organization_User ID: $doctorOrgUserId');
+
+      // First, check if an assignment already exists for this patient
+      final existingAssignment = await supabase
+          .from('Doctor_User_Assignment')
+          .select('*')
+          .eq('patient_id', patientUserId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      if (existingAssignment != null) {
+        // Update existing assignment
+        print(
+            'Updating existing assignment with ID: ${existingAssignment['id']}');
+
+        await supabase.from('Doctor_User_Assignment').update({
+          'doctor_id': doctorOrgUserId,
+          'assigned_at': DateTime.now().toIso8601String(),
+        }).eq('id', existingAssignment['id']);
+
+        print('Assignment updated successfully');
+      } else {
+        // Create new assignment
+        print('Creating new assignment...');
+
+        await supabase.from('Doctor_User_Assignment').insert({
+          'doctor_id': doctorOrgUserId,
+          'patient_id': patientUserId,
+          'status': 'active',
+          'assigned_at': DateTime.now().toIso8601String(),
+        });
+
+        print('New assignment created successfully');
+      }
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error saving assignment ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save assignment: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      rethrow;
+    }
+  }
+
+  void _assignDoctor(int userIndex, Map<String, dynamic> doctor) async {
+    try {
+      // Show loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 16),
+              Text('Assigning doctor...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Save to database first
+      await _saveAssignmentToDatabase(users[userIndex]['id'], doctor['id']);
+
+      // Update local state
+      setState(() {
+        users[userIndex]['assignedDoctor'] = doctor['name'];
+        users[userIndex]['assignedDoctorId'] = doctor['id'];
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Successfully assigned ${users[userIndex]['name']} to ${doctor['name']}'),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'Undo',
+              textColor: Colors.white,
+              onPressed: () => _removeAssignment(userIndex),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to assign doctor: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeAssignment(int userIndex) async {
+    try {
+      final assignmentId = users[userIndex]['assignmentId'];
+
+      if (assignmentId != null) {
+        // Remove from database
+        await supabase
+            .from('Doctor_User_Assignment')
+            .update({'status': 'inactive'}).eq('id', assignmentId);
+      }
+
+      // Update local state
+      setState(() {
+        users[userIndex]['assignedDoctor'] = null;
+        users[userIndex]['assignedDoctorId'] = null;
+        users[userIndex]['assignmentId'] = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Removed doctor assignment for ${users[userIndex]['name']}'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to remove assignment: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showAssignDoctorDialog(int userIndex) {
     if (availableDoctors.isEmpty) {
-      // Show dialog to inform no doctors available
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -450,7 +538,7 @@ class _UserListPageState extends State<UserListPage> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _loadDoctorsFromSupabase(); // Retry loading doctors
+                _loadAllData();
               },
               child: const Text('Refresh'),
             ),
@@ -467,76 +555,75 @@ class _UserListPageState extends State<UserListPage> {
         content: SizedBox(
           width: double.maxFinite,
           height: 400,
-          child: availableDoctors.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: availableDoctors.length,
+            itemBuilder: (context, index) {
+              final doctor = availableDoctors[index];
+              final isCurrentlyAssigned =
+                  users[userIndex]['assignedDoctorId'] == doctor['id'];
+
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: isCurrentlyAssigned ? Colors.green.shade50 : null,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        isCurrentlyAssigned ? Colors.green : Colors.blue,
+                    child: Text(
+                      doctor['name']!.isNotEmpty
+                          ? doctor['name']![0].toUpperCase()
+                          : 'D',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  title: Row(
                     children: [
-                      Icon(Icons.medical_services_outlined,
-                          size: 48, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('No doctors available'),
-                      Text(
-                        'Add medical staff to your organization',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
+                      Expanded(child: Text(doctor['name']!)),
+                      if (isCurrentlyAssigned)
+                        const Icon(Icons.check_circle,
+                            color: Colors.green, size: 20),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: availableDoctors.length,
-                  itemBuilder: (context, index) {
-                    final doctor = availableDoctors[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.green,
-                          child: Text(
-                            doctor['name']!.isNotEmpty
-                                ? doctor['name']![0].toUpperCase()
-                                : 'D',
-                            style: const TextStyle(color: Colors.white),
-                          ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(doctor['specialization'] ?? 'General Practitioner'),
+                      if (doctor['department'] != null &&
+                          doctor['department']!.isNotEmpty)
+                        Text(
+                          'Dept: ${doctor['department']}',
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
-                        title: Text(doctor['name']!),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(doctor['specialization'] ??
-                                'General Practitioner'),
-                            if (doctor['department'] != null &&
-                                doctor['department']!.isNotEmpty)
-                              Text(
-                                'Dept: ${doctor['department']}',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                              ),
-                          ],
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _assignDoctor(userIndex, doctor);
-                        },
-                      ),
-                    );
+                    ],
+                  ),
+                  trailing: isCurrentlyAssigned
+                      ? const Text('Currently Assigned',
+                          style: TextStyle(color: Colors.green, fontSize: 12))
+                      : const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _assignDoctor(userIndex, doctor);
                   },
                 ),
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          if (availableDoctors.isEmpty)
+          if (users[userIndex]['assignedDoctor'] != null)
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _loadDoctorsFromSupabase();
+                _removeAssignment(userIndex);
               },
-              child: const Text('Refresh Doctors'),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Remove Assignment'),
             ),
         ],
       ),
@@ -558,6 +645,7 @@ class _UserListPageState extends State<UserListPage> {
             Text('User ID: ${user['id']}'),
             Text('Email: ${user['email']}'),
             Text('Phone: ${user['phone']}'),
+            Text('Address: ${user['address']}'),
             const SizedBox(height: 8),
             if (user['type'] == 'Patient') ...[
               Text(
@@ -573,28 +661,20 @@ class _UserListPageState extends State<UserListPage> {
           ],
         ),
         actions: [
-          if (user['type'] == 'Patient' && user['assignedDoctor'] == null)
+          if (user['type'] == 'Patient')
             TextButton.icon(
               onPressed: () {
                 Navigator.pop(context);
                 _showAssignDoctorDialog(index);
               },
               icon: const Icon(Icons.medical_services),
-              label: const Text('Assign Doctor'),
+              label: Text(user['assignedDoctor'] == null
+                  ? 'Assign Doctor'
+                  : 'Change Doctor'),
               style: TextButton.styleFrom(
-                foregroundColor: Colors.blue,
-              ),
-            ),
-          if (user['type'] == 'Patient' && user['assignedDoctor'] != null)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _showAssignDoctorDialog(index);
-              },
-              icon: const Icon(Icons.edit),
-              label: const Text('Change Doctor'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.orange,
+                foregroundColor: user['assignedDoctor'] == null
+                    ? Colors.blue
+                    : Colors.orange,
               ),
             ),
           TextButton(
@@ -652,10 +732,7 @@ class _UserListPageState extends State<UserListPage> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
-                  _loadUsersFromSupabase();
-                  _loadDoctorsFromSupabase();
-                },
+                onPressed: _loadAllData,
                 child: const Text('Retry'),
               ),
             ],
@@ -674,10 +751,7 @@ class _UserListPageState extends State<UserListPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadUsersFromSupabase();
-              _loadDoctorsFromSupabase();
-            },
+            onPressed: _loadAllData,
             tooltip: 'Refresh',
           ),
           IconButton(
@@ -761,15 +835,11 @@ class _UserListPageState extends State<UserListPage> {
                         Icon(Icons.people_outline,
                             size: 64, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text(
-                          'No users found',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
-                        ),
+                        Text('No users found',
+                            style: TextStyle(fontSize: 18, color: Colors.grey)),
                         SizedBox(height: 8),
-                        Text(
-                          'Add some users to get started',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+                        Text('Add some users to get started',
+                            style: TextStyle(color: Colors.grey)),
                       ],
                     ),
                   )
@@ -788,15 +858,11 @@ class _UserListPageState extends State<UserListPage> {
                           leading: CircleAvatar(
                             backgroundColor: user['type'] == 'Patient'
                                 ? Colors.blue
-                                : user['type'] == 'Administrator'
-                                    ? Colors.red
-                                    : Colors.purple,
+                                : Colors.purple,
                             child: Icon(
                               user['type'] == 'Patient'
                                   ? Icons.person
-                                  : user['type'] == 'Administrator'
-                                      ? Icons.admin_panel_settings
-                                      : Icons.work,
+                                  : Icons.work,
                               color: Colors.white,
                             ),
                           ),
