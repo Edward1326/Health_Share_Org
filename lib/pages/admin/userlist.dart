@@ -227,7 +227,7 @@ class _UserListPageState extends State<UserListPage> {
         return;
       }
 
-      // Extract user IDs
+      // Extract user IDs from Organization_User
       final userIds = orgUsersResponse
           .map((item) => item['user_id'])
           .where((id) => id != null)
@@ -235,51 +235,64 @@ class _UserListPageState extends State<UserListPage> {
 
       print('User IDs from Organization_User: $userIds');
 
-      // First let's see what Person records exist in the database
-      print('DEBUG: Checking all Person records in database...');
-      final allPersonsResponse = await supabase.from('Person').select('*');
+      // Step 1: Get User records that match the Organization_User.user_id
+      print('DEBUG: Fetching User records for IDs: $userIds');
+      final usersResponse =
+          await supabase.from('User').select('*').in_('id', userIds);
 
-      print('All Person records in database: ${allPersonsResponse.length}');
-      print('All Person data: $allPersonsResponse');
+      print('User records found: ${usersResponse.length}');
+      print('User data: $usersResponse');
 
-      // Now try to fetch the specific ones we need
-      print('DEBUG: Looking for Person records with IDs: $userIds');
+      // Step 2: Extract person_ids from the User records
+      final personIds = usersResponse
+          .map((user) => user['person_id'])
+          .where((id) => id != null)
+          .toList();
+
+      print('Person IDs to fetch: $personIds');
+
+      // Step 3: Get Person records using the person_ids
+      print('DEBUG: Fetching Person records for IDs: $personIds');
       final personsResponse =
-          await supabase.from('Person').select('*').in_('id', userIds);
+          await supabase.from('Person').select('*').in_('id', personIds);
 
-      print('Person records found for our user IDs: ${personsResponse.length}');
+      print('Person records found: ${personsResponse.length}');
       print('Person data: $personsResponse');
 
-      // Debug: Check if the user IDs exist in Person table
-      for (var userId in userIds) {
-        final exists =
-            allPersonsResponse.any((person) => person['id'] == userId);
-        print('User ID $userId exists in Person table: $exists');
+      // Step 4: Create lookup maps
+      final Map<dynamic, Map<String, dynamic>> usersMap = {};
+      for (var user in usersResponse) {
+        usersMap[user['id']] = user;
       }
 
-      // Create a map for quick person lookup
       final Map<dynamic, Map<String, dynamic>> personsMap = {};
       for (var person in personsResponse) {
         personsMap[person['id']] = person;
       }
 
-      // Build the doctors list - Let's be more flexible about who can be a doctor
+      // Step 5: Build the doctors list
       final List<Map<String, dynamic>> loadedDoctors = [];
 
       print('\n=== DEBUG: Processing each Organization_User record ===');
 
       for (var orgUser in orgUsersResponse) {
-        final person = personsMap[orgUser['user_id']];
+        final user = usersMap[orgUser['user_id']];
+        final person = user != null ? personsMap[user['person_id']] : null;
+
         final position = orgUser['position']?.toString().toLowerCase() ?? '';
         final department =
             orgUser['department']?.toString().toLowerCase() ?? '';
 
         print('Processing employee:');
-        print('  - ID: ${orgUser['id']}');
+        print('  - Org_User ID: ${orgUser['id']}');
         print('  - User ID: ${orgUser['user_id']}');
         print('  - Position: ${orgUser['position']}');
         print('  - Department: ${orgUser['department']}');
+        print('  - User found: ${user != null}');
         print('  - Person found: ${person != null}');
+        if (user != null) {
+          print('  - User person_id: ${user['person_id']}');
+        }
 
         // More flexible doctor identification
         bool isDoctor = false;
@@ -333,10 +346,6 @@ class _UserListPageState extends State<UserListPage> {
           print('  - Identified as doctor by DEPARTMENT: "$department"');
         }
 
-        // FOR TESTING: If you want to temporarily include ALL employees as potential doctors
-        // Uncomment the line below to see all employees in the doctor list
-        // isDoctor = true;
-
         if (isDoctor) {
           if (person != null) {
             final fullName =
@@ -359,6 +368,20 @@ class _UserListPageState extends State<UserListPage> {
             print('  - ADDED as doctor: $doctorMap');
           } else {
             print('  - Could not add as doctor: Person record not found');
+            print('  - This indicates a data integrity issue in your database');
+
+            // Optional: Add doctor with placeholder name if you still want to show them
+            final doctorMap = {
+              'id': orgUser['id'].toString(),
+              'name': 'Dr. ${orgUser['position'] ?? 'Unknown'}',
+              'position': orgUser['position'] ?? 'Medical Staff',
+              'department': orgUser['department'] ?? 'General',
+              'user_id': orgUser['user_id'],
+              'specialization': orgUser['position'] ?? 'General Practitioner',
+            };
+
+            loadedDoctors.add(doctorMap);
+            print('  - ADDED as doctor with placeholder name: $doctorMap');
           }
         } else {
           print('  - NOT identified as doctor');
