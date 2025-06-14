@@ -53,30 +53,107 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Future<void> _loadPatients() async {
-    if (_userId.isEmpty) return;
-
     setState(() {
       _loadingPatients = true;
     });
 
     try {
-      // Get patients assigned to this doctor
+      // Get the current authenticated user
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null || currentUser.email == null) {
+        throw Exception('No authenticated user found');
+      }
+
+      final userEmail = currentUser.email!;
+      print('DEBUG: Looking up user with email: $userEmail');
+
+      // Find the User record by looking up through the Person table using email
+      final userLookupResponse =
+          await Supabase.instance.client.from('User').select('''
+    id,
+    person_id,
+    Person!person_id(
+      id,
+      email,
+      first_name,
+      last_name
+    )
+  ''').eq('Person.email', userEmail);
+
+      print('DEBUG: User lookup response: $userLookupResponse');
+
+      if (userLookupResponse.isEmpty) {
+        throw Exception(
+            'User record not found for email: $userEmail. Make sure your Person table has a record with this email.');
+      }
+
+      // Get the user IDs for the logged-in user
+      final loggedInUserIds =
+          userLookupResponse.map((user) => user['id']).toList();
+      print('DEBUG: Logged-in user IDs: $loggedInUserIds');
+
+      // Now find the doctor records associated with these user IDs through Organization_User table
+      final doctorLookupResponse = await Supabase.instance.client
+          .from('Organization_User')
+          .select('id, position, department')
+          .in_('user_id', loggedInUserIds)
+          .eq('position', 'Doctor'); // Only get doctor positions
+
+      print('DEBUG: Doctor lookup response: $doctorLookupResponse');
+
+      if (doctorLookupResponse.isEmpty) {
+        throw Exception(
+            'No doctor records found for this user. Make sure you have a Doctor position in Organization_User table.');
+      }
+
+      // Get the doctor IDs (these are the IDs in Organization_User table, which correspond to User IDs)
+      final doctorIds =
+          doctorLookupResponse.map((doctor) => doctor['id']).toList();
+      print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
+
+      // Query Doctor_User_Assignment table where doctor_id matches the doctor record IDs
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
-            patient_id,
-            Person!inner(
-              id,
-              first_name,
-              middle_name,
-              last_name,
-              email,
-              contact_number
-            )
-          ''').eq('doctor_id', _userId);
+      id,
+      doctor_id,
+      patient_id,
+      status,
+      assigned_at,
+      assigned_by,
+      patient_user:User!patient_id(
+        id,
+        person_id,
+        Person!person_id(
+          id,
+          first_name,
+          middle_name,
+          last_name,
+          email,
+          contact_number
+        )
+      )
+    ''')
+          .in_('doctor_id', doctorIds)
+          .eq('status', 'active');
+
+      print('DEBUG: Patients query response: $response');
+
+      // Transform the response to match your existing code structure
+      final transformedPatients =
+          response.map<Map<String, dynamic>>((assignment) {
+        final assignmentMap = assignment as Map<String, dynamic>;
+        return {
+          'patient_id': assignmentMap['patient_id'],
+          'doctor_id': assignmentMap['doctor_id'],
+          'status': assignmentMap['status'],
+          'assigned_at': assignmentMap['assigned_at'],
+          'User': assignmentMap['patient_user'],
+        };
+      }).toList();
 
       setState(() {
-        _patients = List<Map<String, dynamic>>.from(response);
+        _patients = List<Map<String, dynamic>>.from(transformedPatients);
         _loadingPatients = false;
       });
     } catch (e) {
@@ -522,7 +599,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
                       itemCount: _patients.length,
                       itemBuilder: (context, index) {
                         final patient = _patients[index];
-                        final person = patient['Person'];
+                        // Updated path to access Person data through User
+                        final person = patient['User']['Person'];
                         final fullName =
                             '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
                                 .trim();
@@ -570,7 +648,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Widget _buildPatientDetailsView() {
-    final person = _selectedPatient!['Person'];
+    // Updated path to access Person data through User
+    final person = _selectedPatient!['User']['Person'];
     final fullName =
         '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
             .trim();
