@@ -376,6 +376,15 @@ class _UserListPageState extends State<UserListPage> {
       print('Patient User ID: $patientUserId');
       print('Doctor Organization_User ID: $doctorOrgUserId');
 
+      // Get the current logged-in user's ID (this is the auth UUID)
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('No authenticated user found');
+      }
+
+      final currentAuthUserId = currentUser.id;
+      print('Current logged-in auth user ID: $currentAuthUserId');
+
       // First, check if an assignment already exists for this patient
       final existingAssignment = await supabase
           .from('Doctor_User_Assignment')
@@ -384,27 +393,34 @@ class _UserListPageState extends State<UserListPage> {
           .eq('status', 'active')
           .maybeSingle();
 
+      final assignmentData = {
+        'doctor_id': doctorOrgUserId,
+        'assigned_at': DateTime.now().toIso8601String(),
+        'assigned_by': currentAuthUserId, // Use auth UUID directly
+      };
+
       if (existingAssignment != null) {
         // Update existing assignment
         print(
             'Updating existing assignment with ID: ${existingAssignment['id']}');
 
-        await supabase.from('Doctor_User_Assignment').update({
-          'doctor_id': doctorOrgUserId,
-          'assigned_at': DateTime.now().toIso8601String(),
-        }).eq('id', existingAssignment['id']);
+        await supabase
+            .from('Doctor_User_Assignment')
+            .update(assignmentData)
+            .eq('id', existingAssignment['id']);
 
         print('Assignment updated successfully');
       } else {
         // Create new assignment
         print('Creating new assignment...');
 
-        await supabase.from('Doctor_User_Assignment').insert({
-          'doctor_id': doctorOrgUserId,
+        // Add required fields for new assignment
+        assignmentData.addAll({
           'patient_id': patientUserId,
           'status': 'active',
-          'assigned_at': DateTime.now().toIso8601String(),
         });
+
+        await supabase.from('Doctor_User_Assignment').insert(assignmentData);
 
         print('New assignment created successfully');
       }
