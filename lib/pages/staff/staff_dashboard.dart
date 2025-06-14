@@ -67,37 +67,34 @@ class _StaffDashboardState extends State<StaffDashboard> {
       final userEmail = currentUser.email!;
       print('DEBUG: Looking up user with email: $userEmail');
 
-      // Find the User record by looking up through the Person table using email
-      final userLookupResponse =
-          await Supabase.instance.client.from('User').select('''
-    id,
-    person_id,
-    Person!person_id(
-      id,
-      email,
-      first_name,
-      last_name
-    )
-  ''').eq('Person.email', userEmail);
+      // Step 1: First find the Person record with the email
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('id')
+          .eq('email', userEmail)
+          .single(); // Use single() since email should be unique
 
-      print('DEBUG: User lookup response: $userLookupResponse');
+      print('DEBUG: Person lookup response: $personResponse');
 
-      if (userLookupResponse.isEmpty) {
-        throw Exception(
-            'User record not found for email: $userEmail. Make sure your Person table has a record with this email.');
-      }
+      final personId = personResponse['id'];
 
-      // Get the user IDs for the logged-in user
-      final loggedInUserIds =
-          userLookupResponse.map((user) => user['id']).toList();
-      print('DEBUG: Logged-in user IDs: $loggedInUserIds');
+      // Step 2: Find the User record linked to this Person
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id')
+          .eq('person_id', personId)
+          .single(); // Assuming one User per Person
 
-      // Now find the doctor records associated with these user IDs through Organization_User table
+      print('DEBUG: User lookup response: $userResponse');
+
+      final userId = userResponse['id'];
+
+      // Step 3: Find Organization_User records where this user is a Doctor
       final doctorLookupResponse = await Supabase.instance.client
           .from('Organization_User')
           .select('id, position, department')
-          .in_('user_id', loggedInUserIds)
-          .eq('position', 'Doctor'); // Only get doctor positions
+          .eq('user_id', userId)
+          .eq('position', 'Doctor');
 
       print('DEBUG: Doctor lookup response: $doctorLookupResponse');
 
@@ -106,12 +103,12 @@ class _StaffDashboardState extends State<StaffDashboard> {
             'No doctor records found for this user. Make sure you have a Doctor position in Organization_User table.');
       }
 
-      // Get the doctor IDs (these are the IDs in Organization_User table, which correspond to User IDs)
+      // Get the Organization_User IDs (these are what should be used as doctor_id)
       final doctorIds =
           doctorLookupResponse.map((doctor) => doctor['id']).toList();
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
-      // Query Doctor_User_Assignment table where doctor_id matches the doctor record IDs
+      // Step 4: Query Doctor_User_Assignment table
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
@@ -139,7 +136,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
       print('DEBUG: Patients query response: $response');
 
-      // Transform the response to match your existing code structure
+      // Transform the response
       final transformedPatients =
           response.map<Map<String, dynamic>>((assignment) {
         final assignmentMap = assignment as Map<String, dynamic>;
