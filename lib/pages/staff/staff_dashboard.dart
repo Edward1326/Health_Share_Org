@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:html' as html show InputElement, FileReader;
 
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({Key? key}) : super(key: key);
@@ -169,22 +172,38 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
     try {
       // Get files shared with this patient
-      final response =
-          await Supabase.instance.client.from('File_Shares').select('''
-            Files!inner(
-              id,
-              name,
-              description,
-              file_type,
-              created_at,
-              uploaded_by
+      final response = await Supabase.instance.client
+          .from('File_Shares')
+          .select('''
+          id,
+          created_at,
+          Files!inner(
+            id,
+            name,
+            description,
+            file_type,
+            category,
+            file_url,
+            created_at,
+            uploaded_by,
+            uploader:User!uploaded_by(
+              Person!person_id(
+                first_name,
+                last_name
+              )
             )
-          ''').eq('shared_with_user_id', patientId);
+          )
+        ''')
+          .eq('shared_with_user_id', patientId)
+          .order('created_at', ascending: false);
 
       setState(() {
         _selectedPatientFiles = List<Map<String, dynamic>>.from(response);
         _loadingFiles = false;
       });
+
+      print(
+          'Loaded ${_selectedPatientFiles.length} files for patient $patientId');
     } catch (e) {
       print('Error loading patient files: $e');
       setState(() {
@@ -197,26 +216,285 @@ class _StaffDashboardState extends State<StaffDashboard> {
   Future<void> _uploadFileForPatient() async {
     if (_selectedPatient == null) return;
 
-    // Simple file upload simulation - in real app, you'd use file_picker
-    final fileName = await _showFileNameDialog();
-    if (fileName == null || fileName.isEmpty) return;
-
     try {
-      // Simulate file upload
-      final fileId = 'file_${DateTime.now().millisecondsSinceEpoch}';
+      // Step 1: Create HTML file input for web compatibility
+      final html.InputElement uploadInput = html.InputElement(type: 'file');
+      uploadInput.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.txt';
+      uploadInput.click();
 
-      // In real implementation, you would:
-      // 1. Pick file using file_picker
-      // 2. Upload to IPFS
-      // 3. Store metadata in Files table
-      // 4. Create File_Shares record
+      // Wait for file selection
+      await uploadInput.onChange.first;
 
-      _showSnackBar(
-          'File upload feature will be implemented with IPFS integration');
+      if (uploadInput.files == null || uploadInput.files!.isEmpty) {
+        _showSnackBar('No file selected');
+        return;
+      }
+
+      final file = uploadInput.files!.first;
+      final fileName = file.name;
+      final fileSize = file.size;
+      final fileExtension = fileName.split('.').last.toLowerCase();
+
+      // Step 2: Read file as bytes
+      final reader = html.FileReader();
+      reader.readAsArrayBuffer(file);
+      await reader.onLoad.first;
+
+      final Uint8List fileBytes = reader.result as Uint8List;
+
+      // Step 3: Show file details dialog and get description
+      final fileDetails = await _showFileDetailsDialog(fileName, fileSize);
+      if (fileDetails == null) return;
+
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Uploading file...'),
+            ],
+          ),
+        ),
+      );
+
+      // Step 4: Get current user info for uploaded_by field
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        Navigator.pop(context); // Close loading dialog
+        _showSnackBar('Authentication error');
+        return;
+      }
+
+      // Get current user's ID from the database
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('id')
+          .eq('email', currentUser.email!)
+          .single();
+
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id')
+          .eq('person_id', personResponse['id'])
+          .single();
+
+      final uploaderId = userResponse['id'];
+
+      // Step 5: Upload file to Supabase Storage
+      String fileUrl = '';
+
+      try {
+        // Upload to Supabase Storage
+        final patientId = _selectedPatient!['patient_id'].toString();
+        final filePath =
+            'patient_files/${patientId}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+        await Supabase.instance.client.storage
+            .from('medical-files')
+            .uploadBinary(
+              filePath,
+              fileBytes,
+              fileOptions: const FileOptions(
+                cacheControl: '3600',
+                upsert: false,
+              ),
+            );
+
+        fileUrl = Supabase.instance.client.storage
+            .from('medical-files')
+            .getPublicUrl(filePath);
+
+        print('File uploaded successfully to: $fileUrl');
+      } catch (storageError) {
+        print('Storage upload failed: $storageError');
+        Navigator.pop(context); // Close loading dialog
+        _showSnackBar('Error uploading file to storage: $storageError');
+        return;
+      }
+
+      // Step 6: Create file record in Files table (without ipfs_hash)
+      final fileResponse = await Supabase.instance.client
+          .from('Files')
+          .insert({
+            'name': fileDetails['fileName'],
+            'description': fileDetails['description'],
+            'file_type': fileExtension,
+            'category': fileDetails['category'],
+            'file_url': fileUrl,
+            'uploaded_by': uploaderId,
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .single();
+
+      final fileId = fileResponse['id'];
+
+      // Step 7: Create File_Shares record to share with patient
+      final patientId = _selectedPatient!['patient_id'].toString();
+
+      await Supabase.instance.client.from('File_Shares').insert({
+        'file_id': fileId,
+        'shared_with_user_id': patientId,
+        'shared_by_user_id': uploaderId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Step 8: Refresh patient files and show success
+      await _loadPatientFiles(patientId);
+      _showSnackBar('File uploaded and shared successfully!');
     } catch (e) {
+      // Close loading dialog if open
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
       print('Error uploading file: $e');
       _showSnackBar('Error uploading file: $e');
     }
+  }
+
+  Future<Map<String, String>?> _showFileDetailsDialog(
+      String fileName, int fileSize) async {
+    final nameController = TextEditingController(text: fileName);
+    final descriptionController = TextEditingController();
+    String selectedCategory = 'medical_report';
+
+    final categories = [
+      'medical_report',
+      'lab_result',
+      'prescription',
+      'x_ray',
+      'mri_scan',
+      'ct_scan',
+      'ultrasound',
+      'blood_test',
+      'discharge_summary',
+      'consultation_notes',
+      'other'
+    ];
+
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('File Upload Details'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'File: $fileName',
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          Text(
+                            'Size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Display Name *',
+                  hintText: 'Enter a descriptive name for the file',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.edit),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Add notes about this file (optional)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.notes),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Medical Category *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.category),
+                ),
+                items: categories.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(category
+                        .replaceAll('_', ' ')
+                        .split(' ')
+                        .map(
+                            (word) => word[0].toUpperCase() + word.substring(1))
+                        .join(' ')),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    selectedCategory = value;
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content:
+                          Text('Please enter a display name for the file')),
+                );
+                return;
+              }
+              Navigator.pop(context, {
+                'fileName': nameController.text.trim(),
+                'description': descriptionController.text.trim(),
+                'category': selectedCategory,
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Upload File'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _showFileNameDialog() async {
@@ -633,7 +911,10 @@ class _StaffDashboardState extends State<StaffDashboard> {
                               setState(() {
                                 _selectedPatient = patient;
                               });
-                              _loadPatientFiles(patient['patient_id']);
+                              // Convert patient_id to string if it's an int
+                              final patientId =
+                                  patient['patient_id'].toString();
+                              _loadPatientFiles(patientId);
                             },
                           ),
                         );
