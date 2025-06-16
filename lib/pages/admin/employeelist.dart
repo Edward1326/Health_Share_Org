@@ -13,7 +13,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> employees = [];
   List<Map<String, dynamic>> organizationMembers = [];
-  List<Map<String, dynamic>> availablePatients = []; // Changed to dynamic list
+  List<Map<String, dynamic>> availablePatients = [];
   bool isLoading = true;
   String? errorMessage;
 
@@ -21,7 +21,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   void initState() {
     super.initState();
     _loadEmployeesFromSupabase();
-    _loadAvailablePatients(); // Load actual patients
+    _loadAvailablePatients();
   }
 
   // New method to load actual patients (excluding employees)
@@ -235,7 +235,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('${member['name']} has been added as an employee!'),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF4CAF50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
@@ -245,7 +249,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error adding employee: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: const Color(0xFFE57373),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -263,9 +271,13 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Employee removed successfully!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: const Text('Employee removed successfully!'),
+            backgroundColor: const Color(0xFF4CAF50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -274,7 +286,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error removing employee: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: const Color(0xFFE57373),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -294,9 +310,13 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Employee position updated successfully!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: const Text('Employee position updated successfully!'),
+            backgroundColor: const Color(0xFF4CAF50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -305,7 +325,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating employee: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: const Color(0xFFE57373),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -317,10 +341,19 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.9,
           height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFF8F9FA), Color(0xFFE3F2FD)],
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
           child: Column(
             children: [
               Row(
@@ -328,35 +361,67 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                 children: [
                   const Text(
                     'Organization Members',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2C3E50),
+                    ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close, color: Color(0xFF6C7B7F)),
+                    ),
                   ),
                 ],
               ),
-              const Divider(),
-              const Text(
-                'Medical professionals who signed up to join your organization',
-                style: TextStyle(color: Colors.grey),
+              const SizedBox(height: 16),
+              Container(
+                height: 2,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  ),
+                  borderRadius: BorderRadius.circular(1),
+                ),
               ),
               const SizedBox(height: 16),
+              const Text(
+                'Medical professionals who signed up to join your organization',
+                style: TextStyle(color: Color(0xFF6C7B7F), fontSize: 16),
+              ),
+              const SizedBox(height: 24),
               const Expanded(
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.people_outline, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
+                      Icon(Icons.people_outline,
+                          size: 80, color: Color(0xFFBDBDBD)),
+                      SizedBox(height: 24),
                       Text(
                         'No pending organization members',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                        style: TextStyle(
+                            fontSize: 18,
+                            color: Color(0xFF6C7B7F),
+                            fontWeight: FontWeight.w500),
                       ),
-                      SizedBox(height: 8),
+                      SizedBox(height: 12),
                       Text(
                         'You can add members directly from your user management system',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        style:
+                            TextStyle(fontSize: 14, color: Color(0xFFBDBDBD)),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -373,30 +438,77 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Manage Employees'),
+        title: const Text(
+          'Manage Employees',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+            ),
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.people_outline),
-            onPressed: _showOrganizationMembers,
-            tooltip: 'View Organization Members',
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.people_outline, color: Colors.white),
+              onPressed: _showOrganizationMembers,
+              tooltip: 'View Organization Members',
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadEmployeesFromSupabase();
-              _loadAvailablePatients();
-            },
-            tooltip: 'Refresh',
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () {
+                _loadEmployeesFromSupabase();
+                _loadAvailablePatients();
+              },
+              tooltip: 'Refresh',
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Manual add employee feature coming soon!')),
-              );
-            },
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.add, color: Colors.white),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        const Text('Manual add employee feature coming soon!'),
+                    backgroundColor: const Color(0xFF2196F3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -405,59 +517,134 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
           if (errorMessage != null)
             Container(
               margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFFFFEBEE),
+                    const Color(0xFFFFCDD2).withOpacity(0.3),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: const Color(0xFFE57373).withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error, color: Colors.red),
-                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE57373),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child:
+                        const Icon(Icons.error, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Text(
                       errorMessage!,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(
+                          color: Color(0xFFD32F2F), fontSize: 14),
                     ),
                   ),
-                  TextButton(
+                  ElevatedButton(
                     onPressed: _loadEmployeesFromSupabase,
-                    child: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE57373),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Retry',
+                        style: TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
             ),
           Expanded(
             child: isLoading
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('Loading employees...'),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 20,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                                Color(0xFF667EEA)),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Loading employees...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF6C7B7F),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   )
                 : employees.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.people_outline,
-                                size: 64, color: Colors.grey),
-                            SizedBox(height: 16),
-                            Text(
-                              'No employees found',
-                              style:
-                                  TextStyle(fontSize: 18, color: Colors.grey),
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.people_outline,
+                                size: 80,
+                                color: Color(0xFFBDBDBD),
+                              ),
                             ),
-                            SizedBox(height: 8),
-                            Text(
+                            const SizedBox(height: 24),
+                            const Text(
+                              'No employees found',
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: Color(0xFF6C7B7F),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
                               'Add employees to your organization',
-                              style:
-                                  TextStyle(fontSize: 14, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFFBDBDBD),
+                              ),
                             ),
                           ],
                         ),
@@ -467,92 +654,217 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
                           await _loadEmployeesFromSupabase();
                           await _loadAvailablePatients();
                         },
+                        color: const Color(0xFF667EEA),
                         child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.all(16),
                           itemCount: employees.length,
                           itemBuilder: (context, index) {
                             final employee = employees[index];
                             final assignedCount =
                                 (employee['assignedPatients'] as List).length;
 
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor:
-                                      employee['status'] == 'Active'
-                                          ? Colors.green
-                                          : Colors.orange,
-                                  child: Text(
-                                    employee['name']!.isNotEmpty
-                                        ? employee['name']![0].toUpperCase()
-                                        : '?',
+                            // Determine gradient colors based on role
+                            List<Color> gradientColors =
+                                _getGradientColors(employee['role']);
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: gradientColors,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: gradientColors[0].withOpacity(0.3),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
                                   ),
-                                ),
-                                title: Text(employee['name']!),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(employee['role']!),
-                                    if (employee['department'] != null &&
-                                        employee['department']!.isNotEmpty)
-                                      Text(
-                                        'Department: ${employee['department']}',
-                                        style: const TextStyle(
-                                            fontSize: 12, color: Colors.grey),
-                                      ),
-                                    Text(
-                                      'Assigned Patients: $assignedCount',
-                                      style: const TextStyle(
-                                          fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Chip(
-                                      label: Text(employee['status']!),
-                                      backgroundColor:
-                                          employee['status'] == 'Active'
-                                              ? Colors.green.withOpacity(0.2)
-                                              : Colors.orange.withOpacity(0.2),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    PopupMenuButton(
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: ListTile(
-                                            leading: Icon(Icons.edit),
-                                            title: Text('Edit Position'),
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(20),
+                                  onTap: () =>
+                                      _showEmployeeDetails(context, employee),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 60,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.1),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              employee['name']!.isNotEmpty
+                                                  ? employee['name']![0]
+                                                      .toUpperCase()
+                                                  : '?',
+                                              style: TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                                color: gradientColors[0],
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                        const PopupMenuItem(
-                                          value: 'delete',
-                                          child: ListTile(
-                                            leading: Icon(Icons.delete,
-                                                color: Colors.red),
-                                            title: Text('Remove Employee',
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                employee['name']!,
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                employee['role']!,
                                                 style: TextStyle(
-                                                    color: Colors.red)),
+                                                  fontSize: 14,
+                                                  color: Colors.white
+                                                      .withOpacity(0.9),
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              if (employee['department'] !=
+                                                      null &&
+                                                  employee['department']!
+                                                      .isNotEmpty)
+                                                Text(
+                                                  employee['department'],
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white
+                                                        .withOpacity(0.7),
+                                                  ),
+                                                ),
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  'Patients: $assignedCount',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.white
+                                                        .withOpacity(0.9),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
+                                        ),
+                                        Column(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white
+                                                    .withOpacity(0.9),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                employee['status']!,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: gradientColors[0],
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.white
+                                                    .withOpacity(0.2),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: PopupMenuButton(
+                                                icon: const Icon(
+                                                  Icons.more_vert,
+                                                  color: Colors.white,
+                                                ),
+                                                itemBuilder: (context) => [
+                                                  const PopupMenuItem(
+                                                    value: 'edit',
+                                                    child: ListTile(
+                                                      leading: Icon(Icons.edit,
+                                                          color: Color(
+                                                              0xFF667EEA)),
+                                                      title:
+                                                          Text('Edit Position'),
+                                                    ),
+                                                  ),
+                                                  const PopupMenuItem(
+                                                    value: 'delete',
+                                                    child: ListTile(
+                                                      leading: Icon(
+                                                          Icons.delete,
+                                                          color: Color(
+                                                              0xFFE57373)),
+                                                      title: Text(
+                                                        'Remove Employee',
+                                                        style: TextStyle(
+                                                            color: Color(
+                                                                0xFFE57373)),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                                onSelected: (value) {
+                                                  if (value == 'edit') {
+                                                    _showEditPositionDialog(
+                                                        context, employee);
+                                                  } else if (value ==
+                                                      'delete') {
+                                                    _showDeleteConfirmation(
+                                                        context, employee);
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
-                                      onSelected: (value) {
-                                        if (value == 'edit') {
-                                          _showEditPositionDialog(
-                                              context, employee);
-                                        } else if (value == 'delete') {
-                                          _showDeleteConfirmation(
-                                              context, employee);
-                                        }
-                                      },
                                     ),
-                                  ],
+                                  ),
                                 ),
-                                onTap: () =>
-                                    _showEmployeeDetails(context, employee),
                               ),
                             );
                           },
@@ -564,6 +876,22 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
+  List<Color> _getGradientColors(String role) {
+    if (role.toLowerCase().contains('doctor') ||
+        role.toLowerCase().contains('dr')) {
+      return [const Color(0xFF667EEA), const Color(0xFF764BA2)];
+    } else if (role.toLowerCase().contains('nurse')) {
+      return [const Color(0xFF6B73FF), const Color(0xFF9B59B6)];
+    } else if (role.toLowerCase().contains('admin') ||
+        role.toLowerCase().contains('manager')) {
+      return [const Color(0xFF11998E), const Color(0xFF38EF7D)];
+    } else if (role.toLowerCase().contains('therapist')) {
+      return [const Color(0xFFFF8008), const Color(0xFFFFC837)];
+    } else {
+      return [const Color(0xFF667EEA), const Color(0xFF764BA2)];
+    }
+  }
+
   void _showEditPositionDialog(
       BuildContext context, Map<String, dynamic> employee) {
     final TextEditingController controller =
@@ -572,25 +900,69 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Edit Position for ${employee['name']}'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Position',
-            border: OutlineInputBorder(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Edit Position for ${employee['name']}',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
+          ),
+        ),
+        content: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE3F2FD)),
+          ),
+          child: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Position/Role',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(16),
+              labelStyle: TextStyle(color: Color(0xFF6C7B7F)),
+            ),
+            style: const TextStyle(
+              fontSize: 16,
+              color: Color(0xFF2C3E50),
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF6C7B7F),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _updateEmployeePosition(employee['id'], controller.text);
-            },
-            child: const Text('Update'),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TextButton(
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  _updateEmployeePosition(
+                      employee['id'], controller.text.trim());
+                  Navigator.pop(context);
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Update'),
+            ),
           ),
         ],
       ),
@@ -602,21 +974,111 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove Employee'),
-        content: Text(
-            'Are you sure you want to remove ${employee['name']} from the organization?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFE57373),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Remove Employee',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2C3E50),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFFEBEE)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to remove ${employee['name']} from the organization?',
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF2C3E50),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEBEE),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        color: Color(0xFFE57373), size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This action cannot be undone. The employee will be removed from all assignments.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFFD32F2F),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF6C7B7F),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteEmployee(employee['id']);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFE57373), Color(0xFFEF5350)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteEmployee(employee['id']);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Remove'),
+            ),
           ),
         ],
       ),
@@ -627,191 +1089,361 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       BuildContext context, Map<String, dynamic> employee) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(employee['name']!),
-        content: SingleChildScrollView(
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          height: MediaQuery.of(context).size.height * 0.8,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFF8F9FA), Color(0xFFE3F2FD)],
+            ),
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Position: ${employee['role']}'),
-              Text('Department: ${employee['department'] ?? 'Not specified'}'),
-              Text('Status: ${employee['status']}'),
-              Text('Employee ID: ${employee['id']}'),
-              Text('Phone: ${employee['phone'] ?? 'Not provided'}'),
-              Text('Address: ${employee['address'] ?? 'Not provided'}'),
-              Text('Hire Date: ${employee['hireDate']}'),
-              const SizedBox(height: 16),
-              const Text('Assigned Patients:',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              ...(employee['assignedPatients'] as List<String>).map(
-                (patient) => Text('• $patient'),
+              // Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _getGradientColors(employee['role']),
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Employee Details',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              employee['name']!.isNotEmpty
+                                  ? employee['name']![0].toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: _getGradientColors(employee['role'])[0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                employee['name']!,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                employee['role']!,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (employee['department'] != null &&
+                                  employee['department']!.isNotEmpty)
+                                Text(
+                                  employee['department'],
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white.withOpacity(0.7),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              if ((employee['assignedPatients'] as List).isEmpty)
-                const Text('No patients assigned',
-                    style: TextStyle(color: Colors.grey)),
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDetailSection('Contact Information', [
+                        _buildDetailItem(
+                            Icons.email, 'Email', employee['email']),
+                        _buildDetailItem(
+                            Icons.phone, 'Phone', employee['phone']),
+                        _buildDetailItem(
+                            Icons.location_on, 'Address', employee['address']),
+                      ]),
+                      const SizedBox(height: 24),
+                      _buildDetailSection('Employment Details', [
+                        _buildDetailItem(
+                            Icons.work, 'Position', employee['role']),
+                        _buildDetailItem(Icons.business, 'Department',
+                            employee['department']),
+                        _buildDetailItem(Icons.calendar_today, 'Hire Date',
+                            employee['hireDate']),
+                        _buildDetailItem(
+                            Icons.check_circle, 'Status', employee['status']),
+                      ]),
+                      const SizedBox(height: 24),
+                      _buildDetailSection('Patient Assignments', [
+                        _buildDetailItem(
+                          Icons.people,
+                          'Assigned Patients',
+                          '${(employee['assignedPatients'] as List).length} patients',
+                        ),
+                      ]),
+                      const SizedBox(height: 24),
+                      _buildDetailSection('System Information', [
+                        _buildDetailItem(
+                            Icons.fingerprint, 'Employee ID', employee['id']),
+                        _buildDetailItem(Icons.person, 'User ID',
+                            employee['user_id']?.toString() ?? 'N/A'),
+                        _buildDetailItem(Icons.badge, 'Person ID',
+                            employee['person_id']?.toString() ?? 'N/A'),
+                        _buildDetailItem(
+                            Icons.business_center,
+                            'Organization ID',
+                            employee['organization_id']?.toString() ?? 'N/A'),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+              // Actions
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showEditPositionDialog(context, employee);
+                          },
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          label: const Text(
+                            'Edit Position',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFE57373), Color(0xFFEF5350)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showDeleteConfirmation(context, employee);
+                          },
+                          icon: const Icon(Icons.delete, color: Colors.white),
+                          label: const Text(
+                            'Remove',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+      ),
+    );
+  }
+
+  Widget _buildDetailSection(String title, List<Widget> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
           ),
-          if (employee['role'].toString().toLowerCase().contains('dr') ||
-              employee['role'].toString().toLowerCase().contains('doctor'))
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showPatientAssignmentDialog(context, employee);
-              },
-              child: const Text('Assign Patients'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showPatientAssignmentDialog(
-      BuildContext context, Map<String, dynamic> employee) {
-    showDialog(
-      context: context,
-      builder: (context) => PatientAssignmentDialog(
-        employee: employee,
-        availablePatients:
-            availablePatients.map((p) => p['name'] as String).toList(),
-        onAssignmentChanged: (updatedEmployee) {
-          setState(() {
-            final index =
-                employees.indexWhere((e) => e['id'] == updatedEmployee['id']);
-            if (index != -1) {
-              employees[index] = updatedEmployee;
-            }
-          });
-        },
-      ),
-    );
-  }
-}
-
-// Patient Assignment Dialog (unchanged)
-class PatientAssignmentDialog extends StatefulWidget {
-  final Map<String, dynamic> employee;
-  final List<String> availablePatients;
-  final Function(Map<String, dynamic>) onAssignmentChanged;
-
-  const PatientAssignmentDialog({
-    super.key,
-    required this.employee,
-    required this.availablePatients,
-    required this.onAssignmentChanged,
-  });
-
-  @override
-  State<PatientAssignmentDialog> createState() =>
-      _PatientAssignmentDialogState();
-}
-
-class _PatientAssignmentDialogState extends State<PatientAssignmentDialog> {
-  late List<String> selectedPatients;
-
-  @override
-  void initState() {
-    super.initState();
-    selectedPatients = List<String>.from(widget.employee['assignedPatients']);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Assign Patients to ${widget.employee['name']}'),
-      content: SizedBox(
-        width: double.maxFinite,
-        height: 400,
-        child: Column(
-          children: [
-            Text('Select patients to assign to ${widget.employee['name']}:',
-                style: const TextStyle(fontSize: 14)),
-            const SizedBox(height: 16),
-            Expanded(
-              child: widget.availablePatients.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.people_outline,
-                              size: 48, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
-                            'No patients available',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                          ),
-                          Text(
-                            'All persons in the system are employees',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: widget.availablePatients.length,
-                      itemBuilder: (context, index) {
-                        final patient = widget.availablePatients[index];
-                        final isSelected = selectedPatients.contains(patient);
-
-                        return CheckboxListTile(
-                          title: Text(patient),
-                          subtitle: Text(
-                              'Patient ID: PAT${(index + 1).toString().padLeft(3, '0')}'),
-                          value: isSelected,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              if (value == true) {
-                                selectedPatients.add(patient);
-                              } else {
-                                selectedPatients.remove(patient);
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('Selected: ${selectedPatients.length} patients'),
-            ),
-          ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final updatedEmployee = Map<String, dynamic>.from(widget.employee);
-            updatedEmployee['assignedPatients'] = selectedPatients;
-            widget.onAssignmentChanged(updatedEmployee);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Successfully assigned ${selectedPatients.length} patients to ${widget.employee['name']}'),
-                backgroundColor: Colors.green,
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
-            );
-          },
-          child: const Text('Save Assignment'),
+            ],
+          ),
+          child: Column(
+            children: items,
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String? value) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Color(0xFFF0F0F0),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE3F2FD),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF667EEA),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6C7B7F),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value ?? 'Not provided',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: value != null
+                        ? const Color(0xFF2C3E50)
+                        : const Color(0xFFBDBDBD),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
