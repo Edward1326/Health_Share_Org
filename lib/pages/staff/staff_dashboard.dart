@@ -28,6 +28,15 @@ class _StaffDashboardState extends State<StaffDashboard> {
   bool _loadingPatients = false;
   bool _loadingFiles = false;
 
+  // Define app theme colors
+  static const Color primaryBlue = Color(0xFF4A90E2);
+  static const Color lightBlue = Color(0xFFE3F2FD);
+  static const Color coral = Color(0xFFFF6B6B);
+  static const Color orange = Color(0xFFFF9500);
+  static const Color lightGray = Color(0xFFF5F5F5);
+  static const Color darkGray = Color(0xFF757575);
+  static const Color cardBackground = Color(0xFFFFFFFF);
+
   @override
   void initState() {
     super.initState();
@@ -250,10 +259,12 @@ class _StaffDashboardState extends State<StaffDashboard> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
+        builder: (context) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: const Row(
             children: [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(color: primaryBlue),
               SizedBox(width: 16),
               Text('Uploading file...'),
             ],
@@ -382,22 +393,24 @@ class _StaffDashboardState extends State<StaffDashboard> {
     return showDialog<Map<String, String>>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('File Upload Details'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('File Upload Details',
+            style: TextStyle(fontWeight: FontWeight.w600)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
+                  color: lightBlue,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade700),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.info_outline, color: primaryBlue),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,9 +419,11 @@ class _StaffDashboardState extends State<StaffDashboard> {
                             'File: $fileName',
                             style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
+                          const SizedBox(height: 4),
                           Text(
                             'Size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB',
-                            style: TextStyle(color: Colors.grey[600]),
+                            style:
+                                const TextStyle(color: darkGray, fontSize: 13),
                           ),
                         ],
                       ),
@@ -416,34 +431,55 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Display Name *',
                   hintText: 'Enter a descriptive name for the file',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.edit),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.grey),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryBlue, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.edit, color: primaryBlue),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: descriptionController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Description',
                   hintText: 'Add notes about this file (optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.notes),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.grey),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryBlue, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.notes, color: primaryBlue),
                 ),
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedCategory,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Medical Category *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.category),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.grey),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryBlue, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.category, color: primaryBlue),
                 ),
                 items: categories.map((category) {
                   return DropdownMenuItem(
@@ -468,7 +504,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: darkGray)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -487,37 +523,12 @@ class _StaffDashboardState extends State<StaffDashboard> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
+              backgroundColor: primaryBlue,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Upload File'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<String?> _showFileNameDialog() async {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Upload File'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'File Name',
-            hintText: 'Enter file name',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Upload'),
           ),
         ],
       ),
@@ -529,18 +540,22 @@ class _StaffDashboardState extends State<StaffDashboard> {
       final shouldSignOut = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('Sign Out'),
           content: const Text('Are you sure you want to sign out?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: const Text('Cancel', style: TextStyle(color: darkGray)),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: coral,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('Sign Out'),
             ),
@@ -564,7 +579,12 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: primaryBlue,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 
@@ -572,20 +592,33 @@ class _StaffDashboardState extends State<StaffDashboard> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: lightGray,
+        body: Center(child: CircularProgressIndicator(color: primaryBlue)),
       );
     }
 
     return Scaffold(
+      backgroundColor: lightGray,
       appBar: AppBar(
-        title: Text(_organizationName),
+        backgroundColor: Colors.white,
         elevation: 0,
+        title: Text(
+          _organizationName,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications),
+            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
             onPressed: () => _showSnackBar('Notifications coming soon!'),
           ),
           PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.black),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             onSelected: (value) {
               switch (value) {
                 case 'profile':
@@ -603,7 +636,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
               const PopupMenuItem(
                 value: 'profile',
                 child: ListTile(
-                  leading: Icon(Icons.person),
+                  leading: Icon(Icons.person_outline),
                   title: Text('Profile'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -611,7 +644,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
               const PopupMenuItem(
                 value: 'settings',
                 child: ListTile(
-                  leading: Icon(Icons.settings),
+                  leading: Icon(Icons.settings_outlined),
                   title: Text('Settings'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -620,13 +653,14 @@ class _StaffDashboardState extends State<StaffDashboard> {
               const PopupMenuItem(
                 value: 'signout',
                 child: ListTile(
-                  leading: Icon(Icons.logout, color: Colors.red),
-                  title: Text('Sign Out', style: TextStyle(color: Colors.red)),
+                  leading: Icon(Icons.logout, color: coral),
+                  title: Text('Sign Out', style: TextStyle(color: coral)),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
             ],
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: IndexedStack(
@@ -638,296 +672,495 @@ class _StaffDashboardState extends State<StaffDashboard> {
           _buildTasksTab(),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-            if (index == 1)
-              _loadPatients(); // Refresh patients when tab is selected
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Patients',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.group),
-            label: 'Groups',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment),
-            label: 'Tasks',
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 4,
+              offset: Offset(0, -2),
+            )
+          ],
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryBlue,
+          unselectedItemColor: darkGray,
+          currentIndex: _selectedIndex,
+          onTap: (index) {
+            setState(() {
+              _selectedIndex = index;
+              if (index == 1) _loadPatients();
+            });
+          },
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.people_outline),
+              activeIcon: Icon(Icons.people),
+              label: 'Patients',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.group_outlined),
+              activeIcon: Icon(Icons.group),
+              label: 'Groups',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assignment_outlined),
+              activeIcon: Icon(Icons.assignment),
+              label: 'Tasks',
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildDashboardTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Welcome Card
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Theme.of(context).primaryColor,
-                    child: Text(
-                      _userName.isNotEmpty ? _userName[0].toUpperCase() : 'S',
+          // Header Section
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            color: Colors.white,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 10),
+                Text(
+                  'Hello,',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      _userName.split(' ').first,
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: Colors.black,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Welcome back,',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        Text(
-                          _userName,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '$_userPosition • $_userDepartment',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    const Text(
+                      '👋',
+                      style: TextStyle(fontSize: 24),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$_userPosition • $_userDepartment',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
 
-          // Quick Stats
-          Row(
-            children: [
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.people, size: 40, color: Colors.blue),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_patients.length}',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text('Patients'),
-                      ],
-                    ),
+          const SizedBox(height: 20),
+
+          // Quick Action Cards
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildActionCard(
+                    'Patients',
+                    Icons.people,
+                    primaryBlue,
+                    () => setState(() => _selectedIndex = 1),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.folder, size: 40, color: Colors.green),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '0',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text('Files Today'),
-                      ],
-                    ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildActionCard(
+                    'Categories',
+                    Icons.category,
+                    coral,
+                    () => _showSnackBar('Categories coming soon!'),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildActionCard(
+                    'Medicine',
+                    Icons.medical_services,
+                    orange,
+                    () => _showSnackBar('Medicine tracking coming soon!'),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 24),
 
-          // Quick Actions
-          const Text(
-            'Quick Actions',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          const SizedBox(height: 30),
+
+          // Recent Check Ups Section
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Recent Check Ups',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _selectedIndex = 1),
+                  child: const Text(
+                    'View All',
+                    style: TextStyle(color: primaryBlue),
+                  ),
+                ),
+              ],
+            ),
           ),
+
           const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            children: [
-              _buildQuickActionCard(
-                'View Patients',
-                Icons.people,
-                Colors.blue,
-                () => setState(() => _selectedIndex = 1),
-              ),
-              _buildQuickActionCard(
-                'Upload File',
-                Icons.upload_file,
-                Colors.green,
-                () => _showSnackBar('Select a patient first to upload files'),
-              ),
-              _buildQuickActionCard(
-                'Secure Share',
-                Icons.security,
-                Colors.orange,
-                () => _showSnackBar('Blockchain sharing coming soon!'),
-              ),
-              _buildQuickActionCard(
-                'IPFS Storage',
-                Icons.cloud,
-                Colors.purple,
-                () => _showSnackBar('IPFS integration coming soon!'),
-              ),
-            ],
+
+          // Patient List Preview
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: _patients.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.people_outline,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No Recent Check Ups',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _patients.length > 5 ? 5 : _patients.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      color: Colors.grey[200],
+                    ),
+                    itemBuilder: (context, index) {
+                      final patient = _patients[index];
+                      final person = patient['User']['Person'];
+                      final fullName =
+                          '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
+                              .trim();
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _getPatientAvatarColor(index),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              _getPatientIcon(index),
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _getPatientSubtitle(index),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: darkGray,
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _selectedIndex = 1;
+                            _selectedPatient = patient;
+                          });
+                          final patientId = patient['patient_id'].toString();
+                          _loadPatientFiles(patientId);
+                        },
+                      );
+                    },
+                  ),
           ),
+
+          const SizedBox(height: 100),
         ],
       ),
     );
   }
 
-  Widget _buildPatientsTab() {
-    if (_selectedPatient != null) {
-      return _buildPatientDetailsView();
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
+  Widget _buildActionCard(
+      String title, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Expanded(
-                child: Text(
-                  'My Patients',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
+              Icon(
+                icon,
+                color: Colors.white,
+                size: 32,
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadPatients,
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPatientsTab() {
+    return Column(
+      children: [
+        // Header with Add Patient button
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          color: Colors.white,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'My Patients',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () =>
+                    _showSnackBar('Add patient feature coming soon!'),
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text('Add'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Content
         Expanded(
           child: _loadingPatients
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(
+                  child: CircularProgressIndicator(color: primaryBlue))
               : _patients.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.people_outline,
-                              size: 80, color: Colors.grey),
-                          SizedBox(height: 16),
+                          Icon(
+                            Icons.people_outline,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
                           Text(
                             'No Patients Assigned',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
+                          const SizedBox(height: 8),
                           Text(
-                            'Patients will appear here when assigned to you',
-                            style: TextStyle(color: Colors.grey),
+                            'Patients will appear here once assigned to you',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
                           ),
                         ],
                       ),
                     )
-                  : ListView.builder(
-                      itemCount: _patients.length,
-                      itemBuilder: (context, index) {
-                        final patient = _patients[index];
-                        // Updated path to access Person data through User
-                        final person = patient['User']['Person'];
-                        final fullName =
-                            '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
-                                .trim();
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 4),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.blue.shade100,
-                              child: Text(
-                                fullName.isNotEmpty
-                                    ? fullName[0].toUpperCase()
-                                    : 'P',
-                                style: TextStyle(
-                                  color: Colors.blue.shade800,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            title: Text(fullName),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (person['email'] != null)
-                                  Text(person['email']),
-                                if (person['contact_number'] != null)
-                                  Text(person['contact_number']),
-                              ],
-                            ),
-                            trailing: const Icon(Icons.arrow_forward_ios),
-                            onTap: () {
-                              setState(() {
-                                _selectedPatient = patient;
-                              });
-                              // Convert patient_id to string if it's an int
-                              final patientId =
-                                  patient['patient_id'].toString();
-                              _loadPatientFiles(patientId);
-                            },
-                          ),
-                        );
-                      },
-                    ),
+                  : _selectedPatient == null
+                      ? _buildPatientsList()
+                      : _buildPatientDetails(),
         ),
       ],
     );
   }
 
-  Widget _buildPatientDetailsView() {
-    // Updated path to access Person data through User
-    final person = _selectedPatient!['User']['Person'];
+  Widget _buildPatientsList() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: _patients.length,
+      itemBuilder: (context, index) {
+        final patient = _patients[index];
+        final person = patient['User']['Person'];
+        final fullName =
+            '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
+                .trim();
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: _getPatientAvatarColor(index),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  _getPatientInitials(fullName),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ),
+            title: Text(
+              fullName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  person['email'] ?? '',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Patient ID: ${patient['patient_id']}',
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                patient['status'] ?? 'active',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            onTap: () {
+              setState(() {
+                _selectedPatient = patient;
+              });
+              final patientId = patient['patient_id'].toString();
+              _loadPatientFiles(patientId);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPatientDetails() {
+    final patient = _selectedPatient!;
+    final person = patient['User']['Person'];
     final fullName =
         '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
             .trim();
@@ -936,64 +1169,74 @@ class _StaffDashboardState extends State<StaffDashboard> {
       children: [
         // Patient Header
         Container(
-          padding: const EdgeInsets.all(16.0),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(16),
-            ),
-          ),
-          child: Column(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          color: Colors.white,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () {
-                      setState(() {
-                        _selectedPatient = null;
-                        _selectedPatientFiles = [];
-                      });
-                    },
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedPatient = null;
+                    _selectedPatientFiles = [];
+                  });
+                },
+                icon: const Icon(Icons.arrow_back),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: primaryBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    _getPatientInitials(fullName),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.blue.shade200,
-                    child: Text(
-                      fullName.isNotEmpty ? fullName[0].toUpperCase() : 'P',
-                      style: TextStyle(
-                        fontSize: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fullName,
+                      style: const TextStyle(
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade800,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fullName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (person['email'] != null) Text(person['email']),
-                        if (person['contact_number'] != null)
-                          Text(person['contact_number']),
-                      ],
+                    Text(
+                      person['email'] ?? '',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
                     ),
+                  ],
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _uploadFileForPatient,
+                icon: const Icon(Icons.upload_file, size: 18),
+                label: const Text('Upload'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: _uploadFileForPatient,
-                    icon: const Icon(Icons.upload_file),
-                    label: const Text('Upload'),
-                  ),
-                ],
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
               ),
             ],
           ),
@@ -1001,153 +1244,187 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
         // Files Section
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Medical Files',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _loadingFiles
-                      ? const Center(child: CircularProgressIndicator())
-                      : _selectedPatientFiles.isEmpty
-                          ? const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.folder_open,
-                                      size: 80, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'No Files Available',
-                                    style: TextStyle(
-                                        fontSize: 18, color: Colors.grey),
-                                  ),
-                                  Text(
-                                    'Upload files to share with this patient',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              itemCount: _selectedPatientFiles.length,
-                              itemBuilder: (context, index) {
-                                final fileShare = _selectedPatientFiles[index];
-                                final file = fileShare['Files'];
-
-                                return Card(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.green.shade100,
-                                      child: Icon(
-                                        _getFileIcon(file['file_type']),
-                                        color: Colors.green.shade800,
-                                      ),
-                                    ),
-                                    title: Text(file['name']),
-                                    subtitle: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (file['description'] != null)
-                                          Text(file['description']),
-                                        Text(
-                                          'Type: ${file['file_type']}',
-                                          style: TextStyle(
-                                              color: Colors.grey[600]),
-                                        ),
-                                      ],
-                                    ),
-                                    trailing: PopupMenuButton<String>(
-                                      onSelected: (value) {
-                                        switch (value) {
-                                          case 'download':
-                                            _showSnackBar(
-                                                'Download from IPFS coming soon!');
-                                            break;
-                                          case 'share':
-                                            _showSnackBar(
-                                                'Secure sharing coming soon!');
-                                            break;
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                          value: 'download',
-                                          child: ListTile(
-                                            leading: Icon(Icons.download),
-                                            title: Text('Download'),
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'share',
-                                          child: ListTile(
-                                            leading: Icon(Icons.share),
-                                            title: Text('Share'),
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+          child: _loadingFiles
+              ? const Center(
+                  child: CircularProgressIndicator(color: primaryBlue))
+              : _selectedPatientFiles.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No Files Shared',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
                             ),
-                ),
-              ],
-            ),
-          ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Upload files to share with this patient',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: _selectedPatientFiles.length,
+                      itemBuilder: (context, index) {
+                        final fileShare = _selectedPatientFiles[index];
+                        final file = fileShare['Files'];
+                        return _buildFileCard(file);
+                      },
+                    ),
         ),
       ],
     );
   }
 
-  IconData _getFileIcon(String? fileType) {
-    switch (fileType?.toLowerCase()) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-        return Icons.image;
-      case 'doc':
-      case 'docx':
-        return Icons.description;
-      case 'xls':
-      case 'xlsx':
-        return Icons.table_chart;
-      default:
-        return Icons.insert_drive_file;
-    }
+  Widget _buildFileCard(Map<String, dynamic> file) {
+    final fileType = file['file_type'] ?? 'unknown';
+    final category = file['category'] ?? 'other';
+    final fileName = file['name'] ?? 'Unknown File';
+    final description = file['description'] ?? '';
+    final createdAt =
+        DateTime.tryParse(file['created_at'] ?? '') ?? DateTime.now();
+    final uploader = file['uploader'];
+    final uploaderName = uploader != null
+        ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+        : 'Unknown';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _getFileTypeColor(fileType),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getFileTypeIcon(fileType),
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fileName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _getCategoryColor(category).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          category.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            color: _getCategoryColor(category),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_formatDate(createdAt)} • $uploaderName',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => _showFileActions(file),
+              icon: const Icon(Icons.more_vert, color: darkGray),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildGroupsTab() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.group, size: 80, color: Colors.grey),
-          SizedBox(height: 16),
+          Icon(
+            Icons.group_outlined,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
           Text(
-            'Groups & Teams',
+            'Groups Feature',
             style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              fontSize: 18,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Team collaboration features\ncoming soon',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            'Coming Soon!',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
           ),
         ],
       ),
@@ -1155,68 +1432,201 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Widget _buildTasksTab() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.assignment, size: 80, color: Colors.grey),
-          SizedBox(height: 16),
+          Icon(
+            Icons.assignment_outlined,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
           Text(
-            'Task Management',
+            'Tasks & Reminders',
             style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              fontSize: 18,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Task assignment and tracking\nfeatures coming soon',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            'Coming Soon!',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildQuickActionCard(
-    String title,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 40, color: color),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+  // Helper methods
+  Color _getPatientAvatarColor(int index) {
+    final colors = [primaryBlue, coral, orange, Colors.purple, Colors.teal];
+    return colors[index % colors.length];
+  }
+
+  IconData _getPatientIcon(int index) {
+    final icons = [
+      Icons.person,
+      Icons.favorite,
+      Icons.medical_services,
+      Icons.healing,
+      Icons.health_and_safety
+    ];
+    return icons[index % icons.length];
+  }
+
+  String _getPatientSubtitle(int index) {
+    final subtitles = [
+      'Last visit: 2 days ago',
+      'Check-up pending',
+      'Follow-up required',
+      'All clear',
+      'Medication review'
+    ];
+    return subtitles[index % subtitles.length];
+  }
+
+  String _getPatientInitials(String fullName) {
+    final names = fullName.split(' ');
+    if (names.length >= 2) {
+      return '${names[0][0]}${names[1][0]}'.toUpperCase();
+    } else if (names.isNotEmpty) {
+      return names[0][0].toUpperCase();
+    }
+    return 'P';
+  }
+
+  Color _getFileTypeColor(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case 'pdf':
+        return Colors.red;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return Colors.blue;
+      case 'doc':
+      case 'docx':
+        return Colors.indigo;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getFileTypeIcon(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return Icons.image;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'medical_report':
+        return Colors.blue;
+      case 'lab_result':
+        return Colors.green;
+      case 'prescription':
+        return Colors.orange;
+      case 'x_ray':
+      case 'mri_scan':
+      case 'ct_scan':
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  void _showFileActions(Map<String, dynamic> file) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.visibility, color: primaryBlue),
+              title: const Text('View File'),
+              onTap: () {
+                Navigator.pop(context);
+                _viewFile(file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download, color: primaryBlue),
+              title: const Text('Download'),
+              onTap: () {
+                Navigator.pop(context);
+                _downloadFile(file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share, color: primaryBlue),
+              title: const Text('Share'),
+              onTap: () {
+                Navigator.pop(context);
+                _shareFile(file);
+              },
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _viewFile(Map<String, dynamic> file) {
+    final fileUrl = file['file_url'];
+    if (fileUrl != null) {
+      // Open file URL in browser or viewer
+      _showSnackBar('Opening file: ${file['name']}');
+    }
+  }
+
+  void _downloadFile(Map<String, dynamic> file) {
+    _showSnackBar('Download started: ${file['name']}');
+  }
+
+  void _shareFile(Map<String, dynamic> file) {
+    _showSnackBar('Share feature coming soon!');
   }
 
   void _showProfileDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Profile Information'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1232,14 +1642,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showSnackBar('Edit Profile coming soon!');
-            },
-            child: const Text('Edit Profile'),
+            child: const Text('Close', style: TextStyle(color: primaryBlue)),
           ),
         ],
       ),
@@ -1248,7 +1651,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
   Widget _buildProfileRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1260,7 +1663,12 @@ class _StaffDashboardState extends State<StaffDashboard> {
             ),
           ),
           Expanded(
-            child: Text(value.isEmpty ? 'Not set' : value),
+            child: Text(
+              value.isNotEmpty ? value : 'Not provided',
+              style: TextStyle(
+                color: value.isNotEmpty ? Colors.black : Colors.grey[500],
+              ),
+            ),
           ),
         ],
       ),

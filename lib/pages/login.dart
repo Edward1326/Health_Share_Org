@@ -489,194 +489,357 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Employee Login'),
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 40),
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 40),
 
-              // Welcome Text
-              const Text(
-                'Welcome Back',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sign in to your employee account',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-
-              // Login Form Card
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
+                // Medical Illustration
+                Container(
+                  width: double.infinity,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F4F8),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Stack(
                     children: [
-                      // Email or Username Field
-                      TextFormField(
-                        controller: _emailOrUsernameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email or Username',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.person),
-                          helperText: 'Enter your email address or username',
-                        ),
-                        keyboardType: TextInputType.text,
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your email or username';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Password Field
-                      TextFormField(
-                        controller: _passwordController,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.lock),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                        ),
-                        obscureText: _obscurePassword,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) {
-                          if (!_isLoading) _login();
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your password';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Forgot Password Link
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _forgotPassword,
-                          child: const Text(
-                            'Forgot Password?',
-                            style: TextStyle(fontSize: 14),
+                      // Background shapes
+                      Positioned(
+                        top: 20,
+                        left: 30,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFB8E6F0),
+                            shape: BoxShape.circle,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
-
-                      // Login Button
-                      ElevatedButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () {
-                                // Check cooldown before attempting login
-                                if (_lastLoginAttempt != null) {
-                                  final timeSinceLastAttempt = DateTime.now()
-                                      .difference(_lastLoginAttempt!)
-                                      .inSeconds;
-                                  if (timeSinceLastAttempt <
-                                      _loginCooldownSeconds) {
-                                    final remainingTime =
-                                        _loginCooldownSeconds -
-                                            timeSinceLastAttempt;
-                                    _showErrorSnackBar(
-                                        'Please wait $remainingTime seconds before trying again.');
-                                    return;
-                                  }
-                                }
-                                _login();
-                              },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                      Positioned(
+                        top: 40,
+                        right: 40,
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFB8E6F0),
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : const Text(
-                                'Sign In',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                      ),
+                      Positioned(
+                        bottom: 30,
+                        left: 50,
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFB8E6F0),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+
+                      // Medical icons
+                      const Positioned(
+                        top: 60,
+                        left: 60,
+                        child: Icon(
+                          Icons.medical_services,
+                          size: 40,
+                          color: Color(0xFF4A90E2),
+                        ),
+                      ),
+                      const Positioned(
+                        top: 80,
+                        right: 80,
+                        child: Icon(
+                          Icons.health_and_safety,
+                          size: 30,
+                          color: Color(0xFF4A90E2),
+                        ),
+                      ),
+                      const Positioned(
+                        bottom: 60,
+                        right: 60,
+                        child: Icon(
+                          Icons.local_hospital,
+                          size: 35,
+                          color: Color(0xFF4A90E2),
+                        ),
+                      ),
+
+                      // Central medical professional icon
+                      Center(
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF4A90E2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.medical_information,
+                            size: 40,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 32),
 
-              // Sign Up Link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Don't have an account? ",
-                    style: TextStyle(fontSize: 14),
+                const SizedBox(height: 32),
+
+                // Login Title
+                const Text(
+                  'Staff Login',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2C3E50),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SignupPage(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Sign Up',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                ),
+
+                const SizedBox(height: 48),
+
+                // Login Form
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 20,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          // Email/Username Field
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F9FA),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFE9ECEF),
+                                width: 1,
+                              ),
+                            ),
+                            child: TextFormField(
+                              controller: _emailOrUsernameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Email or Username',
+                                labelStyle: TextStyle(
+                                  color: Color(0xFF6C757D),
+                                  fontSize: 16,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.email_outlined,
+                                  color: Color(0xFF4A90E2),
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                              ),
+                              keyboardType: TextInputType.text,
+                              textInputAction: TextInputAction.next,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Please enter your email or username';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Password Field
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F9FA),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFE9ECEF),
+                                width: 1,
+                              ),
+                            ),
+                            child: TextFormField(
+                              controller: _passwordController,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                labelStyle: const TextStyle(
+                                  color: Color(0xFF6C757D),
+                                  fontSize: 16,
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline,
+                                  color: Color(0xFF4A90E2),
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    color: const Color(0xFF6C757D),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                              ),
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) {
+                                if (!_isLoading) _login();
+                              },
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter your password';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Forgot Password
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _forgotPassword,
+                              child: const Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: Color(0xFF4A90E2),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Login Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      // Check cooldown before attempting login
+                                      if (_lastLoginAttempt != null) {
+                                        final timeSinceLastAttempt =
+                                            DateTime.now()
+                                                .difference(_lastLoginAttempt!)
+                                                .inSeconds;
+                                        if (timeSinceLastAttempt <
+                                            _loginCooldownSeconds) {
+                                          final remainingTime =
+                                              _loginCooldownSeconds -
+                                                  timeSinceLastAttempt;
+                                          _showErrorSnackBar(
+                                              'Please wait $remainingTime seconds before trying again.');
+                                          return;
+                                        }
+                                      }
+                                      _login();
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF4A90E2),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(28),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Login',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+
+                const SizedBox(height: 32),
+
+                // Sign Up Link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'New to this platform? ',
+                      style: TextStyle(
+                        color: Color(0xFF6C757D),
+                        fontSize: 14,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignupPage(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Register',
+                        style: TextStyle(
+                          color: Color(0xFF4A90E2),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
