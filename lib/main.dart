@@ -4,6 +4,7 @@ import 'pages/signup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/login.dart';
 import 'pages/admin/admin_dashboard.dart';
+import 'pages/health_share/create_organization.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
