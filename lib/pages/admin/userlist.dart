@@ -1,4 +1,4 @@
-// User/Patient List Page with Persistent Doctor Assignment Feature
+// User/Patient List Page with Admin Dashboard Theme
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,17 +9,39 @@ class UserListPage extends StatefulWidget {
   State<UserListPage> createState() => _UserListPageState();
 }
 
-class _UserListPageState extends State<UserListPage> {
+class _UserListPageState extends State<UserListPage>
+    with SingleTickerProviderStateMixin {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> users = [];
   List<Map<String, dynamic>> availableDoctors = [];
   bool isLoading = true;
   String? errorMessage;
+  String searchQuery = '';
+  String selectedFilter = 'all';
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+      value: 0.0,
+    );
+
+    // AnimationController
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
     _loadAllData();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   // Load all data in sequence
@@ -33,6 +55,7 @@ class _UserListPageState extends State<UserListPage> {
       await _loadUsersFromSupabase();
       await _loadDoctorsFromSupabase();
       await _loadAssignmentsFromDatabase();
+      _animationController.forward();
     } catch (e) {
       setState(() {
         errorMessage = 'Error loading data: $e';
@@ -43,6 +66,32 @@ class _UserListPageState extends State<UserListPage> {
         isLoading = false;
       });
     }
+  }
+
+  List<Map<String, dynamic>> get filteredUsers {
+    var filtered = users.where((user) {
+      final matchesSearch =
+          user['name']!.toLowerCase().contains(searchQuery.toLowerCase()) ||
+              user['id'].toString().contains(searchQuery);
+
+      switch (selectedFilter) {
+        case 'assigned':
+          return matchesSearch && user['assignedDoctor'] != null;
+        case 'unassigned':
+          return matchesSearch && user['assignedDoctor'] == null;
+        default:
+          return matchesSearch;
+      }
+    }).toList();
+
+    // Sort by assignment status and name
+    filtered.sort((a, b) {
+      if (a['assignedDoctor'] == null && b['assignedDoctor'] != null) return 1;
+      if (a['assignedDoctor'] != null && b['assignedDoctor'] == null) return -1;
+      return a['name']!.compareTo(b['name']!);
+    });
+
+    return filtered;
   }
 
   Future<void> _loadUsersFromSupabase() async {
@@ -431,12 +480,7 @@ class _UserListPageState extends State<UserListPage> {
 
       // Show error to user
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save assignment: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('Failed to save assignment: $e', Colors.red);
       }
       rethrow;
     }
@@ -445,25 +489,8 @@ class _UserListPageState extends State<UserListPage> {
   void _assignDoctor(int userIndex, Map<String, dynamic> doctor) async {
     try {
       // Show loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Assigning doctor...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      _showSnackBar('Assigning doctor...', const Color(0xFF3182CE),
+          showProgress: true);
 
       // Save to database first
       await _saveAssignmentToDatabase(users[userIndex]['id'], doctor['id']);
@@ -476,28 +503,19 @@ class _UserListPageState extends State<UserListPage> {
 
       // Show success message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Successfully assigned ${users[userIndex]['name']} to ${doctor['name']}'),
-            backgroundColor: Colors.green,
+        _showSnackBar(
+            'Successfully assigned ${users[userIndex]['name']} to ${doctor['name']}',
+            const Color(0xFF38A169),
             action: SnackBarAction(
               label: 'Undo',
               textColor: Colors.white,
               onPressed: () => _removeAssignment(userIndex),
-            ),
-          ),
-        );
+            ));
       }
     } catch (e) {
       // Show error message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to assign doctor: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('Failed to assign doctor: $e', const Color(0xFFE53E3E));
       }
     }
   }
@@ -520,21 +538,40 @@ class _UserListPageState extends State<UserListPage> {
         users[userIndex]['assignmentId'] = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('Removed doctor assignment for ${users[userIndex]['name']}'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      _showSnackBar('Removed doctor assignment for ${users[userIndex]['name']}',
+          const Color(0xFFD69E2E));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to remove assignment: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Failed to remove assignment: $e', const Color(0xFFE53E3E));
     }
+  }
+
+  void _showSnackBar(String message, Color color,
+      {SnackBarAction? action, bool showProgress = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            if (showProgress) ...[
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 16),
+            ],
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        action: action,
+        duration: Duration(seconds: showProgress ? 2 : 4),
+      ),
+    );
   }
 
   void _showAssignDoctorDialog(int userIndex) {
@@ -542,21 +579,37 @@ class _UserListPageState extends State<UserListPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('No Doctors Available'),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_rounded, color: Color(0xFFD69E2E)),
+              SizedBox(width: 8),
+              Text('No Doctors Available'),
+            ],
+          ),
           content: const Text(
             'No doctors found in the system. Please add medical staff to your organization first.',
+            style: TextStyle(color: Color(0xFF4A5568)),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+              child:
+                  const Text('OK', style: TextStyle(color: Color(0xFF718096))),
             ),
-            TextButton(
+            ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
                 _loadAllData();
               },
-              child: const Text('Refresh'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3182CE),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child:
+                  const Text('Refresh', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -567,7 +620,20 @@ class _UserListPageState extends State<UserListPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Assign Doctor to ${users[userIndex]['name']}'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.medical_services_rounded,
+                color: Color(0xFF3182CE)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Assign Doctor to ${users[userIndex]['name']}',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: double.maxFinite,
           height: 400,
@@ -579,45 +645,69 @@ class _UserListPageState extends State<UserListPage> {
               final isCurrentlyAssigned =
                   users[userIndex]['assignedDoctorId'] == doctor['id'];
 
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                color: isCurrentlyAssigned ? Colors.green.shade50 : null,
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: isCurrentlyAssigned
+                      ? const Color(0xFF38A169).withOpacity(0.1)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isCurrentlyAssigned
+                        ? const Color(0xFF38A169)
+                        : Colors.grey.shade200,
+                    width: isCurrentlyAssigned ? 2 : 1,
+                  ),
+                ),
                 child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        isCurrentlyAssigned ? Colors.green : Colors.blue,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isCurrentlyAssigned
+                          ? const Color(0xFF38A169)
+                          : const Color(0xFF3182CE),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Text(
                       doctor['name']!.isNotEmpty
                           ? doctor['name']![0].toUpperCase()
                           : 'D',
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                   title: Row(
                     children: [
-                      Expanded(child: Text(doctor['name']!)),
+                      Expanded(
+                          child: Text(doctor['name']!,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600))),
                       if (isCurrentlyAssigned)
-                        const Icon(Icons.check_circle,
-                            color: Colors.green, size: 20),
+                        const Icon(Icons.check_circle_rounded,
+                            color: Color(0xFF38A169), size: 20),
                     ],
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(doctor['specialization'] ?? 'General Practitioner'),
+                      Text(doctor['specialization'] ?? 'General Practitioner',
+                          style: const TextStyle(color: Color(0xFF4A5568))),
                       if (doctor['department'] != null &&
                           doctor['department']!.isNotEmpty)
                         Text(
                           'Dept: ${doctor['department']}',
-                          style:
-                              const TextStyle(fontSize: 12, color: Colors.grey),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF718096)),
                         ),
                     ],
                   ),
                   trailing: isCurrentlyAssigned
                       ? const Text('Currently Assigned',
-                          style: TextStyle(color: Colors.green, fontSize: 12))
-                      : const Icon(Icons.arrow_forward_ios, size: 16),
+                          style: TextStyle(
+                              color: Color(0xFF38A169),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500))
+                      : const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.pop(context);
                     _assignDoctor(userIndex, doctor);
@@ -630,7 +720,8 @@ class _UserListPageState extends State<UserListPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel',
+                style: TextStyle(color: Color(0xFF718096))),
           ),
           if (users[userIndex]['assignedDoctor'] != null)
             TextButton(
@@ -638,7 +729,8 @@ class _UserListPageState extends State<UserListPage> {
                 Navigator.pop(context);
                 _removeAssignment(userIndex);
               },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFE53E3E)),
               child: const Text('Remove Assignment'),
             ),
         ],
@@ -650,27 +742,74 @@ class _UserListPageState extends State<UserListPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(user['name']!),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3182CE).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.person_rounded, color: Color(0xFF3182CE)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(user['name']!, style: const TextStyle(fontSize: 18)),
+            ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Type: ${user['type']}'),
-            Text('Last Visit: ${user['lastVisit']}'),
-            const SizedBox(height: 8),
-            Text('User ID: ${user['id']}'),
-            Text('Email: ${user['email']}'),
-            Text('Phone: ${user['phone']}'),
-            Text('Address: ${user['address']}'),
-            const SizedBox(height: 8),
+            _buildDetailRow('Type', user['type'], Icons.badge_rounded),
+            _buildDetailRow(
+                'Last Visit', user['lastVisit'], Icons.calendar_today_rounded),
+            _buildDetailRow('User ID', user['id'], Icons.tag_rounded),
+            _buildDetailRow(
+                'Email',
+                user['email'].isNotEmpty ? user['email'] : 'Not provided',
+                Icons.email_rounded),
+            _buildDetailRow(
+                'Phone',
+                user['phone'].isNotEmpty ? user['phone'] : 'Not provided',
+                Icons.phone_rounded),
+            _buildDetailRow(
+                'Address',
+                user['address'].isNotEmpty ? user['address'] : 'Not provided',
+                Icons.location_on_rounded),
+            const SizedBox(height: 16),
             if (user['type'] == 'Patient') ...[
-              Text(
-                'Assigned Doctor: ${user['assignedDoctor'] ?? 'Not assigned'}',
-                style: TextStyle(
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
                   color: user['assignedDoctor'] == null
-                      ? Colors.orange
-                      : Colors.green,
-                  fontWeight: FontWeight.bold,
+                      ? const Color(0xFFD69E2E).withOpacity(0.1)
+                      : const Color(0xFF38A169).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.medical_services_rounded,
+                      color: user['assignedDoctor'] == null
+                          ? const Color(0xFFD69E2E)
+                          : const Color(0xFF38A169),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Assigned Doctor: ${user['assignedDoctor'] ?? 'Not assigned'}',
+                        style: TextStyle(
+                          color: user['assignedDoctor'] == null
+                              ? const Color(0xFFD69E2E)
+                              : const Color(0xFF38A169),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -678,24 +817,64 @@ class _UserListPageState extends State<UserListPage> {
         ),
         actions: [
           if (user['type'] == 'Patient')
-            TextButton.icon(
+            ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(context);
                 _showAssignDoctorDialog(index);
               },
-              icon: const Icon(Icons.medical_services),
+              icon: const Icon(Icons.medical_services_rounded, size: 18),
               label: Text(user['assignedDoctor'] == null
                   ? 'Assign Doctor'
                   : 'Change Doctor'),
-              style: TextButton.styleFrom(
-                foregroundColor: user['assignedDoctor'] == null
-                    ? Colors.blue
-                    : Colors.orange,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: user['assignedDoctor'] == null
+                    ? const Color(0xFF3182CE)
+                    : const Color(0xFFD69E2E),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
             ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child:
+                const Text('Close', style: TextStyle(color: Color(0xFF718096))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF718096)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF718096),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF2D3748),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -706,16 +885,39 @@ class _UserListPageState extends State<UserListPage> {
   Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Manage Users/Patients'),
-        ),
-        body: const Center(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: _buildModernAppBar(),
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading users and doctors...'),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const CircularProgressIndicator(
+                  color: Color(0xFF3B82F6),
+                  strokeWidth: 3,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Loading patients and doctors...',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),
@@ -724,224 +926,841 @@ class _UserListPageState extends State<UserListPage> {
 
     if (errorMessage != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Manage Users/Patients'),
-        ),
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: _buildModernAppBar(),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              const Text(
-                'Error loading users',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.error_outline_rounded,
+                    size: 48,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Error Loading Data',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
                   errorMessage!,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadAllData,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final patients = users.where((u) => u['type'] == 'Patient').toList();
-    final unassignedPatients =
-        patients.where((p) => p['assignedDoctor'] == null).length;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Users/Patients'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAllData,
-            tooltip: 'Refresh',
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Search feature coming soon!')),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          const Text('Total Patients',
-                              style: TextStyle(fontSize: 12)),
-                          Text('${patients.length}',
-                              style: const TextStyle(
-                                  fontSize: 24, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 14,
                   ),
                 ),
-                Expanded(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          const Text('Unassigned',
-                              style: TextStyle(fontSize: 12)),
-                          Text('$unassignedPatients',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: unassignedPatients > 0
-                                    ? Colors.orange
-                                    : Colors.green,
-                              )),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          const Text('Available Doctors',
-                              style: TextStyle(fontSize: 12)),
-                          Text('${availableDoctors.length}',
-                              style: const TextStyle(
-                                  fontSize: 24, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _loadAllData,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Try Again'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: users.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.people_outline,
-                            size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('No users found',
-                            style: TextStyle(fontSize: 18, color: Colors.grey)),
-                        SizedBox(height: 8),
-                        Text('Add some users to get started',
-                            style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: users.length,
-                    itemBuilder: (context, index) {
-                      final user = users[index];
-                      final isPatient = user['type'] == 'Patient';
-                      final isUnassigned =
-                          isPatient && user['assignedDoctor'] == null;
+        ),
+      );
+    }
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: user['type'] == 'Patient'
-                                ? Colors.blue
-                                : Colors.purple,
-                            child: Icon(
-                              user['type'] == 'Patient'
-                                  ? Icons.person
-                                  : Icons.work,
-                              color: Colors.white,
-                            ),
-                          ),
-                          title: Row(
-                            children: [
-                              Expanded(child: Text(user['name']!)),
-                              if (isUnassigned)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    'Unassigned',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                  '${user['type']} • Last visit: ${user['lastVisit']}'),
-                              if (isPatient && user['assignedDoctor'] != null)
-                                Text(
-                                  'Doctor: ${user['assignedDoctor']}',
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isUnassigned)
-                                IconButton(
-                                  icon: const Icon(Icons.medical_services,
-                                      color: Colors.blue),
-                                  onPressed: () =>
-                                      _showAssignDoctorDialog(index),
-                                  tooltip: 'Assign Doctor',
-                                ),
-                              const Icon(Icons.arrow_forward_ios, size: 16),
-                            ],
-                          ),
-                          onTap: () => _showUserDetails(user, index),
-                        ),
-                      );
-                    },
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: _buildModernAppBar(),
+      body: users.isEmpty
+          ? _buildModernEmptyState()
+          : Column(
+              children: [
+                _buildSearchAndFilter(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadAllData,
+                    color: const Color(0xFF3B82F6),
+                    child: ListView.builder(
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).size.height * 0.12,
+                      ),
+                      itemCount: filteredUsers.length,
+                      itemBuilder: (context, index) {
+                        final userIndex = users.indexWhere(
+                          (u) => u['id'] == filteredUsers[index]['id'],
+                        );
+                        return _buildEnhancedPatientCard(
+                            filteredUsers[index], userIndex);
+                      },
+                    ),
                   ),
+                ),
+              ],
+            ),
+      floatingActionButton: users.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _showQuickAssignDialog,
+              backgroundColor: const Color(0xFF3B82F6),
+              foregroundColor: Colors.white,
+              elevation: 8,
+              icon: const Icon(Icons.bolt_rounded),
+              label: const Text('Quick Assign'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildModernEmptyState() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF3B82F6).withOpacity(0.1),
+                    const Color(0xFF1E40AF).withOpacity(0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.people_outline_rounded,
+                size: 64,
+                color: Color(0xFF3B82F6),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'No Patients Found',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1F2937),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Patients will appear here once they register\nin your healthcare system.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: _loadAllData,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Refresh'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildModernAppBar() {
+    // Increased height to accommodate all content properly
+    final double baseHeight = 180; // Increased from 140
+    final double statusBarHeight = MediaQuery.of(context).padding.top;
+    final double totalHeight = baseHeight + statusBarHeight;
+
+    return PreferredSize(
+      preferredSize: Size.fromHeight(totalHeight),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF1E40AF),
+              const Color(0xFF3B82F6),
+              const Color(0xFF60A5FA),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                16, 8, 16, 16), // Increased bottom padding
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header Row
+                Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back_ios_rounded),
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Patient Management',
+                        style: TextStyle(
+                          fontSize: 22, // Slightly reduced font size
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        onPressed: _loadAllData,
+                        icon: const Icon(Icons.refresh_rounded),
+                        color: Colors.white,
+                        tooltip: 'Refresh',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Stats Cards Row - Made more compact
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModernStatCard(
+                        'Total Patients',
+                        users.length.toString(),
+                        Icons.group_rounded,
+                        Colors.white.withOpacity(0.9),
+                        const Color(0xFF1E40AF),
+                      ),
+                    ),
+                    const SizedBox(width: 8), // Reduced spacing
+                    Expanded(
+                      child: _buildModernStatCard(
+                        'Assigned',
+                        users
+                            .where((u) => u['assignedDoctor'] != null)
+                            .length
+                            .toString(),
+                        Icons.assignment_turned_in_rounded,
+                        const Color(0xFF10B981).withOpacity(0.9),
+                        Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 8), // Reduced spacing
+                    Expanded(
+                      child: _buildModernStatCard(
+                        'Unassigned',
+                        users
+                            .where((u) => u['assignedDoctor'] == null)
+                            .length
+                            .toString(),
+                        Icons.assignment_late_rounded,
+                        const Color(0xFFEF4444).withOpacity(0.9),
+                        Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Also update your _buildModernStatCard method to be more compact
+  Widget _buildModernStatCard(String title, String value, IconData icon,
+      Color backgroundColor, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: 8, vertical: 8), // Reduced padding
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: textColor,
+            size: 18, // Reduced icon size
+          ),
+          const SizedBox(height: 4), // Reduced spacing
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16, // Reduced font size
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 10, // Reduced font size
+              color: textColor.withOpacity(0.8),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildSearchAndFilter() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Search Bar
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: TextField(
+              onChanged: (value) => setState(() => searchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Search patients by name or ID...',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: Colors.grey.shade400),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        onPressed: () => setState(() => searchQuery = ''),
+                        icon: Icon(Icons.clear_rounded,
+                            color: Colors.grey.shade400),
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Filter Chips
+          Row(
+            children: [
+              _buildFilterChip('All', 'all'),
+              const SizedBox(width: 8),
+              _buildFilterChip('Assigned', 'assigned'),
+              const SizedBox(width: 8),
+              _buildFilterChip('Unassigned', 'unassigned'),
+              const Spacer(),
+              Text(
+                '${filteredUsers.length} patients',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    final isSelected = selectedFilter == value;
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) => setState(() => selectedFilter = value),
+      backgroundColor: Colors.white,
+      selectedColor: const Color(0xFF3B82F6).withOpacity(0.1),
+      checkmarkColor: const Color(0xFF3B82F6),
+      labelStyle: TextStyle(
+        color: isSelected ? const Color(0xFF3B82F6) : Colors.grey.shade700,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? const Color(0xFF3B82F6) : Colors.grey.shade300,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedPatientCard(Map<String, dynamic> user, int index) {
+    final bool hasAssignedDoctor = user['assignedDoctor'] != null;
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.3),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Interval(
+            (index * 0.1).clamp(0.0, 1.0),
+            1.0,
+            curve: Curves.easeOutBack,
+          ),
+        )),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Card(
+            elevation: 0,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white,
+                    Colors.grey.shade50,
+                  ],
+                ),
+                border: Border.all(
+                  color: hasAssignedDoctor
+                      ? const Color(0xFF10B981).withOpacity(0.3)
+                      : const Color(0xFFEF4444).withOpacity(0.3),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 15,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showUserDetails(user, index),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header Row
+                        Row(
+                          children: [
+                            Hero(
+                              tag: 'patient_${user['id']}',
+                              child: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      const Color(0xFF3B82F6),
+                                      const Color(0xFF1E40AF),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF3B82F6)
+                                          .withOpacity(0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    user['name']!.isNotEmpty
+                                        ? user['name']![0].toUpperCase()
+                                        : 'P',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    user['name']!,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1F2937),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF3B82F6)
+                                              .withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          user['type']!,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF3B82F6),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'ID: ${user['id']}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Status Indicator
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: hasAssignedDoctor
+                                    ? const Color(0xFF10B981).withOpacity(0.1)
+                                    : const Color(0xFFEF4444).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                hasAssignedDoctor
+                                    ? Icons.check_circle_rounded
+                                    : Icons.warning_rounded,
+                                color: hasAssignedDoctor
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFEF4444),
+                                size: 22,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Doctor Assignment Section
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: hasAssignedDoctor
+                                ? const Color(0xFF10B981).withOpacity(0.05)
+                                : const Color(0xFFEF4444).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: hasAssignedDoctor
+                                  ? const Color(0xFF10B981).withOpacity(0.2)
+                                  : const Color(0xFFEF4444).withOpacity(0.2),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.medical_services_rounded,
+                                    size: 20,
+                                    color: hasAssignedDoctor
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFFEF4444),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      hasAssignedDoctor
+                                          ? 'Assigned to: ${user['assignedDoctor']}'
+                                          : 'No doctor assigned',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: hasAssignedDoctor
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFEF4444),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.schedule_rounded,
+                                    size: 16,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Last visit: ${user['lastVisit']}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (user['email'].isNotEmpty) ...[
+                                    Icon(Icons.email_outlined,
+                                        size: 16, color: Colors.grey.shade600),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  if (user['phone'].isNotEmpty) ...[
+                                    Icon(Icons.phone_outlined,
+                                        size: 16, color: Colors.grey.shade600),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showUserDetails(user, index),
+                                icon: const Icon(Icons.visibility_outlined,
+                                    size: 18),
+                                label: const Text('View Details'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF3B82F6),
+                                  side: const BorderSide(
+                                      color: Color(0xFF3B82F6)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showAssignDoctorDialog(index),
+                                icon: Icon(
+                                  hasAssignedDoctor
+                                      ? Icons.edit_rounded
+                                      : Icons.person_add_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                    hasAssignedDoctor ? 'Change' : 'Assign'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: hasAssignedDoctor
+                                      ? const Color(0xFFF59E0B)
+                                      : const Color(0xFF3B82F6),
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showQuickAssignDialog() {
+    final unassignedPatients =
+        users.where((u) => u['assignedDoctor'] == null).toList();
+
+    if (unassignedPatients.isEmpty) {
+      _showSnackBar('All patients are already assigned to doctors',
+          const Color(0xFF38A169));
+      return;
+    }
+
+    if (availableDoctors.isEmpty) {
+      _showSnackBar(
+          'No doctors available for assignment', const Color(0xFFE53E3E));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.flash_on_rounded, color: Color(0xFF3182CE)),
+            SizedBox(width: 8),
+            Text('Quick Assign'),
+          ],
+        ),
+        content: Text(
+          'Automatically assign ${unassignedPatients.length} unassigned patients to available doctors?',
+          style: const TextStyle(color: Color(0xFF4A5568)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: Color(0xFF718096))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _performQuickAssign(unassignedPatients);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3182CE),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Assign All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _performQuickAssign(
+      List<Map<String, dynamic>> unassignedPatients) async {
+    _showSnackBar('Performing quick assignment...', const Color(0xFF3182CE),
+        showProgress: true);
+
+    try {
+      for (int i = 0; i < unassignedPatients.length; i++) {
+        final patient = unassignedPatients[i];
+        final doctorIndex = i % availableDoctors.length;
+        final doctor = availableDoctors[doctorIndex];
+
+        final patientIndex = users.indexWhere((u) => u['id'] == patient['id']);
+        if (patientIndex != -1) {
+          await _saveAssignmentToDatabase(patient['id'], doctor['id']);
+          setState(() {
+            users[patientIndex]['assignedDoctor'] = doctor['name'];
+            users[patientIndex]['assignedDoctorId'] = doctor['id'];
+          });
+        }
+      }
+
+      _showSnackBar(
+          'Successfully assigned ${unassignedPatients.length} patients!',
+          const Color(0xFF38A169));
+    } catch (e) {
+      _showSnackBar('Quick assignment failed: $e', const Color(0xFFE53E3E));
+    }
   }
 }
