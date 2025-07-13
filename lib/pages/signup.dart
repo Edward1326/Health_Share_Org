@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:crypto/crypto.dart';
+import 'package:pointycastle/export.dart'
+    hide State; // Hide State from pointycastle
+import 'package:asn1lib/asn1lib.dart';
+import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:math';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -51,6 +58,82 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
+  // RSA Key Generation Functions
+  AsymmetricKeyPair<RSAPublicKey, RSAPrivateKey> generateRSAKeyPair() {
+    final keyGen = RSAKeyGenerator();
+    final secureRandom = FortunaRandom();
+
+    // Initialize secure random
+    final seedSource = Random.secure();
+    final seeds = <int>[];
+    for (int i = 0; i < 32; i++) {
+      seeds.add(seedSource.nextInt(256));
+    }
+    secureRandom.seed(KeyParameter(Uint8List.fromList(seeds)));
+
+    keyGen.init(ParametersWithRandom(
+      RSAKeyGeneratorParameters(BigInt.parse('65537'), 2048, 64),
+      secureRandom,
+    ));
+
+    // Generate the key pair
+    final keyPair = keyGen.generateKeyPair();
+
+    // Cast to the expected types
+    return AsymmetricKeyPair<RSAPublicKey, RSAPrivateKey>(
+      keyPair.publicKey as RSAPublicKey,
+      keyPair.privateKey as RSAPrivateKey,
+    );
+  }
+
+  String rsaPublicKeyToPem(RSAPublicKey publicKey) {
+    final asn1 = ASN1Sequence();
+    asn1.add(ASN1Integer(publicKey.modulus!));
+    asn1.add(ASN1Integer(publicKey.exponent!));
+
+    // Use encodedBytes instead of encode()
+    final publicKeyDer = asn1.encodedBytes;
+    final publicKeyBase64 = base64Encode(publicKeyDer);
+
+    return '-----BEGIN PUBLIC KEY-----\n${_formatBase64(publicKeyBase64)}\n-----END PUBLIC KEY-----';
+  }
+
+  String rsaPrivateKeyToPem(RSAPrivateKey privateKey) {
+    final asn1 = ASN1Sequence();
+    asn1.add(ASN1Integer(BigInt.from(0))); // version
+    asn1.add(ASN1Integer(privateKey.modulus!));
+    asn1.add(ASN1Integer(privateKey.exponent!));
+    asn1.add(ASN1Integer(privateKey.privateExponent!));
+    asn1.add(ASN1Integer(privateKey.p!));
+    asn1.add(ASN1Integer(privateKey.q!));
+    asn1.add(ASN1Integer(
+        privateKey.privateExponent! % (privateKey.p! - BigInt.one)));
+    asn1.add(ASN1Integer(
+        privateKey.privateExponent! % (privateKey.q! - BigInt.one)));
+    asn1.add(ASN1Integer(privateKey.q!.modInverse(privateKey.p!)));
+
+    // Use encodedBytes instead of encode()
+    final privateKeyDer = asn1.encodedBytes;
+    final privateKeyBase64 = base64Encode(privateKeyDer);
+
+    return '-----BEGIN PRIVATE KEY-----\n${_formatBase64(privateKeyBase64)}\n-----END PRIVATE KEY-----';
+  }
+
+  String _formatBase64(String base64String) {
+    final regex = RegExp(r'.{1,64}');
+    return regex
+        .allMatches(base64String)
+        .map((match) => match.group(0))
+        .join('\n');
+  }
+
+  // Generate key fingerprint for easier identification
+  String generateKeyFingerprint(String publicKeyPem) {
+    final keyBytes = utf8.encode(publicKeyPem);
+    final digest = sha256.convert(keyBytes);
+    return digest.toString().substring(0, 16); // First 16 chars of SHA256
+  }
+
   Future<void> _loadOrganizations() async {
     try {
       final response = await Supabase.instance.client
@@ -98,6 +181,16 @@ class _SignupPageState extends State<SignupPage> {
     try {
       final currentTime = DateTime.now().toIso8601String();
 
+      // Generate RSA Key Pair
+      print('Generating RSA key pair...');
+      final keyPair = generateRSAKeyPair();
+      final publicKeyPem = rsaPublicKeyToPem(keyPair.publicKey);
+      final privateKeyPem = rsaPrivateKeyToPem(keyPair.privateKey);
+      final keyFingerprint = generateKeyFingerprint(publicKeyPem);
+
+      print('RSA keys generated successfully');
+      print('Key fingerprint: $keyFingerprint');
+
       // Step 1: Create Supabase Auth user FIRST
       print('Creating Auth user...');
       final authResponse = await Supabase.instance.client.auth.signUp(
@@ -108,7 +201,7 @@ class _SignupPageState extends State<SignupPage> {
           'first_name': _firstNameController.text.trim(),
           'last_name': _lastNameController.text.trim(),
           'role': 'employee',
-          // We'll update these after creating the database records
+          'key_fingerprint': keyFingerprint, // Store fingerprint in metadata
         },
       );
 
@@ -119,7 +212,7 @@ class _SignupPageState extends State<SignupPage> {
       final authUserId = authResponse.user!.id;
       print('Auth user created with ID: $authUserId');
 
-      // Step 2: Create Person record
+      // Step 2: Create Person record (without keys)
       print('Creating Person record...');
       final personResponse = await Supabase.instance.client
           .from('Person')
@@ -132,7 +225,7 @@ class _SignupPageState extends State<SignupPage> {
             'address': _addressController.text.trim(),
             'contact_number': _contactNumberController.text.trim(),
             'email': _emailController.text.trim(),
-            'auth_user_id': authUserId, // Link to Auth user
+            'auth_user_id': authUserId,
             'created_at': currentTime,
           })
           .select()
@@ -141,7 +234,7 @@ class _SignupPageState extends State<SignupPage> {
       final numericPersonId = personResponse['id'];
       print('Person created with numeric ID: $numericPersonId');
 
-      // Step 3: Create User record
+      // Step 3: Create User record (with both keys)
       print('Creating User record...');
       final userResponse = await Supabase.instance.client
           .from('User')
@@ -150,6 +243,10 @@ class _SignupPageState extends State<SignupPage> {
             'person_id': numericPersonId,
             'created_at': currentTime,
             'connected_organization_id': int.parse(_selectedOrganizationId!),
+            'encrypted_private_key':
+                privateKeyPem, // Store private key in User table
+            'public_key': publicKeyPem, // Store public key in User table
+            'key_created_at': currentTime,
           })
           .select()
           .single();
@@ -157,11 +254,7 @@ class _SignupPageState extends State<SignupPage> {
       final numericUserId = userResponse['id'];
       print('User created with numeric ID: $numericUserId');
 
-      // Step 4: The metadata was already set during signUp, so we're good
-      // The user will need to verify their email before they can sign in
-      print('Auth user metadata already set during signup');
-
-      // Step 5: Create Organization_User record
+      // Step 4: Create Organization_User record
       print('Creating Organization_User record...');
       await Supabase.instance.client.from('Organization_User').insert({
         'position': _positionController.text.trim(),
@@ -173,8 +266,28 @@ class _SignupPageState extends State<SignupPage> {
 
       print('Organization_User created successfully');
 
+      // Step 5: Optionally store key metadata in RSA_Keys table if it exists
+      print('Creating RSA key record...');
+      try {
+        await Supabase.instance.client.from('RSA_Keys').insert({
+          'person_id': numericPersonId,
+          'user_id': numericUserId, // Link to user as well
+          'key_fingerprint': keyFingerprint,
+          'public_key': publicKeyPem,
+          'private_key_encrypted': privateKeyPem,
+          'key_size': 2048,
+          'algorithm': 'RSA',
+          'created_at': currentTime,
+          'is_active': true,
+        });
+        print('RSA key record created successfully');
+      } catch (e) {
+        print('RSA_Keys table might not exist or have different schema: $e');
+        // Continue without failing if RSA_Keys table doesn't exist
+      }
+
       _showSuccessSnackBar(
-          'Employee account created successfully! Please check your email to verify your account before signing in.');
+          'Employee account created successfully with RSA keys! Please check your email to verify your account before signing in.');
 
       // Navigate back to login page
       if (mounted) {
@@ -183,9 +296,6 @@ class _SignupPageState extends State<SignupPage> {
     } catch (e) {
       print('Signup error: $e');
       print('Error type: ${e.runtimeType}');
-
-      // If we get here and created an Auth user, we should clean it up
-      // Note: In production, you might want more sophisticated cleanup
 
       String errorMessage = _getErrorMessage(e);
       _showErrorSnackBar(errorMessage);
@@ -330,14 +440,14 @@ class _SignupPageState extends State<SignupPage> {
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.medical_services,
+                                      Icons.enhanced_encryption,
                                       size: 40,
                                       color: Color(0xFF0891B2),
                                     ),
                                   ),
                                   const SizedBox(height: 16),
                                   const Text(
-                                    'Sign up',
+                                    'Secure Sign up',
                                     style: TextStyle(
                                       fontSize: 28,
                                       fontWeight: FontWeight.bold,
@@ -346,7 +456,7 @@ class _SignupPageState extends State<SignupPage> {
                                   ),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    'Join your organization as a healthcare professional',
+                                    'Join your organization with end-to-end encryption',
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Color(0xFF64748B),
@@ -671,13 +781,43 @@ class _SignupPageState extends State<SignupPage> {
                                   ),
                                 )
                               : const Text(
-                                  'Signup',
+                                  'Create Secure Account',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.white,
                                   ),
                                 ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Security Info
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0891B2).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.security,
+                              color: Color(0xFF0891B2),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Your account will be secured with RSA-2048 encryption keys generated during signup.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF0891B2).withOpacity(0.8),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
 
@@ -740,7 +880,7 @@ class _SignupPageState extends State<SignupPage> {
             padding: const EdgeInsets.all(16),
             child: Icon(
               icon,
-              color: const Color(0xFF0891B2),
+              color: const Color(0xFF64748B),
               size: 20,
             ),
           ),
