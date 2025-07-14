@@ -197,8 +197,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
         children: [
           _buildDashboardTab(),
           _buildPatientsTab(), // This will now just show a message to navigate
-          _buildGroupsTab(),
-          _buildTasksTab(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -238,16 +236,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
               icon: Icon(Icons.people_outline),
               activeIcon: Icon(Icons.people),
               label: 'Patients',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.group_outlined),
-              activeIcon: Icon(Icons.group),
-              label: 'Groups',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment),
-              label: 'Tasks',
             ),
           ],
         ),
@@ -496,70 +484,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
               ),
             ),
             child: const Text('Go to Patients'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGroupsTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.group_outlined,
-            size: 64,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Groups Feature',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Coming Soon!',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTasksTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.assignment_outlined,
-            size: 64,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Tasks & Reminders',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Coming Soon!',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
           ),
         ],
       ),
