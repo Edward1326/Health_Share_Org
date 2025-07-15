@@ -64,4 +64,23 @@ class FileEncryptionService {
     final parts = fileName.split('.');
     return parts.length > 1 ? parts.last.toLowerCase() : 'unknown';
   }
+
+  static Future<Uint8List> decryptFileContent({
+    required String encryptedContent,
+    required String encryptionKey,
+    required String encryptionIv,
+  }) async {
+    try {
+      final key = Key.fromBase64(encryptionKey);
+      final iv = IV.fromBase64(encryptionIv);
+      final encrypter = Encrypter(AES(key));
+
+      final encrypted = Encrypted.fromBase64(encryptedContent);
+      final decryptedBytes = encrypter.decryptBytes(encrypted, iv: iv);
+
+      return Uint8List.fromList(decryptedBytes);
+    } catch (e) {
+      throw Exception('Decryption failed: $e');
+    }
+  }
 }
