@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'patients_tab.dart'; // Import your PatientTab page
+import '/main.dart'; // Import your Main page
 
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({Key? key}) : super(key: key);
@@ -154,7 +155,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   _showProfileDialog();
                   break;
                 case 'settings':
-                  _showSnackBar('Settings coming soon!');
+                  Navigator.pushNamed(context, '/staff_settings');
                   break;
                 case 'signout':
                   _signOut();
@@ -524,12 +525,13 @@ class _StaffDashboardState extends State<StaffDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 120, // Increased width for longer labels
             child: Text(
               '$label:',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
+          const SizedBox(width: 12), // Added space between label and value
           Expanded(
             child: Text(
               value.isNotEmpty ? value : 'Not provided',

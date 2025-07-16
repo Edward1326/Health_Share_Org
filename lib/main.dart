@@ -5,6 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/login.dart';
 import 'pages/admin/admin_dashboard.dart';
 import 'pages/health_share/create_organization.dart';
+import 'pages/staff/staff_settings.dart';
+import 'pages/staff/staff_dashboard.dart';
+import 'pages/reset_password.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +37,11 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/signup': (context) => const SignupPage(),
         '/admin_dashboard': (context) => const Dashboard(),
+        '/create_organization': (context) => const CreateOrganizationPage(),
+        '/health_share': (context) => const CreateOrganizationPage(),
+        '/staff_settings': (context) => const StaffSettingsScreen(),
+        '/staff_dashboard': (context) => const StaffDashboard(),
+        '/reset_password': (context) => const ResetPasswordPage(),
       },
       // Handle unknown routes
     );
