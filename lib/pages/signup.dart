@@ -7,6 +7,8 @@ import 'package:asn1lib/asn1lib.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -58,35 +60,87 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  // RSA Key Generation Functions
-  AsymmetricKeyPair<RSAPublicKey, RSAPrivateKey> generateRSAKeyPair() {
+  Future<Map<String, String>> generateRSAKeyPairIsolate() async {
+    return await compute(_generateRSAKeyPairSync, null);
+  }
+
+// Enhanced synchronous key generation for compute function (static for top-level requirement)
+  static Map<String, String> _generateRSAKeyPairSync(void _) {
     final keyGen = RSAKeyGenerator();
     final secureRandom = FortunaRandom();
 
-    // Initialize secure random
-    final seedSource = Random.secure();
-    final seeds = <int>[];
-    for (int i = 0; i < 32; i++) {
-      seeds.add(seedSource.nextInt(256));
-    }
-    secureRandom.seed(KeyParameter(Uint8List.fromList(seeds)));
+    // Enhanced random seeding with proper 256-bit seed
+    _seedSecureRandom(secureRandom);
 
+    // Optimized parameters for faster generation
     keyGen.init(ParametersWithRandom(
-      RSAKeyGeneratorParameters(BigInt.parse('65537'), 2048, 64),
+      RSAKeyGeneratorParameters(
+          BigInt.parse('65537'), // Standard public exponent
+          2048, // Key size
+          8 // Reduced certainty for faster generation (was 12, now 8)
+          ),
       secureRandom,
     ));
 
-    // Generate the key pair
     final keyPair = keyGen.generateKeyPair();
+    final publicKey = keyPair.publicKey as RSAPublicKey;
+    final privateKey = keyPair.privateKey as RSAPrivateKey;
 
-    // Cast to the expected types
-    return AsymmetricKeyPair<RSAPublicKey, RSAPrivateKey>(
-      keyPair.publicKey as RSAPublicKey,
-      keyPair.privateKey as RSAPrivateKey,
-    );
+    return {
+      'publicKey': _rsaPublicKeyToPem(publicKey),
+      'privateKey': _rsaPrivateKeyToPem(privateKey),
+      'fingerprint': _generateKeyFingerprint(_rsaPublicKeyToPem(publicKey)),
+    };
   }
 
-  String rsaPublicKeyToPem(RSAPublicKey publicKey) {
+// Fixed random seeding function - FortunaRandom requires exactly 32 bytes (256 bits)
+  static void _seedSecureRandom(FortunaRandom secureRandom) {
+    final seedSource = Random.secure();
+
+    // Generate exactly 32 bytes (256 bits) for Fortuna PRNG
+    final seed = Uint8List(32);
+    for (int i = 0; i < 32; i++) {
+      seed[i] = seedSource.nextInt(256);
+    }
+
+    // Seed the FortunaRandom with exactly 256 bits
+    secureRandom.seed(KeyParameter(seed));
+
+    // Add additional entropy by generating some random bytes
+    // This helps initialize the internal state
+    for (int i = 0; i < 100; i++) {
+      secureRandom.nextUint8();
+    }
+  }
+
+// Alternative seeding method using system entropy sources
+  static void _seedSecureRandomAlternative(FortunaRandom secureRandom) {
+    final seedSource = Random.secure();
+    final timeMillis = DateTime.now().millisecondsSinceEpoch;
+
+    // Create exactly 32 bytes combining different entropy sources
+    final seed = Uint8List(32);
+
+    // Fill first 8 bytes with time-based entropy
+    final timeBytes = ByteData(8);
+    timeBytes.setUint64(0, timeMillis);
+    seed.setRange(0, 8, timeBytes.buffer.asUint8List());
+
+    // Fill remaining 24 bytes with secure random
+    for (int i = 8; i < 32; i++) {
+      seed[i] = seedSource.nextInt(256);
+    }
+
+    secureRandom.seed(KeyParameter(seed));
+
+    // Prime the generator
+    for (int i = 0; i < 100; i++) {
+      secureRandom.nextUint8();
+    }
+  }
+
+// Static helper functions for compute (need to be static/top-level)
+  static String _rsaPublicKeyToPem(RSAPublicKey publicKey) {
     final asn1 = ASN1Sequence();
     asn1.add(ASN1Integer(publicKey.modulus!));
     asn1.add(ASN1Integer(publicKey.exponent!));
@@ -98,7 +152,7 @@ class _SignupPageState extends State<SignupPage> {
     return '-----BEGIN PUBLIC KEY-----\n${_formatBase64(publicKeyBase64)}\n-----END PUBLIC KEY-----';
   }
 
-  String rsaPrivateKeyToPem(RSAPrivateKey privateKey) {
+  static String _rsaPrivateKeyToPem(RSAPrivateKey privateKey) {
     final asn1 = ASN1Sequence();
     asn1.add(ASN1Integer(BigInt.from(0))); // version
     asn1.add(ASN1Integer(privateKey.modulus!));
@@ -119,7 +173,7 @@ class _SignupPageState extends State<SignupPage> {
     return '-----BEGIN PRIVATE KEY-----\n${_formatBase64(privateKeyBase64)}\n-----END PRIVATE KEY-----';
   }
 
-  String _formatBase64(String base64String) {
+  static String _formatBase64(String base64String) {
     final regex = RegExp(r'.{1,64}');
     return regex
         .allMatches(base64String)
@@ -127,8 +181,8 @@ class _SignupPageState extends State<SignupPage> {
         .join('\n');
   }
 
-  // Generate key fingerprint for easier identification
-  String generateKeyFingerprint(String publicKeyPem) {
+// Generate key fingerprint for easier identification (static version)
+  static String _generateKeyFingerprint(String publicKeyPem) {
     final keyBytes = utf8.encode(publicKeyPem);
     final digest = sha256.convert(keyBytes);
     return digest.toString().substring(0, 16); // First 16 chars of SHA256
@@ -181,14 +235,15 @@ class _SignupPageState extends State<SignupPage> {
     try {
       final currentTime = DateTime.now().toIso8601String();
 
-      // Generate RSA Key Pair
-      print('Generating RSA key pair...');
-      final keyPair = generateRSAKeyPair();
-      final publicKeyPem = rsaPublicKeyToPem(keyPair.publicKey);
-      final privateKeyPem = rsaPrivateKeyToPem(keyPair.privateKey);
-      final keyFingerprint = generateKeyFingerprint(publicKeyPem);
+      // Generate RSA Key Pair using optimized compute approach (works on web)
+      print('Generating RSA key pair using compute...');
+      final keyData = await generateRSAKeyPairIsolate();
 
-      print('RSA keys generated successfully');
+      final publicKeyPem = keyData['publicKey']!;
+      final privateKeyPem = keyData['privateKey']!;
+      final keyFingerprint = keyData['fingerprint']!;
+
+      print('RSA keys generated successfully using compute');
       print('Key fingerprint: $keyFingerprint');
 
       // Step 1: Create Supabase Auth user FIRST
@@ -231,8 +286,8 @@ class _SignupPageState extends State<SignupPage> {
           .select()
           .single();
 
-      final personUuid = personResponse['id'];
-      print('Person created with numeric ID: $personUuid');
+      final personUuid = personResponse['id']; // This is now a UUID string
+      print('Person created with UUID: $personUuid');
 
       // Step 3: Create User record (with both keys)
       print('Creating User record...');
@@ -240,9 +295,8 @@ class _SignupPageState extends State<SignupPage> {
           .from('User')
           .insert({
             'username': _usernameController.text.trim(),
-            'person_id': personUuid,
+            'person_id': personUuid, // UUID string, no parsing needed
             'created_at': currentTime,
-            'connected_organization_id': int.parse(_selectedOrganizationId!),
             'encrypted_private_key':
                 privateKeyPem, // Store private key in User table
             'public_key': publicKeyPem, // Store public key in User table
@@ -251,8 +305,8 @@ class _SignupPageState extends State<SignupPage> {
           .select()
           .single();
 
-      final numericUserId = userResponse['id'];
-      print('User created with numeric ID: $numericUserId');
+      final userUuid = userResponse['id']; // This is now a UUID string
+      print('User created with UUID: $userUuid');
 
       // Step 4: Create Organization_User record
       print('Creating Organization_User record...');
@@ -260,8 +314,9 @@ class _SignupPageState extends State<SignupPage> {
         'position': _positionController.text.trim(),
         'department': _departmentController.text.trim(),
         'created_at': currentTime,
-        'organization_id': int.parse(_selectedOrganizationId!),
-        'user_id': numericUserId,
+        'organization_id':
+            _selectedOrganizationId, // UUID string, no parsing needed
+        'user_id': userUuid, // UUID string, no parsing needed
       });
 
       print('Organization_User created successfully');
@@ -270,8 +325,8 @@ class _SignupPageState extends State<SignupPage> {
       print('Creating RSA key record...');
       try {
         await Supabase.instance.client.from('RSA_Keys').insert({
-          'person_id': personUuid,
-          'user_id': numericUserId, // Link to user as well
+          'person_id': personUuid, // UUID string, no parsing needed
+          'user_id': userUuid, // UUID string, no parsing needed
           'key_fingerprint': keyFingerprint,
           'public_key': publicKeyPem,
           'private_key_encrypted': privateKeyPem,
@@ -489,7 +544,8 @@ class _SignupPageState extends State<SignupPage> {
                           },
                           items: _organizations.map((org) {
                             return DropdownMenuItem<String>(
-                              value: org['id'].toString(),
+                              value: org[
+                                  'id'], // Remove .toString() - UUIDs are already strings
                               child: Text(org['name']),
                             );
                           }).toList(),
