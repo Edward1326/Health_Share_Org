@@ -297,9 +297,8 @@ class _SignupPageState extends State<SignupPage> {
             'username': _usernameController.text.trim(),
             'person_id': personUuid, // UUID string, no parsing needed
             'created_at': currentTime,
-            'encrypted_private_key':
-                privateKeyPem, // Store private key in User table
-            'public_key': publicKeyPem, // Store public key in User table
+            'rsa_private_key': privateKeyPem, // Store private key in User table
+            'rsa_public_key': publicKeyPem, // Store public key in User table
             'key_created_at': currentTime,
           })
           .select()
@@ -328,8 +327,8 @@ class _SignupPageState extends State<SignupPage> {
           'person_id': personUuid, // UUID string, no parsing needed
           'user_id': userUuid, // UUID string, no parsing needed
           'key_fingerprint': keyFingerprint,
-          'public_key': publicKeyPem,
-          'private_key_encrypted': privateKeyPem,
+          'rsa_public_key': publicKeyPem,
+          'rsa_private_key': privateKeyPem,
           'key_size': 2048,
           'algorithm': 'RSA',
           'created_at': currentTime,
