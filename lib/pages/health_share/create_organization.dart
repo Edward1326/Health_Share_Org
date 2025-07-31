@@ -25,7 +25,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
 
   bool _isLoading = false;
   DateTime? _lastCreationAttempt;
-  static const int _creationCooldownSeconds = 60;
+  static const int _creationCooldownSeconds = 10;
 
   @override
   void dispose() {
@@ -83,8 +83,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
           .select()
           .single();
 
-      final organizationId = organizationResponse['id'];
-      print('Organization created with ID: $organizationId');
+      final organizationUuid = organizationResponse['id'];
+      print('Organization created with ID: $organizationUuid');
 
       // Step 2: Create Supabase Auth user for admin
       print('Creating Auth user for admin...');
@@ -125,8 +125,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
           .select()
           .single();
 
-      final numericPersonId = personResponse['id'];
-      print('Person created with numeric ID: $numericPersonId');
+      final personUuid = personResponse['id'];
+      print('Person created with UUID: $personUuid');
 
       // Step 4: Create User record for admin
       print('Creating User record for admin...');
@@ -134,15 +134,14 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
           .from('User')
           .insert({
             'username': _adminUsernameController.text.trim(),
-            'person_id': numericPersonId,
+            'person_id': personUuid,
             'created_at': currentTime,
-            'connected_organization_id': organizationId,
           })
           .select()
           .single();
 
-      final numericUserId = userResponse['id'];
-      print('User created with numeric ID: $numericUserId');
+      final userUuid = userResponse['id'];
+      print('User created with numeric ID: $userUuid');
 
       // Step 5: Create Organization_User record with admin position
       print('Creating Organization_User record for admin...');
@@ -150,8 +149,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
         'position': 'Administrator',
         'department': 'Administration',
         'created_at': currentTime,
-        'organization_id': organizationId,
-        'user_id': numericUserId,
+        'organization_id': organizationUuid,
+        'user_id': userUuid,
       });
 
       print('Organization_User created successfully with admin privileges');
@@ -162,7 +161,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       // Navigate back or to a success page
       if (mounted) {
         Navigator.pop(context, {
-          'organization_id': organizationId,
+          'organization_id': organizationUuid,
           'organization_name': _organizationNameController.text.trim(),
           'admin_email': _adminEmailController.text.trim(),
         });

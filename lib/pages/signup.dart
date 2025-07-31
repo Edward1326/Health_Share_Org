@@ -231,8 +231,8 @@ class _SignupPageState extends State<SignupPage> {
           .select()
           .single();
 
-      final numericPersonId = personResponse['id'];
-      print('Person created with numeric ID: $numericPersonId');
+      final personUuid = personResponse['id'];
+      print('Person created with numeric ID: $personUuid');
 
       // Step 3: Create User record (with both keys)
       print('Creating User record...');
@@ -240,7 +240,7 @@ class _SignupPageState extends State<SignupPage> {
           .from('User')
           .insert({
             'username': _usernameController.text.trim(),
-            'person_id': numericPersonId,
+            'person_id': personUuid,
             'created_at': currentTime,
             'connected_organization_id': int.parse(_selectedOrganizationId!),
             'encrypted_private_key':
@@ -270,7 +270,7 @@ class _SignupPageState extends State<SignupPage> {
       print('Creating RSA key record...');
       try {
         await Supabase.instance.client.from('RSA_Keys').insert({
-          'person_id': numericPersonId,
+          'person_id': personUuid,
           'user_id': numericUserId, // Link to user as well
           'key_fingerprint': keyFingerprint,
           'public_key': publicKeyPem,

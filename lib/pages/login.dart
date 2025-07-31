@@ -21,7 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   DateTime? _lastLoginAttempt;
-  static const int _loginCooldownSeconds = 30;
+  static const int _loginCooldownSeconds = 5;
 
   @override
   void initState() {

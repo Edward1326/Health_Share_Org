@@ -86,8 +86,21 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
 
       // STEP 1: Get Organization_User records
       print('=== DEBUG: Fetching Organization_User records ===');
-      final orgUsersResponse =
-          await supabase.from('Organization_User').select('*');
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) throw Exception("No user is logged in");
+
+      final currentUserOrgResponse = await supabase
+          .from('Organization_User')
+          .select('organization_id')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+
+      final currentOrganizationId = currentUserOrgResponse['organization_id'];
+
+      final orgUsersResponse = await supabase
+          .from('Organization_User')
+          .select('*')
+          .eq('organization_id', currentOrganizationId);
 
       print('Organization_User records found: ${orgUsersResponse.length}');
       print('Organization_User data: $orgUsersResponse');
