@@ -111,6 +111,7 @@ class Dashboard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 16),
                 ],
               ),
 
@@ -178,18 +179,6 @@ class Dashboard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
         ),
       ),
     );
