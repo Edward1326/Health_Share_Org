@@ -158,7 +158,7 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (mounted) {
-        if (userPosition == 'admin') {
+        if (userPosition == 'administrator') {
           // Navigate to admin dashboard
           Navigator.pushReplacement(
             context,
