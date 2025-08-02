@@ -47,29 +47,18 @@ class _PatientsTabState extends State<PatientsTab> {
       final userEmail = currentUser.email!;
       print('DEBUG: Looking up user with email: $userEmail');
 
-      // Step 1: First find the Person record with the email
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('id')
-          .eq('email', userEmail)
-          .single(); // Use single() since email should be unique
-
-      print('DEBUG: Person lookup response: $personResponse');
-
-      final personId = personResponse['id'];
-
-      // Step 2: Find the User record linked to this Person
+      // Step 1: Find the User record with the email (since email is in User table, not Person)
       final userResponse = await Supabase.instance.client
           .from('User')
-          .select('id')
-          .eq('person_id', personId)
-          .single(); // Assuming one User per Person
+          .select('id, person_id')
+          .eq('email', userEmail)
+          .single(); // Use single() since email should be unique
 
       print('DEBUG: User lookup response: $userResponse');
 
       final userId = userResponse['id'];
 
-      // Step 3: Find Organization_User records where this user is a Doctor
+      // Step 2: Find Organization_User records where this user is a Doctor
       final doctorLookupResponse = await Supabase.instance.client
           .from('Organization_User')
           .select('id, position, department')
@@ -88,7 +77,7 @@ class _PatientsTabState extends State<PatientsTab> {
           doctorLookupResponse.map((doctor) => doctor['id']).toList();
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
-      // Step 4: Query Doctor_User_Assignment table
+      // Step 3: Query Doctor_User_Assignment table
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
@@ -97,16 +86,16 @@ class _PatientsTabState extends State<PatientsTab> {
       patient_id,
       status,
       assigned_at,
-      assigned_by,
       patient_user:User!patient_id(
         id,
         person_id,
+        email,
         Person!person_id(
           id,
           first_name,
           middle_name,
           last_name,
-          email,
+          address,
           contact_number
         )
       )
@@ -153,15 +142,16 @@ class _PatientsTabState extends State<PatientsTab> {
           .from('File_Shares')
           .select('''
           id,
-          created_at,
+          shared_at,
           Files!inner(
             id,
-            name,
-            description,
-            file_type,
+            filename,
             category,
-            file_url,
-            created_at,
+            file_type,
+            uploaded_at,
+            file_size,
+            ipfs_cid,
+            sha256_hash,
             uploaded_by,
             uploader:User!uploaded_by(
               Person!person_id(
@@ -172,7 +162,7 @@ class _PatientsTabState extends State<PatientsTab> {
           )
         ''')
           .eq('shared_with_user_id', patientId)
-          .order('created_at', ascending: false);
+          .order('shared_at', ascending: false);
 
       setState(() {
         _selectedPatientFiles = List<Map<String, dynamic>>.from(response);
