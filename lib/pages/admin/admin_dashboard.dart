@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'employeelist.dart';
-import 'userlist.dart';
+import 'patientslist.dart';
 import 'allfiles.dart';
 
 class Dashboard extends StatelessWidget {
@@ -88,7 +88,8 @@ class Dashboard extends StatelessWidget {
                       const Color(0xFFE53E3E),
                       () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const UserListPage()),
+                        MaterialPageRoute(
+                            builder: (_) => const PatientListPage()),
                       ),
                     ),
                   ),

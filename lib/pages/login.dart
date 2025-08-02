@@ -372,7 +372,7 @@ class _LoginPageState extends State<LoginPage> {
     final input = _emailOrUsernameController.text.trim();
 
     if (input.isEmpty) {
-      _showErrorSnackBar('Please enter your email or username first.');
+      _showErrorSnackBar('Please enter your email first.');
       return;
     }
 
@@ -666,7 +666,7 @@ class _LoginPageState extends State<LoginPage> {
                             child: TextFormField(
                               controller: _emailOrUsernameController,
                               decoration: const InputDecoration(
-                                labelText: 'Email or Username',
+                                labelText: 'Email',
                                 labelStyle: TextStyle(
                                   color: Color(0xFF6C757D),
                                   fontSize: 16,
@@ -685,7 +685,7 @@ class _LoginPageState extends State<LoginPage> {
                               textInputAction: TextInputAction.next,
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your email or username';
+                                  return 'Please enter your email';
                                 }
                                 return null;
                               },

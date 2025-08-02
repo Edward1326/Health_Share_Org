@@ -1,15 +1,15 @@
-// User/Patient List Page with Admin Dashboard Theme
+// User/Patient List Page with Admin Dashboard Theme and Status Management
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class UserListPage extends StatefulWidget {
-  const UserListPage({super.key});
+class PatientListPage extends StatefulWidget {
+  const PatientListPage({super.key});
 
   @override
-  State<UserListPage> createState() => _UserListPageState();
+  State<PatientListPage> createState() => _PatientListPageState();
 }
 
-class _UserListPageState extends State<UserListPage>
+class _PatientListPageState extends State<PatientListPage>
     with SingleTickerProviderStateMixin {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> users = [];
@@ -20,6 +20,7 @@ class _UserListPageState extends State<UserListPage>
   String selectedFilter = 'all';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  String? currentOrganizationId;
 
   @override
   void initState() {
@@ -30,7 +31,6 @@ class _UserListPageState extends State<UserListPage>
       value: 0.0,
     );
 
-    // AnimationController
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
@@ -44,6 +44,65 @@ class _UserListPageState extends State<UserListPage>
     super.dispose();
   }
 
+  // Helper function to get current organization ID
+  Future<String?> getCurrentOrganizationId() async {
+    try {
+      if (currentOrganizationId != null) {
+        return currentOrganizationId;
+      }
+
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        print('❌ No authenticated user found');
+        return null;
+      }
+
+      print('🔍 ADMIN LOGIN DEBUG - Current authenticated user ID: ${user.id}');
+      print('📧 Admin email: ${user.email}');
+
+      final adminOrgResponse = await supabase
+          .from('Organization_User')
+          .select('organization_id, department, id, position')
+          .eq('user_id', user.id);
+
+      print('🎯 Organization query result for admin user: $adminOrgResponse');
+
+      if (adminOrgResponse.isEmpty) {
+        print(
+            '❌ PROBLEM FOUND: Admin user ${user.id} is NOT in Organization_User table');
+
+        // TEMPORARY FIX: Get any organization if admin not properly linked
+        final allOrgUsers = await supabase
+            .from('Organization_User')
+            .select('organization_id')
+            .limit(1);
+
+        if (allOrgUsers.isNotEmpty) {
+          final firstOrgId = allOrgUsers.first['organization_id']?.toString();
+          print(
+              '🚨 TEMPORARY FIX: Using first available organization: $firstOrgId');
+          currentOrganizationId = firstOrgId;
+          return currentOrganizationId;
+        }
+        return null;
+      }
+
+      final organizationId =
+          adminOrgResponse.first['organization_id']?.toString();
+      if (organizationId == null) {
+        print('❌ Organization ID is null in the response');
+        return null;
+      }
+
+      currentOrganizationId = organizationId;
+      print('✅ Admin organization ID found: $currentOrganizationId');
+      return currentOrganizationId;
+    } catch (e) {
+      print('❌ Error getting current organization ID: $e');
+      return null;
+    }
+  }
+
   // Load all data in sequence
   Future<void> _loadAllData() async {
     setState(() {
@@ -52,6 +111,13 @@ class _UserListPageState extends State<UserListPage>
     });
 
     try {
+      // Get organization ID first
+      currentOrganizationId = await getCurrentOrganizationId();
+
+      if (currentOrganizationId == null) {
+        throw Exception('Unable to determine current organization');
+      }
+
       await _loadUsersFromSupabase();
       await _loadDoctorsFromSupabase();
       await _loadAssignmentsFromDatabase();
@@ -75,19 +141,26 @@ class _UserListPageState extends State<UserListPage>
               user['id'].toString().contains(searchQuery);
 
       switch (selectedFilter) {
-        case 'assigned':
-          return matchesSearch && user['assignedDoctor'] != null;
+        case 'pending':
+          return matchesSearch && user['status'] == 'pending';
         case 'unassigned':
-          return matchesSearch && user['assignedDoctor'] == null;
+          return matchesSearch && user['status'] == 'unassigned';
+        case 'assigned':
+          return matchesSearch && user['status'] == 'assigned';
         default:
           return matchesSearch;
       }
     }).toList();
 
-    // Sort by assignment status and name
+    // Sort by status priority (pending first, then unassigned, then assigned)
     filtered.sort((a, b) {
-      if (a['assignedDoctor'] == null && b['assignedDoctor'] != null) return 1;
-      if (a['assignedDoctor'] != null && b['assignedDoctor'] == null) return -1;
+      const statusPriority = {'pending': 0, 'unassigned': 1, 'assigned': 2};
+      final aPriority = statusPriority[a['status']] ?? 3;
+      final bPriority = statusPriority[b['status']] ?? 3;
+
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
       return a['name']!.compareTo(b['name']!);
     });
 
@@ -96,113 +169,86 @@ class _UserListPageState extends State<UserListPage>
 
   Future<void> _loadUsersFromSupabase() async {
     try {
-      print('=== DEBUG: Starting user loading process ===');
+      print('=== DEBUG: Starting patient loading process ===');
+      print('Current organization ID: $currentOrganizationId');
 
-      // First, get all Organization_User records to identify employees
-      print('Step 1: Fetching Organization_User records...');
-      final orgUsersResponse =
-          await supabase.from('Organization_User').select('*');
+      // Fetch patients from the organization with proper joins
+      print('Step 1: Fetching Patient records for organization...');
+      final patientsResponse = await supabase.from('Patient').select('''
+            *,
+            User!inner(
+              *,
+              Person!inner(*)
+            )
+          ''').eq('organization_id', currentOrganizationId!);
 
-      print('Organization_User records found: ${orgUsersResponse.length}');
+      print('Patient records found: ${patientsResponse.length}');
 
-      // Extract user IDs from Organization_User table
-      final employeeUserIds = <dynamic>{};
-      for (var orgUser in orgUsersResponse) {
-        if (orgUser['user_id'] != null) {
-          employeeUserIds.add(orgUser['user_id']);
-        }
-      }
-
-      print('Employee user IDs extracted: $employeeUserIds');
-
-      // Fetch all users from the User table
-      print('\nStep 2: Fetching User records...');
-      final usersResponse = await supabase.from('User').select('*');
-
-      print('User records found: ${usersResponse.length}');
-
-      if (usersResponse.isEmpty) {
-        print('No User records found!');
+      if (patientsResponse.isEmpty) {
+        print('No Patient records found for organization!');
         setState(() {
           users = [];
         });
         return;
       }
 
-      // Filter users - exclude employees
-      final List<Map<String, dynamic>> potentialPatients = [];
-
-      for (var user in usersResponse) {
-        final isEmployee = employeeUserIds.contains(user['id']);
-
-        if (!isEmployee) {
-          potentialPatients.add(user);
-        }
-      }
-
-      print('Filtered patient users: ${potentialPatients.length}');
-
-      // Extract person IDs from patient users only
-      final personIds = potentialPatients
-          .map((user) => user['person_id'])
-          .where((id) => id != null)
-          .toList();
-
-      print('Person IDs to fetch: $personIds');
-
-      // Fetch corresponding Person records
-      print('\nStep 3: Fetching Person records...');
-      final personsResponse =
-          await supabase.from('Person').select('*').in_('id', personIds);
-
-      print('Person records found: ${personsResponse.length}');
-
-      // Create a map for quick person lookup
-      final Map<dynamic, Map<String, dynamic>> personsMap = {};
-      for (var person in personsResponse) {
-        personsMap[person['id']] = person;
-      }
-
-      // Build the users list (only patients now)
-      print('\nStep 4: Building final users list...');
+      // Build the users list from patients
+      print('\nStep 2: Building final patient list...');
       final List<Map<String, dynamic>> loadedUsers = [];
 
-      for (var user in potentialPatients) {
-        final person = personsMap[user['person_id']];
+      for (var patient in patientsResponse) {
+        final user = patient['User'];
+        final person = user?['Person'];
 
         if (person != null) {
-          final fullName = person['first_name'] != null &&
-                  person['last_name'] != null
-              ? '${person['first_name']} ${person['last_name']}'
-              : person['first_name'] ?? person['last_name'] ?? 'Unknown User';
+          final fullName =
+              person['first_name'] != null && person['last_name'] != null
+                  ? '${person['first_name']} ${person['last_name']}'
+                  : person['first_name'] ??
+                      person['last_name'] ??
+                      'Unknown Patient';
 
           final userMap = {
-            'id': user['id'].toString(),
+            'id': patient['id'].toString(),
             'name': fullName,
             'type': 'Patient',
             'email': person['email'] ?? '',
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
-            'lastVisit': user['created_at'] != null
-                ? DateTime.parse(user['created_at']).toString().split(' ')[0]
+            'lastVisit': patient['created_at'] != null
+                ? DateTime.parse(patient['created_at']).toString().split(' ')[0]
                 : '2024-01-01',
+            'status':
+                patient['status'] ?? 'pending', // Get status from Patient table
             'assignedDoctor': null,
             'assignedDoctorId': null,
             'assignmentId': null,
+            'patientId': patient['id'].toString(),
+            'personId':
+                person['id'].toString(), // Use person ID from Person table
+            'userId': user['id'].toString(), // Also store user ID if needed
           };
 
           loadedUsers.add(userMap);
         }
       }
 
-      print('\n=== DEBUG: User Loading Results ===');
+      print('\n=== DEBUG: Patient Loading Results ===');
       print('Total patients loaded: ${loadedUsers.length}');
+      print('Status breakdown:');
+      final statusCounts = <String, int>{};
+      for (var user in loadedUsers) {
+        statusCounts[user['status']] = (statusCounts[user['status']] ?? 0) + 1;
+      }
+      statusCounts.forEach((status, count) {
+        print('  - $status: $count');
+      });
 
       setState(() {
         users = loadedUsers;
       });
     } catch (e, stackTrace) {
-      print('=== DEBUG: Error loading users ===');
+      print('=== DEBUG: Error loading patients ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
       rethrow;
@@ -212,12 +258,16 @@ class _UserListPageState extends State<UserListPage>
   Future<void> _loadDoctorsFromSupabase() async {
     try {
       print('=== DEBUG: Fetching Doctor/Employee records ===');
+      print('Current organization ID: $currentOrganizationId');
 
-      // Fetch employees from Organization_User table
-      final orgUsersResponse =
-          await supabase.from('Organization_User').select('*');
+      // Fetch employees from Organization_User table filtered by current organization
+      final orgUsersResponse = await supabase
+          .from('Organization_User')
+          .select('*, User!inner(*, Person!inner(*))')
+          .eq('organization_id', currentOrganizationId!);
 
-      print('Organization_User records found: ${orgUsersResponse.length}');
+      print(
+          'Organization_User records found for current org: ${orgUsersResponse.length}');
 
       if (orgUsersResponse.isEmpty) {
         setState(() {
@@ -226,51 +276,14 @@ class _UserListPageState extends State<UserListPage>
         return;
       }
 
-      // Extract user IDs from Organization_User
-      final userIds = orgUsersResponse
-          .map((item) => item['user_id'])
-          .where((id) => id != null)
-          .toList();
-
-      print('User IDs from Organization_User: $userIds');
-
-      // Get User records that match the Organization_User.user_id
-      final usersResponse =
-          await supabase.from('User').select('*').in_('id', userIds);
-      print('User records found: ${usersResponse.length}');
-
-      // Extract person_ids from the User records
-      final personIds = usersResponse
-          .map((user) => user['person_id'])
-          .where((id) => id != null)
-          .toList();
-
-      print('Person IDs to fetch: $personIds');
-
-      // Get Person records using the person_ids
-      final personsResponse =
-          await supabase.from('Person').select('*').in_('id', personIds);
-      print('Person records found: ${personsResponse.length}');
-
-      // Create lookup maps
-      final Map<dynamic, Map<String, dynamic>> usersMap = {};
-      for (var user in usersResponse) {
-        usersMap[user['id']] = user;
-      }
-
-      final Map<dynamic, Map<String, dynamic>> personsMap = {};
-      for (var person in personsResponse) {
-        personsMap[person['id']] = person;
-      }
-
       // Build the doctors list
       final List<Map<String, dynamic>> loadedDoctors = [];
 
       print('\n=== DEBUG: Processing each Organization_User record ===');
 
       for (var orgUser in orgUsersResponse) {
-        final user = usersMap[orgUser['user_id']];
-        final person = user != null ? personsMap[user['person_id']] : null;
+        final user = orgUser['User'];
+        final person = user?['Person'];
 
         final position = orgUser['position']?.toString().toLowerCase() ?? '';
         final department =
@@ -329,6 +342,7 @@ class _UserListPageState extends State<UserListPage>
             'position': orgUser['position'] ?? 'Medical Staff',
             'department': orgUser['department'] ?? 'General',
             'user_id': orgUser['user_id'],
+            'organization_id': orgUser['organization_id'],
             'specialization': orgUser['position'] ?? 'General Practitioner',
           };
 
@@ -338,7 +352,8 @@ class _UserListPageState extends State<UserListPage>
       }
 
       print('\n=== DEBUG: Doctor Loading Results ===');
-      print('Total doctors identified: ${loadedDoctors.length}');
+      print(
+          'Total doctors identified for org $currentOrganizationId: ${loadedDoctors.length}');
 
       setState(() {
         availableDoctors = loadedDoctors;
@@ -365,7 +380,6 @@ class _UserListPageState extends State<UserListPage>
           .eq('status', 'active');
 
       print('Assignments found: ${assignmentsResponse.length}');
-      print('Assignments data: $assignmentsResponse');
 
       if (assignmentsResponse.isEmpty) {
         print('No active assignments found');
@@ -379,7 +393,7 @@ class _UserListPageState extends State<UserListPage>
         final patientId = assignment['patient_id'].toString();
         final doctorId = assignment['doctor_id'].toString();
 
-        // Find the doctor info
+        // Find the doctor info from current organization only
         final doctor = availableDoctors.firstWhere(
           (doc) => doc['id'] == doctorId,
           orElse: () => {},
@@ -394,7 +408,7 @@ class _UserListPageState extends State<UserListPage>
         }
       }
 
-      // Apply assignments to users
+      // Apply assignments to users and update status
       print('Applying assignments to users...');
       for (int i = 0; i < users.length; i++) {
         final patientId = users[i]['id'];
@@ -404,6 +418,8 @@ class _UserListPageState extends State<UserListPage>
           users[i]['assignedDoctor'] = assignment['doctorName'];
           users[i]['assignedDoctorId'] = assignment['doctorId'];
           users[i]['assignmentId'] = assignment['assignmentId'];
+          users[i]['status'] =
+              'assigned'; // Override status if doctor is assigned
 
           print(
               'Applied assignment: ${users[i]['name']} -> ${assignment['doctorName']}');
@@ -418,6 +434,50 @@ class _UserListPageState extends State<UserListPage>
     }
   }
 
+  // Approve pending patient (change status from pending to unassigned)
+  Future<void> _approvePendingPatient(int userIndex) async {
+    try {
+      final patientId = users[userIndex]['id'];
+
+      // Update status in database
+      await supabase
+          .from('Patient')
+          .update({'status': 'unassigned'}).eq('id', patientId);
+
+      // Update local state
+      setState(() {
+        users[userIndex]['status'] = 'unassigned';
+      });
+
+      _showSnackBar(
+          'Patient ${users[userIndex]['name']} approved and ready for assignment',
+          const Color(0xFF38A169));
+    } catch (e) {
+      _showSnackBar('Failed to approve patient: $e', const Color(0xFFE53E3E));
+    }
+  }
+
+  // Reject pending patient (remove from organization)
+  Future<void> _rejectPendingPatient(int userIndex) async {
+    try {
+      final patientId = users[userIndex]['id'];
+
+      // Remove patient from organization (set organization_id to null or delete)
+      await supabase.from('Patient').update(
+          {'organization_id': null, 'status': 'rejected'}).eq('id', patientId);
+
+      // Remove from local state
+      setState(() {
+        users.removeAt(userIndex);
+      });
+
+      _showSnackBar('Patient rejected and removed from organization',
+          const Color(0xFFD69E2E));
+    } catch (e) {
+      _showSnackBar('Failed to reject patient: $e', const Color(0xFFE53E3E));
+    }
+  }
+
   Future<void> _saveAssignmentToDatabase(
       String patientUserId, String doctorOrgUserId) async {
     try {
@@ -425,16 +485,14 @@ class _UserListPageState extends State<UserListPage>
       print('Patient User ID: $patientUserId');
       print('Doctor Organization_User ID: $doctorOrgUserId');
 
-      // Get the current logged-in user's ID (this is the auth UUID)
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null) {
         throw Exception('No authenticated user found');
       }
 
       final currentAuthUserId = currentUser.id;
-      print('Current logged-in auth user ID: $currentAuthUserId');
 
-      // First, check if an assignment already exists for this patient
+      // Check if an assignment already exists for this patient
       final existingAssignment = await supabase
           .from('Doctor_User_Assignment')
           .select('*')
@@ -445,40 +503,36 @@ class _UserListPageState extends State<UserListPage>
       final assignmentData = {
         'doctor_id': doctorOrgUserId,
         'assigned_at': DateTime.now().toIso8601String(),
-        'assigned_by': currentAuthUserId, // Use auth UUID directly
+        'assigned_by': currentAuthUserId,
       };
 
       if (existingAssignment != null) {
         // Update existing assignment
-        print(
-            'Updating existing assignment with ID: ${existingAssignment['id']}');
-
         await supabase
             .from('Doctor_User_Assignment')
             .update(assignmentData)
             .eq('id', existingAssignment['id']);
-
-        print('Assignment updated successfully');
       } else {
         // Create new assignment
-        print('Creating new assignment...');
-
-        // Add required fields for new assignment
         assignmentData.addAll({
           'patient_id': patientUserId,
           'status': 'active',
         });
 
         await supabase.from('Doctor_User_Assignment').insert(assignmentData);
-
-        print('New assignment created successfully');
       }
+
+      // Update patient status to 'assigned'
+      await supabase
+          .from('Patient')
+          .update({'status': 'assigned'}).eq('id', patientUserId);
+
+      print('Assignment saved successfully');
     } catch (e, stackTrace) {
       print('=== DEBUG: Error saving assignment ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
 
-      // Show error to user
       if (mounted) {
         _showSnackBar('Failed to save assignment: $e', Colors.red);
       }
@@ -488,6 +542,14 @@ class _UserListPageState extends State<UserListPage>
 
   void _assignDoctor(int userIndex, Map<String, dynamic> doctor) async {
     try {
+      // Check if patient is approved first
+      if (users[userIndex]['status'] == 'pending') {
+        _showSnackBar(
+            'Please approve this patient first before assigning a doctor',
+            const Color(0xFFD69E2E));
+        return;
+      }
+
       // Show loading
       _showSnackBar('Assigning doctor...', const Color(0xFF3182CE),
           showProgress: true);
@@ -499,6 +561,7 @@ class _UserListPageState extends State<UserListPage>
       setState(() {
         users[userIndex]['assignedDoctor'] = doctor['name'];
         users[userIndex]['assignedDoctorId'] = doctor['id'];
+        users[userIndex]['status'] = 'assigned';
       });
 
       // Show success message
@@ -513,7 +576,6 @@ class _UserListPageState extends State<UserListPage>
             ));
       }
     } catch (e) {
-      // Show error message
       if (mounted) {
         _showSnackBar('Failed to assign doctor: $e', const Color(0xFFE53E3E));
       }
@@ -523,6 +585,7 @@ class _UserListPageState extends State<UserListPage>
   Future<void> _removeAssignment(int userIndex) async {
     try {
       final assignmentId = users[userIndex]['assignmentId'];
+      final patientId = users[userIndex]['id'];
 
       if (assignmentId != null) {
         // Remove from database
@@ -531,11 +594,17 @@ class _UserListPageState extends State<UserListPage>
             .update({'status': 'inactive'}).eq('id', assignmentId);
       }
 
+      // Update patient status back to unassigned
+      await supabase
+          .from('Patient')
+          .update({'status': 'unassigned'}).eq('id', patientId);
+
       // Update local state
       setState(() {
         users[userIndex]['assignedDoctor'] = null;
         users[userIndex]['assignedDoctorId'] = null;
         users[userIndex]['assignmentId'] = null;
+        users[userIndex]['status'] = 'unassigned';
       });
 
       _showSnackBar('Removed doctor assignment for ${users[userIndex]['name']}',
@@ -575,6 +644,12 @@ class _UserListPageState extends State<UserListPage>
   }
 
   void _showAssignDoctorDialog(int userIndex) {
+    // Check if patient is pending
+    if (users[userIndex]['status'] == 'pending') {
+      _showApprovalDialog(userIndex);
+      return;
+    }
+
     if (availableDoctors.isEmpty) {
       showDialog(
         context: context,
@@ -733,6 +808,64 @@ class _UserListPageState extends State<UserListPage>
                   foregroundColor: const Color(0xFFE53E3E)),
               child: const Text('Remove Assignment'),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showApprovalDialog(int userIndex) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.pending_actions_rounded, color: Color(0xFFD69E2E)),
+            SizedBox(width: 8),
+            Text('Patient Approval Required'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Patient "${users[userIndex]['name']}" is pending approval.',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You need to approve this patient before they can be assigned to a doctor.',
+              style: TextStyle(color: Color(0xFF4A5568)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: Color(0xFF718096))),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _rejectPendingPatient(userIndex);
+            },
+            style:
+                TextButton.styleFrom(foregroundColor: const Color(0xFFE53E3E)),
+            child: const Text('Reject'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _approvePendingPatient(userIndex);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF38A169),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Approve'),
+          ),
         ],
       ),
     );
@@ -1027,19 +1160,6 @@ class _UserListPageState extends State<UserListPage>
                 ),
               ],
             ),
-      floatingActionButton: users.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: _showQuickAssignDialog,
-              backgroundColor: const Color(0xFF3B82F6),
-              foregroundColor: Colors.white,
-              elevation: 8,
-              icon: const Icon(Icons.bolt_rounded),
-              label: const Text('Quick Assign'),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            )
-          : null,
     );
   }
 
@@ -1298,7 +1418,7 @@ class _UserListPageState extends State<UserListPage>
       margin: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Search Bar
+          // Search Bar (existing code remains the same)
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1333,54 +1453,111 @@ class _UserListPageState extends State<UserListPage>
           ),
           const SizedBox(height: 12),
 
-          // Filter Chips
-          Row(
-            children: [
-              _buildFilterChip('All', 'all'),
-              const SizedBox(width: 8),
-              _buildFilterChip('Assigned', 'assigned'),
-              const SizedBox(width: 8),
-              _buildFilterChip('Unassigned', 'unassigned'),
-              const Spacer(),
-              Text(
-                '${filteredUsers.length} patients',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+          // Updated Filter Chips with Pending
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All', 'all'),
+                const SizedBox(width: 8),
+                _buildFilterChip('Pending', 'pending',
+                    color: const Color(0xFFF59E0B), // Orange for pending
+                    icon: Icons.hourglass_empty_rounded),
+                const SizedBox(width: 8),
+                _buildFilterChip('Unassigned', 'unassigned',
+                    color: const Color(0xFFEF4444), // Red for unassigned
+                    icon: Icons.person_off_rounded),
+                const SizedBox(width: 8),
+                _buildFilterChip('Assigned', 'assigned',
+                    color: const Color(0xFF10B981), // Green for assigned
+                    icon: Icons.person_add_alt_rounded),
+                const SizedBox(width: 16),
+                Text(
+                  '${filteredUsers.length} patients',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterChip(String label, String value) {
+  Widget _buildFilterChip(String label, String value,
+      {Color? color, IconData? icon}) {
     final isSelected = selectedFilter == value;
+    final chipColor = color ?? const Color(0xFF3B82F6);
+
     return FilterChip(
-      label: Text(label),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon,
+                size: 16, color: isSelected ? chipColor : Colors.grey.shade600),
+            const SizedBox(width: 4),
+          ],
+          Text(label),
+        ],
+      ),
       selected: isSelected,
       onSelected: (selected) => setState(() => selectedFilter = value),
       backgroundColor: Colors.white,
-      selectedColor: const Color(0xFF3B82F6).withOpacity(0.1),
-      checkmarkColor: const Color(0xFF3B82F6),
+      selectedColor: chipColor.withOpacity(0.1),
+      checkmarkColor: chipColor,
       labelStyle: TextStyle(
-        color: isSelected ? const Color(0xFF3B82F6) : Colors.grey.shade700,
+        color: isSelected ? chipColor : Colors.grey.shade700,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
-          color: isSelected ? const Color(0xFF3B82F6) : Colors.grey.shade300,
+          color: isSelected ? chipColor : Colors.grey.shade300,
         ),
       ),
     );
   }
 
   Widget _buildEnhancedPatientCard(Map<String, dynamic> user, int index) {
+    final String status = user['status'] ?? 'pending';
     final bool hasAssignedDoctor = user['assignedDoctor'] != null;
+
+    // Define colors based on status
+    Color statusColor;
+    Color borderColor;
+    IconData statusIcon;
+    String statusText;
+
+    switch (status) {
+      case 'pending':
+        statusColor = const Color(0xFFF59E0B);
+        borderColor = const Color(0xFFF59E0B).withOpacity(0.3);
+        statusIcon = Icons.hourglass_empty_rounded;
+        statusText = 'Pending Approval';
+        break;
+      case 'unassigned':
+        statusColor = const Color(0xFFEF4444);
+        borderColor = const Color(0xFFEF4444).withOpacity(0.3);
+        statusIcon = Icons.person_off_rounded;
+        statusText = 'Unassigned';
+        break;
+      case 'assigned':
+        statusColor = const Color(0xFF10B981);
+        borderColor = const Color(0xFF10B981).withOpacity(0.3);
+        statusIcon = Icons.check_circle_rounded;
+        statusText = 'Assigned';
+        break;
+      default:
+        statusColor = Colors.grey;
+        borderColor = Colors.grey.withOpacity(0.3);
+        statusIcon = Icons.help_outline_rounded;
+        statusText = 'Unknown';
+    }
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -1413,12 +1590,7 @@ class _UserListPageState extends State<UserListPage>
                     Colors.grey.shade50,
                   ],
                 ),
-                border: Border.all(
-                  color: hasAssignedDoctor
-                      ? const Color(0xFF10B981).withOpacity(0.3)
-                      : const Color(0xFFEF4444).withOpacity(0.3),
-                  width: 2,
-                ),
+                border: Border.all(color: borderColor, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.08),
@@ -1437,7 +1609,7 @@ class _UserListPageState extends State<UserListPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Header Row
+                        // Header Row with Status Badge
                         Row(
                           children: [
                             Hero(
@@ -1523,153 +1695,252 @@ class _UserListPageState extends State<UserListPage>
                                 ],
                               ),
                             ),
-                            // Status Indicator
+                            // Status Badge
                             Container(
-                              padding: const EdgeInsets.all(8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color: hasAssignedDoctor
-                                    ? const Color(0xFF10B981).withOpacity(0.1)
-                                    : const Color(0xFFEF4444).withOpacity(0.1),
+                                color: statusColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: statusColor.withOpacity(0.3)),
                               ),
-                              child: Icon(
-                                hasAssignedDoctor
-                                    ? Icons.check_circle_rounded
-                                    : Icons.warning_rounded,
-                                color: hasAssignedDoctor
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFEF4444),
-                                size: 22,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(statusIcon,
+                                      color: statusColor, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
 
-                        // Doctor Assignment Section
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: hasAssignedDoctor
-                                ? const Color(0xFF10B981).withOpacity(0.05)
-                                : const Color(0xFFEF4444).withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: hasAssignedDoctor
-                                  ? const Color(0xFF10B981).withOpacity(0.2)
-                                  : const Color(0xFFEF4444).withOpacity(0.2),
+                        // Status-specific content section
+                        if (status == 'pending') ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF59E0B).withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color:
+                                      const Color(0xFFF59E0B).withOpacity(0.2)),
                             ),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.medical_services_rounded,
-                                    size: 20,
-                                    color: hasAssignedDoctor
-                                        ? const Color(0xFF10B981)
-                                        : const Color(0xFFEF4444),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      hasAssignedDoctor
-                                          ? 'Assigned to: ${user['assignedDoctor']}'
-                                          : 'No doctor assigned',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: hasAssignedDoctor
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFFEF4444),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.pending_actions_rounded,
+                                        size: 20,
+                                        color: const Color(0xFFF59E0B)),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'This patient is awaiting your approval',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFFF59E0B),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.schedule_rounded,
-                                    size: 16,
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Review patient information and approve to allow doctor assignment',
+                                  style: TextStyle(
+                                    fontSize: 12,
                                     color: Colors.grey.shade600,
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Last visit: ${user['lastVisit']}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          // Doctor Assignment Section for non-pending patients
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: hasAssignedDoctor
+                                  ? const Color(0xFF10B981).withOpacity(0.05)
+                                  : const Color(0xFFEF4444).withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: hasAssignedDoctor
+                                    ? const Color(0xFF10B981).withOpacity(0.2)
+                                    : const Color(0xFFEF4444).withOpacity(0.2),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.medical_services_rounded,
+                                      size: 20,
+                                      color: hasAssignedDoctor
+                                          ? const Color(0xFF10B981)
+                                          : const Color(0xFFEF4444),
                                     ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        hasAssignedDoctor
+                                            ? 'Assigned to: ${user['assignedDoctor']}'
+                                            : 'No doctor assigned',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: hasAssignedDoctor
+                                              ? const Color(0xFF10B981)
+                                              : const Color(0xFFEF4444),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(Icons.schedule_rounded,
+                                        size: 16, color: Colors.grey.shade600),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Last visit: ${user['lastVisit']}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    if (user['email'].isNotEmpty) ...[
+                                      Icon(Icons.email_outlined,
+                                          size: 16,
+                                          color: Colors.grey.shade600),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    if (user['phone'].isNotEmpty) ...[
+                                      Icon(Icons.phone_outlined,
+                                          size: 16,
+                                          color: Colors.grey.shade600),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+
+                        // Status-specific Action Buttons
+                        if (status == 'pending') ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _rejectPendingPatient(index),
+                                  icon:
+                                      const Icon(Icons.close_rounded, size: 18),
+                                  label: const Text('Reject'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFFEF4444),
+                                    side: const BorderSide(
+                                        color: Color(0xFFEF4444)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
                                   ),
-                                  const Spacer(),
-                                  if (user['email'].isNotEmpty) ...[
-                                    Icon(Icons.email_outlined,
-                                        size: 16, color: Colors.grey.shade600),
-                                    const SizedBox(width: 4),
-                                  ],
-                                  if (user['phone'].isNotEmpty) ...[
-                                    Icon(Icons.phone_outlined,
-                                        size: 16, color: Colors.grey.shade600),
-                                  ],
-                                ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () =>
+                                      _approvePendingPatient(index),
+                                  icon:
+                                      const Icon(Icons.check_rounded, size: 18),
+                                  label: const Text('Approve'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF10B981),
+                                    foregroundColor: Colors.white,
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () => _showUserDetails(user, index),
-                                icon: const Icon(Icons.visibility_outlined,
-                                    size: 18),
-                                label: const Text('View Details'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF3B82F6),
-                                  side: const BorderSide(
-                                      color: Color(0xFF3B82F6)),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                        ] else ...[
+                          // Regular action buttons for approved patients
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _showUserDetails(user, index),
+                                  icon: const Icon(Icons.visibility_outlined,
+                                      size: 18),
+                                  label: const Text('View Details'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF3B82F6),
+                                    side: const BorderSide(
+                                        color: Color(0xFF3B82F6)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
                                   ),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _showAssignDoctorDialog(index),
-                                icon: Icon(
-                                  hasAssignedDoctor
-                                      ? Icons.edit_rounded
-                                      : Icons.person_add_rounded,
-                                  size: 18,
-                                ),
-                                label: Text(
-                                    hasAssignedDoctor ? 'Change' : 'Assign'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: hasAssignedDoctor
-                                      ? const Color(0xFFF59E0B)
-                                      : const Color(0xFF3B82F6),
-                                  foregroundColor: Colors.white,
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () =>
+                                      _showAssignDoctorDialog(index),
+                                  icon: Icon(
+                                    hasAssignedDoctor
+                                        ? Icons.edit_rounded
+                                        : Icons.person_add_rounded,
+                                    size: 18,
                                   ),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  label: Text(
+                                      hasAssignedDoctor ? 'Change' : 'Assign'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: hasAssignedDoctor
+                                        ? const Color(0xFFF59E0B)
+                                        : const Color(0xFF3B82F6),
+                                    foregroundColor: Colors.white,
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1680,87 +1951,5 @@ class _UserListPageState extends State<UserListPage>
         ),
       ),
     );
-  }
-
-  void _showQuickAssignDialog() {
-    final unassignedPatients =
-        users.where((u) => u['assignedDoctor'] == null).toList();
-
-    if (unassignedPatients.isEmpty) {
-      _showSnackBar('All patients are already assigned to doctors',
-          const Color(0xFF38A169));
-      return;
-    }
-
-    if (availableDoctors.isEmpty) {
-      _showSnackBar(
-          'No doctors available for assignment', const Color(0xFFE53E3E));
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.flash_on_rounded, color: Color(0xFF3182CE)),
-            SizedBox(width: 8),
-            Text('Quick Assign'),
-          ],
-        ),
-        content: Text(
-          'Automatically assign ${unassignedPatients.length} unassigned patients to available doctors?',
-          style: const TextStyle(color: Color(0xFF4A5568)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF718096))),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _performQuickAssign(unassignedPatients);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3182CE),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Assign All'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _performQuickAssign(
-      List<Map<String, dynamic>> unassignedPatients) async {
-    _showSnackBar('Performing quick assignment...', const Color(0xFF3182CE),
-        showProgress: true);
-
-    try {
-      for (int i = 0; i < unassignedPatients.length; i++) {
-        final patient = unassignedPatients[i];
-        final doctorIndex = i % availableDoctors.length;
-        final doctor = availableDoctors[doctorIndex];
-
-        final patientIndex = users.indexWhere((u) => u['id'] == patient['id']);
-        if (patientIndex != -1) {
-          await _saveAssignmentToDatabase(patient['id'], doctor['id']);
-          setState(() {
-            users[patientIndex]['assignedDoctor'] = doctor['name'];
-            users[patientIndex]['assignedDoctorId'] = doctor['id'];
-          });
-        }
-      }
-
-      _showSnackBar(
-          'Successfully assigned ${unassignedPatients.length} patients!',
-          const Color(0xFF38A169));
-    } catch (e) {
-      _showSnackBar('Quick assignment failed: $e', const Color(0xFFE53E3E));
-    }
   }
 }
