@@ -285,13 +285,21 @@ class _PatientListPageState extends State<PatientListPage>
         final user = orgUser['User'];
         final person = user?['Person'];
 
+        // IMPORTANT: Verify this record belongs to current organization
+        if (orgUser['organization_id']?.toString() != currentOrganizationId) {
+          print(
+              '  - SKIPPING: Wrong organization ${orgUser['organization_id']}');
+          continue;
+        }
+
         final position = orgUser['position']?.toString().toLowerCase() ?? '';
         final department =
             orgUser['department']?.toString().toLowerCase() ?? '';
 
-        print('Processing employee:');
+        print('Processing employee from org $currentOrganizationId:');
         print('  - Position: ${orgUser['position']}');
         print('  - Department: ${orgUser['department']}');
+        print('  - Organization ID: ${orgUser['organization_id']}');
 
         // Doctor identification
         bool isDoctor = false;
@@ -337,11 +345,12 @@ class _PatientListPageState extends State<PatientListPage>
           }
 
           final doctorMap = {
-            'id': orgUser['id'].toString(),
+            'id': orgUser['id'].toString(), // Organization_User ID
+            'user_id':
+                orgUser['user_id'], // This is what we need for assignments
             'name': doctorName,
             'position': orgUser['position'] ?? 'Medical Staff',
             'department': orgUser['department'] ?? 'General',
-            'user_id': orgUser['user_id'],
             'organization_id': orgUser['organization_id'],
             'specialization': orgUser['position'] ?? 'General Practitioner',
           };
@@ -373,16 +382,29 @@ class _PatientListPageState extends State<PatientListPage>
     try {
       print('=== DEBUG: Loading assignments from database ===');
 
-      // Get all active assignments
+      // Get all active assignments and join with doctor info to filter by organization
+      // IMPORTANT: doctor_id in Doctor_User_Assignment refers to Organization_User.id
       final assignmentsResponse = await supabase
           .from('Doctor_User_Assignment')
-          .select('*')
-          .eq('status', 'active');
+          .select('''
+        *,
+        Organization_User!Doctor_User_Assignment_doctor_id_fkey(
+          id,
+          organization_id,
+          position,
+          User!inner(
+            Person!inner(first_name, last_name)
+          )
+        )
+      ''')
+          .eq('status', 'active')
+          .eq('Organization_User.organization_id', currentOrganizationId!);
 
-      print('Assignments found: ${assignmentsResponse.length}');
+      print(
+          'Assignments found for current organization: ${assignmentsResponse.length}');
 
       if (assignmentsResponse.isEmpty) {
-        print('No active assignments found');
+        print('No active assignments found for current organization');
         return;
       }
 
@@ -391,28 +413,41 @@ class _PatientListPageState extends State<PatientListPage>
 
       for (var assignment in assignmentsResponse) {
         final patientId = assignment['patient_id'].toString();
-        final doctorId = assignment['doctor_id'].toString();
+        final doctorOrgUserId =
+            assignment['doctor_id'].toString(); // This is Organization_User.id
+        final orgUser = assignment['Organization_User'];
+        final user = orgUser?['User'];
+        final person = user?['Person'];
 
-        // Find the doctor info from current organization only
-        final doctor = availableDoctors.firstWhere(
-          (doc) => doc['id'] == doctorId,
-          orElse: () => {},
-        );
-
-        if (doctor.isNotEmpty) {
-          patientAssignments[patientId] = {
-            'doctorName': doctor['name'],
-            'doctorId': doctorId,
-            'assignmentId': assignment['id'],
-          };
+        // Build doctor name
+        String doctorName = 'Unknown Doctor';
+        if (person != null) {
+          doctorName =
+              person['first_name'] != null && person['last_name'] != null
+                  ? '${person['first_name']} ${person['last_name']}'
+                  : person['first_name'] ??
+                      person['last_name'] ??
+                      'Dr. ${orgUser?['position']}';
+        } else {
+          doctorName = 'Dr. ${orgUser?['position'] ?? 'Unknown'}';
         }
+
+        patientAssignments[patientId] = {
+          'doctorName': doctorName,
+          'doctorId': doctorOrgUserId, // Store Organization_User.id
+          'assignmentId': assignment['id'],
+        };
+
+        print(
+            'Found assignment: Patient $patientId -> Doctor $doctorName (Org User ID: $doctorOrgUserId)');
       }
 
       // Apply assignments to users and update status
       print('Applying assignments to users...');
       for (int i = 0; i < users.length; i++) {
-        final patientId = users[i]['id'];
-        final assignment = patientAssignments[patientId];
+        // Check both user ID patterns
+        String patientUserId = users[i]['userId'] ?? users[i]['id'];
+        final assignment = patientAssignments[patientUserId];
 
         if (assignment != null) {
           users[i]['assignedDoctor'] = assignment['doctorName'];
@@ -490,42 +525,149 @@ class _PatientListPageState extends State<PatientListPage>
         throw Exception('No authenticated user found');
       }
 
-      final currentAuthUserId = currentUser.id;
+      // Check what tables might contain this patient ID
+      print('=== DEBUG: Checking which tables contain this patient ID ===');
+
+      // Check User table first
+      final userTableCheck = await supabase
+          .from('User')
+          .select('id, email')
+          .eq('id', patientUserId)
+          .maybeSingle();
+
+      print(
+          'User table check: ${userTableCheck != null ? "FOUND" : "NOT FOUND"}');
+      if (userTableCheck != null) {
+        print('User found: ${userTableCheck['email']}');
+      }
+
+      // Check Patient table
+      final patientTableCheck = await supabase
+          .from('Patient')
+          .select('id, user_id, organization_id, status')
+          .eq('id', patientUserId)
+          .maybeSingle();
+
+      print(
+          'Patient table (by id) check: ${patientTableCheck != null ? "FOUND" : "NOT FOUND"}');
+      if (patientTableCheck != null) {
+        print(
+            'Patient found: user_id=${patientTableCheck['user_id']}, org_id=${patientTableCheck['organization_id']}, status=${patientTableCheck['status']}');
+      }
+
+      // Determine the actual user ID to use
+      String actualPatientUserId = patientUserId;
+
+      if (userTableCheck == null) {
+        print('=== DEBUG: Patient ID not found in User table ===');
+
+        if (patientTableCheck != null) {
+          // ID is from Patient table, use the user_id
+          actualPatientUserId = patientTableCheck['user_id'];
+          print('Found in Patient table! Using user_id: $actualPatientUserId');
+
+          // Verify this user_id exists in User table
+          final actualUserCheck = await supabase
+              .from('User')
+              .select('id, email')
+              .eq('id', actualPatientUserId)
+              .maybeSingle();
+
+          if (actualUserCheck != null) {
+            print(
+                'Confirmed: User exists in User table: ${actualUserCheck['email']}');
+          } else {
+            throw Exception(
+                'User ID $actualPatientUserId from Patient table does not exist in User table');
+          }
+        } else {
+          throw Exception(
+              'Patient ID $patientUserId not found in User or Patient tables');
+        }
+      } else {
+        print('Patient ID found directly in User table');
+      }
+
+      print('=== DEBUG: Using actualPatientUserId: $actualPatientUserId ===');
+
+      // Find the doctor info to get the Organization_User ID (NOT user_id)
+      final doctor = availableDoctors.firstWhere(
+        (doc) => doc['id'] == doctorOrgUserId,
+        orElse: () =>
+            throw Exception('Doctor not found in current organization'),
+      );
+
+      // Verify doctor belongs to current organization
+      if (doctor['organization_id']?.toString() != currentOrganizationId) {
+        throw Exception('Doctor does not belong to current organization');
+      }
+
+      // IMPORTANT: Use the Organization_User ID, not the user_id
+      final doctorOrganizationUserId =
+          doctor['id']; // This is Organization_User.id
+      print('Doctor Organization_User ID: $doctorOrganizationUserId');
+
+      // Verify the Organization_User exists
+      final doctorOrgUserExists = await supabase
+          .from('Organization_User')
+          .select('id, user_id')
+          .eq('id', doctorOrganizationUserId)
+          .maybeSingle();
+
+      if (doctorOrgUserExists == null) {
+        throw Exception(
+            'Doctor Organization_User ID $doctorOrganizationUserId does not exist');
+      }
+
+      print('Verified Organization_User exists: ${doctorOrgUserExists['id']}');
 
       // Check if an assignment already exists for this patient
       final existingAssignment = await supabase
           .from('Doctor_User_Assignment')
           .select('*')
-          .eq('patient_id', patientUserId)
+          .eq('patient_id', actualPatientUserId)
           .eq('status', 'active')
           .maybeSingle();
 
-      final assignmentData = {
-        'doctor_id': doctorOrgUserId,
-        'assigned_at': DateTime.now().toIso8601String(),
-        'assigned_by': currentAuthUserId,
-      };
-
       if (existingAssignment != null) {
         // Update existing assignment
-        await supabase
-            .from('Doctor_User_Assignment')
-            .update(assignmentData)
-            .eq('id', existingAssignment['id']);
+        await supabase.from('Doctor_User_Assignment').update({
+          'doctor_id': doctorOrganizationUserId, // Use Organization_User ID
+          'assigned_at': DateTime.now().toIso8601String(),
+        }).eq('id', existingAssignment['id']);
+
+        print(
+            'Updated existing assignment with ID: ${existingAssignment['id']}');
       } else {
         // Create new assignment
-        assignmentData.addAll({
-          'patient_id': patientUserId,
+        final assignmentData = {
+          'patient_id': actualPatientUserId, // Use the actual User ID
+          'doctor_id': doctorOrganizationUserId, // Use Organization_User ID
           'status': 'active',
-        });
+          'assigned_at': DateTime.now().toIso8601String(),
+        };
 
-        await supabase.from('Doctor_User_Assignment').insert(assignmentData);
+        print('=== DEBUG: Creating assignment with data: $assignmentData ===');
+
+        final result = await supabase
+            .from('Doctor_User_Assignment')
+            .insert(assignmentData)
+            .select()
+            .single();
+
+        print('Created new assignment with ID: ${result['id']}');
       }
 
-      // Update patient status to 'assigned'
-      await supabase
-          .from('Patient')
-          .update({'status': 'assigned'}).eq('id', patientUserId);
+      // Update patient status if we found it in Patient table
+      if (patientTableCheck != null) {
+        try {
+          await supabase.from('Patient').update({'status': 'assigned'}).eq(
+              'id', patientUserId); // Use original patient ID for Patient table
+          print('Updated patient status to assigned');
+        } catch (e) {
+          print('Warning: Could not update Patient table status: $e');
+        }
+      }
 
       print('Assignment saved successfully');
     } catch (e, stackTrace) {
@@ -542,6 +684,11 @@ class _PatientListPageState extends State<PatientListPage>
 
   void _assignDoctor(int userIndex, Map<String, dynamic> doctor) async {
     try {
+      print('=== DEBUG: _assignDoctor called ===');
+      print('User index: $userIndex');
+      print('Full user data: ${users[userIndex]}');
+      print('All keys in user data: ${users[userIndex].keys.toList()}');
+
       // Check if patient is approved first
       if (users[userIndex]['status'] == 'pending') {
         _showSnackBar(
@@ -550,12 +697,81 @@ class _PatientListPageState extends State<PatientListPage>
         return;
       }
 
+      // Determine the correct patient user ID
+      String? patientUserId;
+
+      // Priority 1: Use userId field if it exists (this should be the User.id)
+      if (users[userIndex].containsKey('userId') &&
+          users[userIndex]['userId'] != null) {
+        patientUserId = users[userIndex]['userId'];
+        print('Using userId field as patient ID: $patientUserId');
+      }
+      // Priority 2: Check if ID is from Patient table and get user_id
+      else if (users[userIndex].containsKey('patientId') &&
+          users[userIndex]['patientId'] != null) {
+        // This should be handled in the data loading, but double-check
+        final patientRecord = await supabase
+            .from('Patient')
+            .select('user_id')
+            .eq('id', users[userIndex]['patientId'])
+            .maybeSingle();
+
+        if (patientRecord != null) {
+          patientUserId = patientRecord['user_id'];
+          print('Retrieved user_id from Patient table: $patientUserId');
+        }
+      }
+      // Priority 3: Use id field (but verify it's a User.id)
+      else if (users[userIndex].containsKey('id') &&
+          users[userIndex]['id'] != null) {
+        // Verify this ID exists in User table
+        final userCheck = await supabase
+            .from('User')
+            .select('id')
+            .eq('id', users[userIndex]['id'])
+            .maybeSingle();
+
+        if (userCheck != null) {
+          patientUserId = users[userIndex]['id'];
+          print(
+              'Using id field as patient ID (verified in User table): $patientUserId');
+        } else {
+          // Check if it's a Patient.id and get the user_id
+          final patientCheck = await supabase
+              .from('Patient')
+              .select('user_id')
+              .eq('id', users[userIndex]['id'])
+              .maybeSingle();
+
+          if (patientCheck != null) {
+            patientUserId = patientCheck['user_id'];
+            print('ID was Patient.id, using user_id: $patientUserId');
+          }
+        }
+      }
+
+      if (patientUserId == null || patientUserId.isEmpty) {
+        throw Exception('Could not determine valid patient User ID');
+      }
+
+      final doctorOrgUserId =
+          doctor['id']; // This should be Organization_User.id
+
+      if (doctorOrgUserId == null || doctorOrgUserId.isEmpty) {
+        throw Exception('Doctor organization user ID is missing');
+      }
+
+      print('=== DEBUG: Final IDs being used ===');
+      print('Patient User ID: $patientUserId');
+      print('Patient User ID type: ${patientUserId.runtimeType}');
+      print('Doctor Organization_User ID: $doctorOrgUserId');
+
       // Show loading
       _showSnackBar('Assigning doctor...', const Color(0xFF3182CE),
           showProgress: true);
 
       // Save to database first
-      await _saveAssignmentToDatabase(users[userIndex]['id'], doctor['id']);
+      await _saveAssignmentToDatabase(patientUserId, doctorOrgUserId);
 
       // Update local state
       setState(() {
@@ -576,28 +792,61 @@ class _PatientListPageState extends State<PatientListPage>
             ));
       }
     } catch (e) {
+      print('Error in _assignDoctor: $e');
       if (mounted) {
         _showSnackBar('Failed to assign doctor: $e', const Color(0xFFE53E3E));
       }
     }
   }
 
+// Helper method to remove assignment
   Future<void> _removeAssignment(int userIndex) async {
     try {
-      final assignmentId = users[userIndex]['assignmentId'];
-      final patientId = users[userIndex]['id'];
+      // Get the correct patient user ID
+      String patientUserId =
+          users[userIndex]['userId'] ?? users[userIndex]['id'];
 
-      if (assignmentId != null) {
-        // Remove from database
-        await supabase
-            .from('Doctor_User_Assignment')
-            .update({'status': 'inactive'}).eq('id', assignmentId);
+      // Check if this is a Patient table ID that needs to be converted to User ID
+      if (users[userIndex]['userId'] != null) {
+        patientUserId =
+            users[userIndex]['userId']; // Use the User.id from userId field
+      } else {
+        // Check if the ID is from Patient table
+        final patientCheck = await supabase
+            .from('Patient')
+            .select('user_id')
+            .eq('id', users[userIndex]['id'])
+            .maybeSingle();
+
+        if (patientCheck != null) {
+          patientUserId = patientCheck['user_id'];
+          print('Using patient user_id for removal: $patientUserId');
+        }
       }
 
+      print('=== DEBUG: Removing assignment for patient: $patientUserId ===');
+
+      // Remove from database
+      final result = await supabase
+          .from('Doctor_User_Assignment')
+          .update({'status': 'inactive'})
+          .eq('patient_id', patientUserId)
+          .eq('status', 'active')
+          .select();
+
+      print('Updated ${result.length} assignment records to inactive');
+
       // Update patient status back to unassigned
-      await supabase
-          .from('Patient')
-          .update({'status': 'unassigned'}).eq('id', patientId);
+      try {
+        final originalPatientId =
+            users[userIndex]['patientId'] ?? users[userIndex]['id'];
+        await supabase
+            .from('Patient')
+            .update({'status': 'unassigned'}).eq('id', originalPatientId);
+        print('Updated patient status to unassigned');
+      } catch (e) {
+        print('Warning: Could not update Patient table status: $e');
+      }
 
       // Update local state
       setState(() {
@@ -607,11 +856,26 @@ class _PatientListPageState extends State<PatientListPage>
         users[userIndex]['status'] = 'unassigned';
       });
 
-      _showSnackBar('Removed doctor assignment for ${users[userIndex]['name']}',
-          const Color(0xFFD69E2E));
+      _showSnackBar('Assignment removed successfully', const Color(0xFF38A169));
     } catch (e) {
+      print('Error removing assignment: $e');
       _showSnackBar('Failed to remove assignment: $e', const Color(0xFFE53E3E));
     }
+  }
+
+// Helper method to validate user data before assignment
+  bool _validateUserForAssignment(Map<String, dynamic> user) {
+    if (user['id'] == null || user['id'].toString().isEmpty) {
+      print('User validation failed: Missing user ID');
+      return false;
+    }
+
+    if (user['status'] == 'pending') {
+      print('User validation failed: User status is pending');
+      return false;
+    }
+
+    return true;
   }
 
   void _showSnackBar(String message, Color color,
@@ -643,6 +907,7 @@ class _PatientListPageState extends State<PatientListPage>
     );
   }
 
+  // 4. Updated _showAssignDoctorDialog with organization verification
   void _showAssignDoctorDialog(int userIndex) {
     // Check if patient is pending
     if (users[userIndex]['status'] == 'pending') {
@@ -650,7 +915,13 @@ class _PatientListPageState extends State<PatientListPage>
       return;
     }
 
-    if (availableDoctors.isEmpty) {
+    // Filter doctors to only show ones from current organization
+    final organizationDoctors = availableDoctors
+        .where((doctor) =>
+            doctor['organization_id']?.toString() == currentOrganizationId)
+        .toList();
+
+    if (organizationDoctors.isEmpty) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -663,9 +934,9 @@ class _PatientListPageState extends State<PatientListPage>
               Text('No Doctors Available'),
             ],
           ),
-          content: const Text(
-            'No doctors found in the system. Please add medical staff to your organization first.',
-            style: TextStyle(color: Color(0xFF4A5568)),
+          content: Text(
+            'No doctors found in your organization (ID: $currentOrganizationId). Please add medical staff to your organization first.',
+            style: const TextStyle(color: Color(0xFF4A5568)),
           ),
           actions: [
             TextButton(
@@ -712,84 +983,130 @@ class _PatientListPageState extends State<PatientListPage>
         content: SizedBox(
           width: double.maxFinite,
           height: 400,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: availableDoctors.length,
-            itemBuilder: (context, index) {
-              final doctor = availableDoctors[index];
-              final isCurrentlyAssigned =
-                  users[userIndex]['assignedDoctorId'] == doctor['id'];
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isCurrentlyAssigned
-                      ? const Color(0xFF38A169).withOpacity(0.1)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isCurrentlyAssigned
-                        ? const Color(0xFF38A169)
-                        : Colors.grey.shade200,
-                    width: isCurrentlyAssigned ? 2 : 1,
-                  ),
+                  color: const Color(0xFF3182CE).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isCurrentlyAssigned
-                          ? const Color(0xFF38A169)
-                          : const Color(0xFF3182CE),
-                      borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline,
+                        color: Color(0xFF3182CE), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Showing ${organizationDoctors.length} doctors from your organization',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF3182CE)),
+                      ),
                     ),
-                    child: Text(
-                      doctor['name']!.isNotEmpty
-                          ? doctor['name']![0].toUpperCase()
-                          : 'D',
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                          child: Text(doctor['name']!,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600))),
-                      if (isCurrentlyAssigned)
-                        const Icon(Icons.check_circle_rounded,
-                            color: Color(0xFF38A169), size: 20),
-                    ],
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(doctor['specialization'] ?? 'General Practitioner',
-                          style: const TextStyle(color: Color(0xFF4A5568))),
-                      if (doctor['department'] != null &&
-                          doctor['department']!.isNotEmpty)
-                        Text(
-                          'Dept: ${doctor['department']}',
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF718096)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: organizationDoctors.length,
+                  itemBuilder: (context, index) {
+                    final doctor = organizationDoctors[index];
+                    final isCurrentlyAssigned =
+                        users[userIndex]['assignedDoctorId'] == doctor['id'];
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: isCurrentlyAssigned
+                            ? const Color(0xFF38A169).withOpacity(0.1)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isCurrentlyAssigned
+                              ? const Color(0xFF38A169)
+                              : Colors.grey.shade200,
+                          width: isCurrentlyAssigned ? 2 : 1,
                         ),
-                    ],
-                  ),
-                  trailing: isCurrentlyAssigned
-                      ? const Text('Currently Assigned',
-                          style: TextStyle(
-                              color: Color(0xFF38A169),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500))
-                      : const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _assignDoctor(userIndex, doctor);
+                      ),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isCurrentlyAssigned
+                                ? const Color(0xFF38A169)
+                                : const Color(0xFF3182CE),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            doctor['name']!.isNotEmpty
+                                ? doctor['name']![0].toUpperCase()
+                                : 'D',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                doctor['name']!,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (isCurrentlyAssigned)
+                              const Icon(Icons.check_circle_rounded,
+                                  color: Color(0xFF38A169), size: 20),
+                          ],
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              doctor['specialization'] ??
+                                  'General Practitioner',
+                              style: const TextStyle(color: Color(0xFF4A5568)),
+                            ),
+                            if (doctor['department'] != null &&
+                                doctor['department']!.isNotEmpty)
+                              Text(
+                                'Dept: ${doctor['department']}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Color(0xFF718096)),
+                              ),
+                            // Debug info (remove in production)
+                            Text(
+                              'Org: ${doctor['organization_id']}',
+                              style: const TextStyle(
+                                  fontSize: 10, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        trailing: isCurrentlyAssigned
+                            ? const Text(
+                                'Currently Assigned',
+                                style: TextStyle(
+                                  color: Color(0xFF38A169),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_forward_ios_rounded,
+                                size: 16),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _assignDoctor(userIndex, doctor);
+                        },
+                      ),
+                    );
                   },
                 ),
-              );
-            },
+              ),
+            ],
           ),
         ),
         actions: [
