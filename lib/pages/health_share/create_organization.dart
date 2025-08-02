@@ -19,7 +19,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
   final _adminLastNameController = TextEditingController();
   final _adminAddressController = TextEditingController();
   final _adminContactNumberController = TextEditingController();
-  final _adminUsernameController = TextEditingController();
   final _adminPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -38,7 +37,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
     _adminLastNameController.dispose();
     _adminAddressController.dispose();
     _adminContactNumberController.dispose();
-    _adminUsernameController.dispose();
     _adminPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -92,7 +90,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
         email: _adminEmailController.text.trim(),
         password: _adminPasswordController.text,
         data: {
-          'username': _adminUsernameController.text.trim(),
           'first_name': _adminFirstNameController.text.trim(),
           'last_name': _adminLastNameController.text.trim(),
           'role': 'admin',
@@ -118,7 +115,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
             'last_name': _adminLastNameController.text.trim(),
             'address': _adminAddressController.text.trim(),
             'contact_number': _adminContactNumberController.text.trim(),
-            'email': _adminEmailController.text.trim(),
             'auth_user_id': authUserId,
             'created_at': currentTime,
           })
@@ -133,9 +129,9 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       final userResponse = await Supabase.instance.client
           .from('User')
           .insert({
-            'username': _adminUsernameController.text.trim(),
             'person_id': personUuid,
             'created_at': currentTime,
+            'email': _adminEmailController.text.trim(),
           })
           .select()
           .single();
@@ -515,33 +511,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                         : null,
                   ),
                   icon: Icons.location_on,
-                ),
-
-                // Admin Username
-                _buildInputField(
-                  child: TextFormField(
-                    controller: _adminUsernameController,
-                    decoration: InputDecoration(
-                      hintText: 'Admin Username',
-                      hintStyle: TextStyle(color: Colors.grey[500]),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                    ),
-                    validator: (value) {
-                      if (value?.trim().isEmpty ?? true) {
-                        return 'Please enter admin username';
-                      }
-                      if (value!.trim().length < 3) {
-                        return 'Username must be at least 3 characters long';
-                      }
-                      if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
-                        return 'Username can only contain letters, numbers, and underscores';
-                      }
-                      return null;
-                    },
-                  ),
-                  icon: Icons.account_circle,
                 ),
 
                 // Admin Password

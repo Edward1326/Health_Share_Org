@@ -38,6 +38,8 @@ dependencies:
   encrypt: ^5.0.1
   convert: ^3.1.1
   cupertino_icons: ^1.0.8
+  basic_utils: ^5.6.1
+  rsa_encrypt: ^2.0.0
 
 dev_dependencies:
   flutter_test:

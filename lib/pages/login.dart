@@ -91,32 +91,10 @@ class _LoginPageState extends State<LoginPage> {
             'DEBUG: Treating input as username, looking up email...'); // DEBUG LINE
 
         // Query the User table to find the email associated with this username
-        final userResponse = await Supabase.instance.client
-            .from('User')
-            .select('person_id')
-            .eq('username', input)
-            .maybeSingle();
-
-        print('DEBUG: User lookup response: $userResponse'); // DEBUG LINE
-
-        if (userResponse == null) {
-          print('DEBUG: Username not found in database'); // DEBUG LINE
-          throw Exception('Username not found');
-        }
-
-        // Get email from Person table
-        final personId = userResponse['person_id'];
-        print('DEBUG: Found person_id: $personId'); // DEBUG LINE
-
-        final personResponse = await Supabase.instance.client
-            .from('Person')
-            .select('email')
-            .eq('id', personId)
-            .single();
-
-        print('DEBUG: Person lookup response: $personResponse'); // DEBUG LINE
-        email = personResponse['email'];
-        print('DEBUG: Email found: $email'); // DEBUG LINE
+        // Note: Since username field was removed from your schema, this might need adjustment
+        // For now, assuming we're only using email for login
+        throw Exception(
+            'Username login not supported. Please use email address.');
       } else {
         print('DEBUG: Treating input as email directly'); // DEBUG LINE
       }
@@ -141,7 +119,7 @@ class _LoginPageState extends State<LoginPage> {
       print('Auth user signed in: ${user.id}');
 
       // Get comprehensive user details after successful authentication
-      final userDetails = await _getUserDetailsFromMetadata(user);
+      final userDetails = await _getUserDetailsFromAuth(user);
 
       // Store user session
       await _storeUserSession(userDetails, user);
@@ -181,8 +159,8 @@ class _LoginPageState extends State<LoginPage> {
 
       String errorMessage = 'Login failed: ';
 
-      if (e.toString().contains('Username not found')) {
-        errorMessage += 'Username not found. Please check your username.';
+      if (e.toString().contains('Username not supported')) {
+        errorMessage = 'Please use your email address to login.';
       } else if (e.toString().contains('Invalid login credentials') ||
           e.toString().contains('Email not confirmed')) {
         errorMessage +=
@@ -201,6 +179,52 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+// Updated function to get user details from auth user
+  Future<Map<String, dynamic>> _getUserDetailsFromAuth(User authUser) async {
+    try {
+      // Get Person details using auth_user_id
+      final personResponse = await Supabase.instance.client
+          .from('Person')
+          .select('*')
+          .eq('auth_user_id', authUser.id)
+          .single();
+
+      print('DEBUG: Person found: ${personResponse['id']}');
+
+      // Get User details using person_id (User table links to Person via person_id)
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('*')
+          .eq('person_id', personResponse['id'])
+          .single();
+
+      print('DEBUG: User found: ${userResponse['id']}');
+
+      // Get Organization_User details using person_id
+      final orgUserResponse = await Supabase.instance.client
+          .from('Organization_User')
+          .select('*, Organization(*)')
+          .eq('user_id', userResponse['id']);
+
+      print(
+          'DEBUG: Organization_User found: ${orgUserResponse.length} records');
+
+      return {
+        'person': personResponse,
+        'user': userResponse,
+        'organization_users': orgUserResponse,
+        'auth_user': {
+          'id': authUser.id,
+          'email': authUser.email,
+          'user_metadata': authUser.userMetadata,
+        },
+      };
+    } catch (e) {
+      print('Error getting user details: $e');
+      throw Exception('Failed to load user details');
     }
   }
 
