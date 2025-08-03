@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:health_share_org/services/aes_helper.dart';
+import 'package:health_share_org/services/crypto_utils.dart';
 import 'dart:html' as html;
+import 'package:encrypt/encrypt.dart' as encrypt;
+import 'dart:math';
+import 'package:pointycastle/export.dart' as pc;
+import 'package:crypto/crypto.dart';
+import 'dart:async';
 
 class PatientsTab extends StatefulWidget {
   const PatientsTab({Key? key}) : super(key: key);
@@ -38,7 +47,6 @@ class _PatientsTabState extends State<PatientsTab> {
     });
 
     try {
-      // Get the current authenticated user
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null || currentUser.email == null) {
         throw Exception('No authenticated user found');
@@ -47,18 +55,15 @@ class _PatientsTabState extends State<PatientsTab> {
       final userEmail = currentUser.email!;
       print('DEBUG: Looking up user with email: $userEmail');
 
-      // Step 1: Find the User record with the email (since email is in User table, not Person)
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('id, person_id')
           .eq('email', userEmail)
-          .single(); // Use single() since email should be unique
+          .single();
 
       print('DEBUG: User lookup response: $userResponse');
-
       final userId = userResponse['id'];
 
-      // Step 2: Find Organization_User records where this user is a Doctor
       final doctorLookupResponse = await Supabase.instance.client
           .from('Organization_User')
           .select('id, position, department')
@@ -72,12 +77,10 @@ class _PatientsTabState extends State<PatientsTab> {
             'No doctor records found for this user. Make sure you have a Doctor position in Organization_User table.');
       }
 
-      // Get the Organization_User IDs (these are what should be used as doctor_id)
       final doctorIds =
           doctorLookupResponse.map((doctor) => doctor['id']).toList();
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
-      // Step 3: Query Doctor_User_Assignment table
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
@@ -105,7 +108,6 @@ class _PatientsTabState extends State<PatientsTab> {
 
       print('DEBUG: Patients query response: $response');
 
-      // Transform the response
       final transformedPatients =
           response.map<Map<String, dynamic>>((assignment) {
         final assignmentMap = assignment as Map<String, dynamic>;
@@ -137,7 +139,6 @@ class _PatientsTabState extends State<PatientsTab> {
     });
 
     try {
-      // Get files shared with this patient
       final response = await Supabase.instance.client
           .from('File_Shares')
           .select('''
@@ -178,6 +179,24 @@ class _PatientsTabState extends State<PatientsTab> {
       });
       _showSnackBar('Error loading files: $e');
     }
+  }
+
+  // Helper method to generate secure random bytes
+  Uint8List _generateRandomBytes(int length) {
+    final random = Random.secure();
+    return Uint8List.fromList(
+        List.generate(length, (i) => random.nextInt(256)));
+  }
+
+  // Helper method to convert bytes to hex string
+  String _bytesToHex(Uint8List bytes) {
+    return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join('');
+  }
+
+  // Helper method to calculate SHA256 hash
+  String _calculateSHA256(Uint8List data) {
+    final digest = sha256.convert(data);
+    return digest.toString();
   }
 
   Future<void> _uploadFileForPatient() async {
@@ -224,7 +243,7 @@ class _PatientsTabState extends State<PatientsTab> {
             children: [
               CircularProgressIndicator(color: primaryBlue),
               SizedBox(width: 16),
-              Text('Uploading file...'),
+              Text('Encrypting and uploading file...'),
             ],
           ),
         ),
@@ -233,99 +252,267 @@ class _PatientsTabState extends State<PatientsTab> {
       // Step 4: Get current user info for uploaded_by field
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
-        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context);
         _showSnackBar('Authentication error');
         return;
       }
 
-      // Get current user's ID from the database
-      final personResponse = await Supabase.instance.client
-          .from('Person')
+      final userResponse = await Supabase.instance.client
+          .from('User')
           .select('id')
           .eq('email', currentUser.email!)
           .single();
 
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('id')
-          .eq('person_id', personResponse['id'])
-          .single();
-
       final uploaderId = userResponse['id'];
 
-      // Step 5: Upload file to Supabase Storage
-      String fileUrl = '';
+      // Step 5: Generate AES key and IV, then encrypt file
+      final aesKeyBytes = _generateRandomBytes(32); // 32 bytes for AES-256
+      final aesIvBytes = _generateRandomBytes(16); // 16 bytes for AES CBC
 
-      try {
-        // Upload to Supabase Storage
-        final patientId = _selectedPatient!['patient_id'].toString();
-        final filePath =
-            'patient_files/${patientId}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      // Convert to hex strings for AESHelper
+      final aesKeyHex = _bytesToHex(aesKeyBytes);
+      final aesIvHex = _bytesToHex(aesIvBytes);
 
-        await Supabase.instance.client.storage
-            .from('medical-files')
-            .uploadBinary(
-              filePath,
-              fileBytes,
-              fileOptions: const FileOptions(
-                cacheControl: '3600',
-                upsert: false,
-              ),
-            );
+      print('DEBUG: Generated AES Key (hex): $aesKeyHex');
+      print('DEBUG: Generated AES IV (hex): $aesIvHex');
 
-        fileUrl = Supabase.instance.client.storage
-            .from('medical-files')
-            .getPublicUrl(filePath);
+      // Create AESHelper and encrypt the file
+      final aesHelper = AESHelper(aesKeyHex, aesIvHex);
+      final encryptedBytes = aesHelper.encryptData(fileBytes);
 
-        print('File uploaded successfully to: $fileUrl');
-      } catch (storageError) {
-        print('Storage upload failed: $storageError');
-        Navigator.pop(context); // Close loading dialog
-        _showSnackBar('Error uploading file to storage: $storageError');
-        return;
-      }
+      print('DEBUG: Original file size: ${fileBytes.length} bytes');
+      print('DEBUG: Encrypted file size: ${encryptedBytes.length} bytes');
 
-      // Step 6: Create file record in Files table (without ipfs_hash)
-      final fileResponse = await Supabase.instance.client
-          .from('Files')
-          .insert({
-            'name': fileDetails['fileName'],
-            'description': fileDetails['description'],
-            'file_type': fileExtension,
-            'category': fileDetails['category'],
-            'file_url': fileUrl,
-            'uploaded_by': uploaderId,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select()
+      // Step 6: Get patient's RSA public key
+      final patientResponse = await Supabase.instance.client
+          .from('User')
+          .select('rsa_public_key')
+          .eq('id', _selectedPatient!['patient_id'])
           .single();
 
-      final fileId = fileResponse['id'];
+      final rsaPublicKeyPem = patientResponse['rsa_public_key'] as String;
+      print(
+          'DEBUG: Patient RSA Public Key: ${rsaPublicKeyPem.substring(0, 100)}...');
 
-      // Step 7: Create File_Shares record to share with patient
-      final patientId = _selectedPatient!['patient_id'].toString();
+      final rsaPublicKey = CryptoUtils.rsaPublicKeyFromPem(rsaPublicKeyPem);
 
-      await Supabase.instance.client.from('File_Shares').insert({
-        'file_id': fileId,
-        'shared_with_user_id': patientId,
-        'shared_by_user_id': uploaderId,
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      // Step 7: Encrypt AES key with patient's RSA public key
+      final keyData = {
+        'key': aesKeyHex,
+        'iv': aesIvHex,
+      };
+      final keyDataJson = jsonEncode(keyData);
 
-      // Close loading dialog
-      Navigator.pop(context);
+      print('DEBUG: Key data to encrypt: $keyDataJson');
 
-      // Step 8: Refresh patient files and show success
-      await _loadPatientFiles(patientId);
-      _showSnackBar('File uploaded and shared successfully!');
-    } catch (e) {
-      // Close loading dialog if open
-      if (Navigator.canPop(context)) {
+      final rsaEncryptedString =
+          CryptoUtils.rsaEncrypt(keyDataJson, rsaPublicKey);
+      print(
+          'DEBUG: RSA encrypted key data length: ${rsaEncryptedString.length}');
+
+      // Step 8: Calculate SHA256 hash of original file
+      final sha256Hash = _calculateSHA256(fileBytes);
+      print('DEBUG: File SHA256 hash: $sha256Hash');
+
+      // Step 9: Upload encrypted file to IPFS with enhanced error handling
+      print('DEBUG: Starting IPFS upload...');
+      print(
+          'DEBUG: Encrypted file size for upload: ${encryptedBytes.length} bytes');
+
+      final url = Uri.parse('https://api.pinata.cloud/pinning/pinFileToIPFS');
+
+      // Your actual Pinata credentials
+      const String jwt =
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI1MjNmNzlmZC0xZjVmLTQ4NzUtOTQwMS01MDcyMDE3NmMyYjYiLCJlbWFpbCI6ImVkd2FyZC5xdWlhbnpvbi5yQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiI5NmM3NGQxNTY4YzBlNDE4MGQ5MiIsInNjb3BlZEtleVNlY3JldCI6IjQ2MDIxYzNkYThmZDIzZDJmY2E4ZmYzNThjMGI3NmE2ODYxMzRhOWMzNDNiOTFmODY3MmIyMzhlYjE2N2FkODkiLCJleHAiOjE3ODU2ODIyMzl9.1VpMdmG4CaQ-eNxNVesfiy-P6J7p9IGLtjD9q1r5mkg';
+
+      // Alternative: Use API Key and Secret instead of JWT (backup method)
+      const String apiKey = '96c74d1568c0e4180d92';
+      const String apiSecret =
+          '46021c3da8fd23d2fca8ff358c0b76a686134a9c343b91f8672b238eb167ad89';
+
+      print('DEBUG: Creating multipart request...');
+
+      final request = http.MultipartRequest('POST', url);
+
+      // Option 1: Using JWT (recommended)
+      request.headers['Authorization'] = 'Bearer $jwt';
+
+      // Option 2: Using API Key/Secret (alternative - comment out if using JWT)
+      // request.headers['pinata_api_key'] = apiKey;
+      // request.headers['pinata_secret_api_key'] = apiSecret;
+
+      // Add the encrypted file
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          encryptedBytes,
+          filename: 'encrypted_${DateTime.now().millisecondsSinceEpoch}.bin',
+        ),
+      );
+
+      // Optional: Add metadata
+      final metadata = {
+        'name': 'Medical File - ${fileDetails['fileName']}',
+        'keyvalues': {
+          'originalFileName': fileDetails['fileName'],
+          'category': fileDetails['category'],
+          'uploadedBy': uploaderId,
+          'patientId': _selectedPatient!['patient_id'],
+          'encrypted': 'true',
+          'uploadDate': DateTime.now().toIso8601String(),
+        }
+      };
+
+      request.fields['pinataMetadata'] = jsonEncode(metadata);
+
+      // Optional: Add pinning options
+      final options = {
+        'cidVersion': 1,
+        'wrapWithDirectory': false,
+      };
+
+      request.fields['pinataOptions'] = jsonEncode(options);
+
+      print('DEBUG: Sending request to Pinata...');
+      print('DEBUG: Request URL: ${request.url}');
+      print('DEBUG: Request headers: ${request.headers}');
+
+      final streamedResponse = await request.send().timeout(
+            const Duration(minutes: 5), // 5 minute timeout
+          );
+
+      print(
+          'DEBUG: Received response with status: ${streamedResponse.statusCode}');
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('DEBUG: Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final ipfsJson = jsonDecode(response.body);
+        final ipfsCid = ipfsJson['IpfsHash'] as String;
+        print('DEBUG: Upload successful. CID: $ipfsCid');
+
+        // Step 10: Create file record in Files table
+        final fileResponse = await Supabase.instance.client
+            .from('Files')
+            .insert({
+              'filename': fileDetails['fileName'],
+              'category': fileDetails['category'],
+              'file_type': fileExtension.toUpperCase(),
+              'uploaded_at': DateTime.now().toIso8601String(),
+              'file_size': fileBytes.length, // Store original file size
+              'ipfs_cid': ipfsCid,
+              'sha256_hash': sha256Hash,
+              'uploaded_by': uploaderId,
+            })
+            .select()
+            .single();
+
+        final fileId = fileResponse['id'];
+        print('DEBUG: File inserted with ID: $fileId');
+
+        // Step 11: Insert encrypted AES key into File_Keys
+        try {
+          await Supabase.instance.client.from('File_Keys').insert({
+            'file_id': fileId,
+            'recipient_type': 'user',
+            'recipient_id': _selectedPatient!['patient_id'],
+            'aes_key_encrypted': rsaEncryptedString,
+          });
+          print('DEBUG: File key inserted successfully');
+        } catch (fileKeyError) {
+          print('ERROR: inserting file key: $fileKeyError');
+          Navigator.pop(context);
+          _showSnackBar('File uploaded but key storage failed: $fileKeyError');
+          return;
+        }
+
+        // Step 12: Create File_Shares record to share with patient
+        final patientId = _selectedPatient!['patient_id'].toString();
+
+        await Supabase.instance.client.from('File_Shares').insert({
+          'file_id': fileId,
+          'shared_with_user_id': patientId,
+          'shared_by_user_id': uploaderId,
+          'shared_at': DateTime.now().toIso8601String(),
+        });
+
+        // Close loading dialog
         Navigator.pop(context);
+
+        // Step 13: Refresh patient files and show success
+        await _loadPatientFiles(patientId);
+        _showSnackBar(
+            'File encrypted, uploaded to IPFS and shared successfully!');
+
+        print('DEBUG: File upload process completed successfully');
+      } else {
+        // Handle different error codes
+        String errorMessage;
+
+        switch (response.statusCode) {
+          case 400:
+            errorMessage = 'Bad request - Check file format and size';
+            break;
+          case 401:
+            errorMessage = 'Unauthorized - Check your Pinata API credentials';
+            break;
+          case 402:
+            errorMessage =
+                'Payment required - Check your Pinata account limits';
+            break;
+          case 403:
+            errorMessage = 'Forbidden - Check your Pinata API permissions';
+            break;
+          case 413:
+            errorMessage = 'File too large - Maximum file size exceeded';
+            break;
+          case 429:
+            errorMessage = 'Rate limit exceeded - Try again later';
+            break;
+          case 500:
+            errorMessage = 'Pinata server error - Try again later';
+            break;
+          default:
+            errorMessage = 'Upload failed with status ${response.statusCode}';
+        }
+
+        Navigator.pop(context);
+        _showSnackBar('$errorMessage: ${response.body}');
+        print(
+            'ERROR: IPFS upload failed - Status: ${response.statusCode}, Body: ${response.body}');
       }
-      print('Error uploading file: $e');
+    } on TimeoutException {
+      Navigator.pop(context);
+      _showSnackBar(
+          'Upload timeout - Please check your connection and try again');
+      print('ERROR: IPFS upload timeout');
+    } catch (e, stackTrace) {
+      Navigator.pop(context);
+      print('ERROR uploading file: $e');
+      print('Stack trace: $stackTrace');
       _showSnackBar('Error uploading file: $e');
     }
+  }
+
+// Add this helper method to validate JWT token format
+  bool _isValidJWT(String token) {
+    if (token.isEmpty) return false;
+
+    final parts = token.split('.');
+    if (parts.length != 3) return false;
+
+    // Check if each part is valid base64
+    for (final part in parts) {
+      try {
+        base64Url.decode(part + '=' * (4 - part.length % 4));
+      } catch (e) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<Map<String, String>?> _showFileDetailsDialog(
@@ -595,9 +782,7 @@ class _PatientsTabState extends State<PatientsTab> {
       itemBuilder: (context, index) {
         final patient = _patients[index];
         final person = patient['User']['Person'];
-        final fullName =
-            '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
-                .trim();
+        final fullName = _buildFullName(person);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -644,7 +829,7 @@ class _PatientsTabState extends State<PatientsTab> {
               children: [
                 const SizedBox(height: 4),
                 Text(
-                  person['email'] ?? '',
+                  patient['User']['email'] ?? '',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 14,
