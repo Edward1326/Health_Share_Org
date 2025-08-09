@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 import 'package:crypto/crypto.dart';
+import 'package:asn1lib/asn1lib.dart';
 
 class RSAKeyGenerationService {
   /// Generates RSA key pair using isolate for better performance
@@ -64,91 +65,75 @@ class RSAKeyGenerationService {
     }
   }
 
-  /// Alternative seeding method using system entropy sources
-  static void _seedSecureRandomAlternative(FortunaRandom secureRandom) {
-    final seedSource = Random.secure();
-    final timeMillis = DateTime.now().millisecondsSinceEpoch;
-
-    // Create exactly 32 bytes combining different entropy sources
-    final seed = Uint8List(32);
-
-    // Fill first 8 bytes with time-based entropy
-    final timeBytes = ByteData(8);
-    timeBytes.setUint64(0, timeMillis);
-    seed.setRange(0, 8, timeBytes.buffer.asUint8List());
-
-    // Fill remaining 24 bytes with secure random
-    for (int i = 8; i < 32; i++) {
-      seed[i] = seedSource.nextInt(256);
-    }
-
-    secureRandom.seed(KeyParameter(seed));
-
-    // Prime the generator
-    for (int i = 0; i < 100; i++) {
-      secureRandom.nextUint8();
-    }
-  }
-
-  /// Converts RSA public key to PEM format using manual ASN.1 encoding
+  /// CORRECTED: Converts RSA public key to PEM format using proper ASN.1 encoding
   static String _rsaPublicKeyToPem(RSAPublicKey publicKey) {
-    // Manual ASN.1 DER encoding for RSA public key
-    final modulusBytes = _bigIntToBytes(publicKey.modulus!);
-    final exponentBytes = _bigIntToBytes(publicKey.exponent!);
+    try {
+      // Create the RSA public key sequence (modulus, exponent)
+      final publicKeySeq = ASN1Sequence();
+      publicKeySeq.add(ASN1Integer(publicKey.modulus!));
+      publicKeySeq.add(ASN1Integer(publicKey.exponent!));
 
-    // Create ASN.1 INTEGER for modulus
-    final modulusAsn1 = _createAsn1Integer(modulusBytes);
+      // Create the algorithm identifier for RSA
+      final algorithmSeq = ASN1Sequence();
+      final rsaOid =
+          ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]); // RSA OID
+      algorithmSeq.add(rsaOid);
+      algorithmSeq.add(ASN1Null()); // NULL parameters for RSA
 
-    // Create ASN.1 INTEGER for exponent
-    final exponentAsn1 = _createAsn1Integer(exponentBytes);
+      // Create the bit string containing the public key
+      final publicKeyBitString =
+          ASN1BitString(Uint8List.fromList(publicKeySeq.encodedBytes));
 
-    // Create ASN.1 SEQUENCE containing both integers
-    final sequenceContent = <int>[];
-    sequenceContent.addAll(modulusAsn1);
-    sequenceContent.addAll(exponentAsn1);
+      // Create the top-level SubjectPublicKeyInfo structure
+      final topLevelSeq = ASN1Sequence();
+      topLevelSeq.add(algorithmSeq);
+      topLevelSeq.add(publicKeyBitString);
 
-    final sequence = _createAsn1Sequence(sequenceContent);
-
-    // Convert to base64 and format as PEM
-    final publicKeyBase64 = base64Encode(sequence);
-    return '-----BEGIN PUBLIC KEY-----\n${_formatBase64(publicKeyBase64)}\n-----END PUBLIC KEY-----';
+      final dataBase64 = base64Encode(topLevelSeq.encodedBytes);
+      return _formatPem(dataBase64, 'PUBLIC KEY');
+    } catch (e) {
+      throw Exception('Failed to convert RSA public key to PEM: $e');
+    }
   }
 
-  /// Converts RSA private key to PEM format using manual ASN.1 encoding
+  /// CORRECTED: Converts RSA private key to PEM format using proper ASN.1 encoding (PKCS#8)
   static String _rsaPrivateKeyToPem(RSAPrivateKey privateKey) {
-    // Manual ASN.1 DER encoding for RSA private key (PKCS#1 format)
-    final version = _createAsn1Integer([0]); // version 0
-    final modulus = _createAsn1Integer(_bigIntToBytes(privateKey.modulus!));
-    final publicExponent =
-        _createAsn1Integer(_bigIntToBytes(privateKey.exponent!));
-    final privateExponent =
-        _createAsn1Integer(_bigIntToBytes(privateKey.privateExponent!));
-    final prime1 = _createAsn1Integer(_bigIntToBytes(privateKey.p!));
-    final prime2 = _createAsn1Integer(_bigIntToBytes(privateKey.q!));
-    final exponent1 = _createAsn1Integer(_bigIntToBytes(
-        privateKey.privateExponent! % (privateKey.p! - BigInt.one)));
-    final exponent2 = _createAsn1Integer(_bigIntToBytes(
-        privateKey.privateExponent! % (privateKey.q! - BigInt.one)));
-    final coefficient = _createAsn1Integer(
-        _bigIntToBytes(privateKey.q!.modInverse(privateKey.p!)));
+    try {
+      // Create PKCS#1 RSAPrivateKey structure
+      final privateKeySeq = ASN1Sequence()
+        ..add(ASN1Integer(BigInt.from(0))) // version
+        ..add(ASN1Integer(privateKey.modulus!))
+        ..add(ASN1Integer(privateKey.exponent!))
+        ..add(ASN1Integer(privateKey.privateExponent!))
+        ..add(ASN1Integer(privateKey.p!))
+        ..add(ASN1Integer(privateKey.q!))
+        ..add(ASN1Integer(
+            privateKey.privateExponent! % (privateKey.p! - BigInt.one)))
+        ..add(ASN1Integer(
+            privateKey.privateExponent! % (privateKey.q! - BigInt.one)))
+        ..add(ASN1Integer(privateKey.q!.modInverse(privateKey.p!)));
 
-    // Create sequence with all components
-    final sequenceContent = <int>[];
-    sequenceContent.addAll(version);
-    sequenceContent.addAll(modulus);
-    sequenceContent.addAll(publicExponent);
-    sequenceContent.addAll(privateExponent);
-    sequenceContent.addAll(prime1);
-    sequenceContent.addAll(prime2);
-    sequenceContent.addAll(exponent1);
-    sequenceContent.addAll(exponent2);
-    sequenceContent.addAll(coefficient);
+      // Create algorithm identifier for RSA
+      final algorithmSeq = ASN1Sequence();
+      final rsaOid =
+          ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]); // RSA OID
+      algorithmSeq.add(rsaOid);
+      algorithmSeq.add(ASN1Null()); // NULL parameters
 
-    final sequence = _createAsn1Sequence(sequenceContent);
+      final privateKeyOctetString = ASN1OctetString(
+        Uint8List.fromList(privateKeySeq.encodedBytes),
+      );
 
-    // Convert to base64 and format as PEM
-    final privateKeyBase64 = base64Encode(sequence);
-    return '-----BEGIN PRIVATE KEY-----\n${_formatBase64(privateKeyBase64)}\n-----END PRIVATE KEY-----';
+      final topLevelSeq = ASN1Sequence()
+        ..add(ASN1Integer(BigInt.from(0))) // version
+        ..add(algorithmSeq)
+        ..add(privateKeyOctetString);
+
+      final dataBase64 = base64Encode(topLevelSeq.encodedBytes);
+      return _formatPem(dataBase64, 'PRIVATE KEY');
+    } catch (e) {
+      throw Exception('Failed to convert RSA private key to PEM: $e');
+    }
   }
 
   /// Convert BigInt to bytes
@@ -173,45 +158,15 @@ class RSAKeyGenerationService {
     return bytes;
   }
 
-  /// Create ASN.1 INTEGER
-  static List<int> _createAsn1Integer(List<int> value) {
-    final result = <int>[0x02]; // INTEGER tag
-    result.addAll(_encodeLength(value.length));
-    result.addAll(value);
-    return result;
-  }
-
-  /// Create ASN.1 SEQUENCE
-  static List<int> _createAsn1Sequence(List<int> content) {
-    final result = <int>[0x30]; // SEQUENCE tag
-    result.addAll(_encodeLength(content.length));
-    result.addAll(content);
-    return result;
-  }
-
-  /// Encode ASN.1 length
-  static List<int> _encodeLength(int length) {
-    if (length < 0x80) {
-      return [length];
-    }
-
-    final lengthBytes = <int>[];
-    var temp = length;
-    while (temp > 0) {
-      lengthBytes.insert(0, temp & 0xff);
-      temp >>= 8;
-    }
-
-    return [0x80 | lengthBytes.length, ...lengthBytes];
-  }
-
   /// Formats base64 string with line breaks every 64 characters
-  static String _formatBase64(String base64String) {
-    final regex = RegExp(r'.{1,64}');
-    return regex
-        .allMatches(base64String)
-        .map((match) => match.group(0))
-        .join('\n');
+  static String _formatPem(String base64Data, String keyType) {
+    final chunks = <String>[];
+    for (int i = 0; i < base64Data.length; i += 64) {
+      chunks.add(base64Data.substring(
+          i, i + 64 > base64Data.length ? base64Data.length : i + 64));
+    }
+
+    return '-----BEGIN $keyType-----\n${chunks.join('\n')}\n-----END $keyType-----';
   }
 
   /// Generate key fingerprint for easier identification (static version)

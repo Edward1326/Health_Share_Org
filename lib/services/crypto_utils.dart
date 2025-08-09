@@ -4,7 +4,7 @@ import 'package:pointycastle/export.dart' as pc;
 import 'package:asn1lib/asn1lib.dart';
 
 class CryptoUtils {
-  /// Parse RSA public key from PEM format
+  /// Parse RSA public key from PEM format - FIXED VERSION
   static pc.RSAPublicKey rsaPublicKeyFromPem(String pem) {
     try {
       // Remove PEM headers and decode base64
@@ -25,23 +25,51 @@ class CryptoUtils {
       final asn1Parser = ASN1Parser(keyBytes);
       final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
 
-      // Skip algorithm identifier
-      final publicKeyBitString = topLevelSeq.elements![1] as ASN1BitString;
-      final publicKeyAsn = ASN1Parser(publicKeyBitString.contentBytes());
-      final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
+      print(
+          'DEBUG: Top level sequence has ${topLevelSeq.elements!.length} elements');
 
-      final modulus =
-          (publicKeySeq.elements![0] as ASN1Integer).valueAsBigInteger;
-      final exponent =
-          (publicKeySeq.elements![1] as ASN1Integer).valueAsBigInteger;
+      // Check if this is a standard SubjectPublicKeyInfo structure or direct RSAPublicKey
+      if (topLevelSeq.elements!.length == 2) {
+        // Standard SubjectPublicKeyInfo structure
+        final algorithmSeq = topLevelSeq.elements![0] as ASN1Sequence;
+        final publicKeyBitString = topLevelSeq.elements![1] as ASN1BitString;
 
-      return pc.RSAPublicKey(modulus!, exponent!);
+        print('DEBUG: Found SubjectPublicKeyInfo structure');
+
+        // Parse the actual RSA public key from the bit string
+        final publicKeyAsn = ASN1Parser(publicKeyBitString.contentBytes());
+        final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
+
+        final modulus =
+            (publicKeySeq.elements![0] as ASN1Integer).valueAsBigInteger;
+        final exponent =
+            (publicKeySeq.elements![1] as ASN1Integer).valueAsBigInteger;
+
+        return pc.RSAPublicKey(modulus!, exponent!);
+      } else if (topLevelSeq.elements!.length >= 2 &&
+          topLevelSeq.elements![0] is ASN1Integer &&
+          topLevelSeq.elements![1] is ASN1Integer) {
+        // Direct RSAPublicKey structure (non-standard, possibly from your generator)
+        print('DEBUG: Found direct RSAPublicKey structure');
+
+        final modulus =
+            (topLevelSeq.elements![0] as ASN1Integer).valueAsBigInteger;
+        final exponent =
+            (topLevelSeq.elements![1] as ASN1Integer).valueAsBigInteger;
+
+        return pc.RSAPublicKey(modulus!, exponent!);
+      } else {
+        throw Exception('Unrecognized ASN.1 structure for RSA public key');
+      }
     } catch (e) {
+      print('ERROR: Failed to parse RSA public key: $e');
+      print(
+          'PEM content preview: ${pem.substring(0, pem.length > 200 ? 200 : pem.length)}...');
       throw Exception('Failed to parse RSA public key from PEM: $e');
     }
   }
 
-  /// Parse RSA private key from PEM format
+  /// Parse RSA private key from PEM format - ENHANCED VERSION
   static pc.RSAPrivateKey rsaPrivateKeyFromPem(String pem) {
     try {
       // Handle both PKCS#1 and PKCS#8 formats
@@ -67,52 +95,76 @@ class CryptoUtils {
         // PKCS#1 format
         return _parseRSAPrivateKeyPKCS1(keyBytes);
       } else {
-        // PKCS#8 format
-        return _parseRSAPrivateKeyPKCS8(keyBytes);
+        // PKCS#8 format or try direct parsing
+        try {
+          return _parseRSAPrivateKeyPKCS8(keyBytes);
+        } catch (e) {
+          print('DEBUG: PKCS#8 parsing failed, trying direct PKCS#1: $e');
+          // Fallback to direct PKCS#1 parsing
+          return _parseRSAPrivateKeyPKCS1(keyBytes);
+        }
       }
     } catch (e) {
+      print('ERROR: Failed to parse RSA private key: $e');
       throw Exception('Failed to parse RSA private key from PEM: $e');
     }
   }
 
-  /// Parse PKCS#1 RSA private key
+  /// Parse PKCS#1 RSA private key - ENHANCED VERSION
   static pc.RSAPrivateKey _parseRSAPrivateKeyPKCS1(Uint8List keyBytes) {
-    final asn1Parser = ASN1Parser(keyBytes);
-    final privateKeySeq = asn1Parser.nextObject() as ASN1Sequence;
+    try {
+      final asn1Parser = ASN1Parser(keyBytes);
+      final privateKeySeq = asn1Parser.nextObject() as ASN1Sequence;
 
-    // PKCS#1 RSAPrivateKey structure:
-    // RSAPrivateKey ::= SEQUENCE {
-    //   version           Version,
-    //   modulus           INTEGER,
-    //   publicExponent    INTEGER,
-    //   privateExponent   INTEGER,
-    //   prime1            INTEGER,
-    //   prime2            INTEGER,
-    //   exponent1         INTEGER,
-    //   exponent2         INTEGER,
-    //   coefficient       INTEGER
-    // }
+      print(
+          'DEBUG: PKCS#1 sequence has ${privateKeySeq.elements!.length} elements');
 
-    final modulus =
-        (privateKeySeq.elements![1] as ASN1Integer).valueAsBigInteger;
-    final publicExponent =
-        (privateKeySeq.elements![2] as ASN1Integer).valueAsBigInteger;
-    final privateExponent =
-        (privateKeySeq.elements![3] as ASN1Integer).valueAsBigInteger;
-    final p = (privateKeySeq.elements![4] as ASN1Integer).valueAsBigInteger;
-    final q = (privateKeySeq.elements![5] as ASN1Integer).valueAsBigInteger;
+      // PKCS#1 RSAPrivateKey structure should have 9 elements
+      if (privateKeySeq.elements!.length < 9) {
+        throw Exception(
+            'Invalid PKCS#1 structure: expected 9 elements, got ${privateKeySeq.elements!.length}');
+      }
 
-    return pc.RSAPrivateKey(modulus!, privateExponent!, p, q);
+      final version =
+          (privateKeySeq.elements![0] as ASN1Integer).valueAsBigInteger;
+      final modulus =
+          (privateKeySeq.elements![1] as ASN1Integer).valueAsBigInteger;
+      final publicExponent =
+          (privateKeySeq.elements![2] as ASN1Integer).valueAsBigInteger;
+      final privateExponent =
+          (privateKeySeq.elements![3] as ASN1Integer).valueAsBigInteger;
+      final p = (privateKeySeq.elements![4] as ASN1Integer).valueAsBigInteger;
+      final q = (privateKeySeq.elements![5] as ASN1Integer).valueAsBigInteger;
+
+      print('DEBUG: Successfully parsed PKCS#1 private key');
+
+      return pc.RSAPrivateKey(modulus!, privateExponent!, p, q);
+    } catch (e) {
+      print('ERROR: PKCS#1 parsing error: $e');
+      throw Exception('PKCS#1 parsing failed: $e');
+    }
   }
 
-  /// Parse PKCS#8 RSA private key
+  /// Parse PKCS#8 RSA private key - ENHANCED VERSION
   static pc.RSAPrivateKey _parseRSAPrivateKeyPKCS8(Uint8List keyBytes) {
-    final asn1Parser = ASN1Parser(keyBytes);
-    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    try {
+      final asn1Parser = ASN1Parser(keyBytes);
+      final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
 
-    // Skip version and algorithm identifier
-    final privateKeyOctetString = topLevelSeq.elements![2] as ASN1OctetString;
-    return _parseRSAPrivateKeyPKCS1(privateKeyOctetString.contentBytes());
+      print(
+          'DEBUG: PKCS#8 top level sequence has ${topLevelSeq.elements!.length} elements');
+
+      if (topLevelSeq.elements!.length < 3) {
+        throw Exception('Invalid PKCS#8 structure');
+      }
+
+      // Skip version and algorithm identifier
+      final privateKeyOctetString = topLevelSeq.elements![2] as ASN1OctetString;
+      return _parseRSAPrivateKeyPKCS1(privateKeyOctetString.contentBytes());
+    } catch (e) {
+      print('ERROR: PKCS#8 parsing error: $e');
+      throw Exception('PKCS#8 parsing failed: $e');
+    }
   }
 
   /// Encrypt string with RSA public key using OAEP padding
@@ -153,6 +205,8 @@ class CryptoUtils {
     }
   }
 
+  // ... rest of your existing methods remain the same ...
+
   /// Generate RSA key pair
   static pc.AsymmetricKeyPair<pc.RSAPublicKey, pc.RSAPrivateKey>
       generateRSAKeyPair({
@@ -175,29 +229,29 @@ class CryptoUtils {
     );
   }
 
-  /// Convert RSA public key to PEM format
+  /// Convert RSA public key to PEM format - CORRECTED VERSION
   static String rsaPublicKeyToPem(pc.RSAPublicKey publicKey) {
     try {
-      // Create algorithm identifier sequence
-      final algorithmSeq = ASN1Sequence();
-      final algorithmAsn1Obj = ASN1Object.fromBytes(Uint8List.fromList(
-          [0x6, 0x9, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0xd, 0x1, 0x1, 0x1]));
-      final paramsAsn1Obj =
-          ASN1Object.fromBytes(Uint8List.fromList([0x5, 0x0]));
-      algorithmSeq.add(algorithmAsn1Obj);
-      algorithmSeq.add(paramsAsn1Obj);
-
-      // Create public key sequence
+      // Create the RSA public key sequence (modulus, exponent)
       final publicKeySeq = ASN1Sequence();
       publicKeySeq.add(ASN1Integer(publicKey.modulus!));
       publicKeySeq.add(ASN1Integer(publicKey.exponent!));
-      final publicKeySeqBitString =
+
+      // Create the algorithm identifier for RSA
+      final algorithmSeq = ASN1Sequence();
+      final rsaOid =
+          ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]); // RSA OID
+      algorithmSeq.add(rsaOid);
+      algorithmSeq.add(ASN1Null()); // NULL parameters for RSA
+
+      // Create the bit string containing the public key
+      final publicKeyBitString =
           ASN1BitString(Uint8List.fromList(publicKeySeq.encodedBytes));
 
-      // Create top level sequence
+      // Create the top-level SubjectPublicKeyInfo structure
       final topLevelSeq = ASN1Sequence();
       topLevelSeq.add(algorithmSeq);
-      topLevelSeq.add(publicKeySeqBitString);
+      topLevelSeq.add(publicKeyBitString);
 
       final dataBase64 = base64Encode(topLevelSeq.encodedBytes);
       return _formatPem(dataBase64, 'PUBLIC KEY');
@@ -206,7 +260,7 @@ class CryptoUtils {
     }
   }
 
-  /// Convert RSA private key to PEM format (PKCS#8)
+  /// Convert RSA private key to PEM format (PKCS#8) - CORRECTED VERSION
   static String rsaPrivateKeyToPem(pc.RSAPrivateKey privateKey) {
     try {
       // Create PKCS#1 RSAPrivateKey structure
@@ -223,14 +277,12 @@ class CryptoUtils {
             privateKey.privateExponent! % (privateKey.q! - BigInt.one)))
         ..add(ASN1Integer(_modInverse(privateKey.q!, privateKey.p!)));
 
-      // Create algorithm identifier
+      // Create algorithm identifier for RSA
       final algorithmSeq = ASN1Sequence();
-      final algorithmAsn1Obj = ASN1Object.fromBytes(Uint8List.fromList(
-          [0x6, 0x9, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0xd, 0x1, 0x1, 0x1]));
-      final paramsAsn1Obj =
-          ASN1Object.fromBytes(Uint8List.fromList([0x5, 0x0]));
-      algorithmSeq.add(algorithmAsn1Obj);
-      algorithmSeq.add(paramsAsn1Obj);
+      final rsaOid =
+          ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]); // RSA OID
+      algorithmSeq.add(rsaOid);
+      algorithmSeq.add(ASN1Null()); // NULL parameters
 
       final privateKeyOctetString = ASN1OctetString(
         Uint8List.fromList(privateKeySeq.encodedBytes),

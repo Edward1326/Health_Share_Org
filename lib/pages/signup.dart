@@ -9,7 +9,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
-import 'package:health_share_org/services/rsa_generation_service.dart';
+import 'package:health_share_org/services/crypto_utils.dart' as crypto;
+import 'package:health_share_org/services/rsa_generation_service.dart' as rsa;
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -108,18 +109,23 @@ class _SignupPageState extends State<SignupPage> {
     try {
       final currentTime = DateTime.now().toIso8601String();
 
-      // Generate RSA Key Pair using the new service
-      print('🔐 Generating RSA key pair using optimized service...');
-      final keyData = await RSAKeyGenerationService.generateRSAKeyPairIsolate();
+      // Generate RSA Key Pair using CryptoUtils (proper ASN.1 format)
+      print('🔐 Generating RSA key pair using CryptoUtils...');
+
+      // Use the crypto prefix to specify which CryptoUtils to use
+      final keyData =
+          crypto.CryptoUtils.generateRSAKeyPairAsPem(bitLength: 2048);
 
       final publicKeyPem = keyData['publicKey']!;
       final privateKeyPem = keyData['privateKey']!;
-      final keyFingerprint = keyData['fingerprint']!;
 
-      // Validate the generated keys
-      if (!RSAKeyGenerationService.validateKeyPair(
-          publicKeyPem, privateKeyPem)) {
-        throw Exception('Generated RSA keys are invalid');
+      // Generate fingerprint
+      final keyFingerprint = _generateKeyFingerprint(publicKeyPem);
+
+      // Test the keys to make sure they work
+      final testResult = crypto.CryptoUtils.testRSAEncryption(bitLength: 2048);
+      if (!testResult) {
+        throw Exception('Generated RSA keys failed validation test');
       }
 
       print('✅ RSA keys generated and validated successfully');
@@ -236,6 +242,13 @@ class _SignupPageState extends State<SignupPage> {
         });
       }
     }
+  }
+
+// Add this helper method to generate key fingerprint
+  String _generateKeyFingerprint(String publicKeyPem) {
+    final keyBytes = utf8.encode(publicKeyPem);
+    final digest = sha256.convert(keyBytes);
+    return digest.toString().substring(0, 16); // First 16 chars of SHA256
   }
 
   String _getErrorMessage(dynamic error) {

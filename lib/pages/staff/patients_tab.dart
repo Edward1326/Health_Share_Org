@@ -265,19 +265,19 @@ class _PatientsTabState extends State<PatientsTab> {
 
       final uploaderId = userResponse['id'];
 
-      // Step 5: Generate AES key and IV, then encrypt file
+      // Step 5: Generate AES key and nonce for GCM mode, then encrypt file
       final aesKeyBytes = _generateRandomBytes(32); // 32 bytes for AES-256
-      final aesIvBytes = _generateRandomBytes(16); // 16 bytes for AES CBC
+      final aesNonceBytes = _generateRandomBytes(12); // 12 bytes for GCM nonce
 
       // Convert to hex strings for AESHelper
       final aesKeyHex = _bytesToHex(aesKeyBytes);
-      final aesIvHex = _bytesToHex(aesIvBytes);
+      final aesNonceHex = _bytesToHex(aesNonceBytes);
 
       print('DEBUG: Generated AES Key (hex): $aesKeyHex');
-      print('DEBUG: Generated AES IV (hex): $aesIvHex');
+      print('DEBUG: Generated AES Nonce (hex): $aesNonceHex');
 
       // Create AESHelper and encrypt the file
-      final aesHelper = AESHelper(aesKeyHex, aesIvHex);
+      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
       final encryptedBytes = aesHelper.encryptData(fileBytes);
 
       print('DEBUG: Original file size: ${fileBytes.length} bytes');
@@ -290,31 +290,49 @@ class _PatientsTabState extends State<PatientsTab> {
           .eq('id', _selectedPatient!['patient_id'])
           .single();
 
-      final rsaPublicKeyPem = patientResponse['rsa_public_key'] as String;
+      final patientRsaPublicKeyPem =
+          patientResponse['rsa_public_key'] as String;
       print(
-          'DEBUG: Patient RSA Public Key: ${rsaPublicKeyPem.substring(0, 100)}...');
+          'DEBUG: Patient RSA Public Key: ${patientRsaPublicKeyPem.substring(0, 100)}...');
 
-      final rsaPublicKey = CryptoUtils.rsaPublicKeyFromPem(rsaPublicKeyPem);
+      final patientRsaPublicKey =
+          CryptoUtils.rsaPublicKeyFromPem(patientRsaPublicKeyPem);
 
-      // Step 7: Encrypt AES key with patient's RSA public key
+      // Step 7: Also get doctor's (your) RSA public key
+      final doctorResponse = await Supabase.instance.client
+          .from('User')
+          .select('rsa_public_key')
+          .eq('id', uploaderId)
+          .single();
+
+      final doctorRsaPublicKeyPem = doctorResponse['rsa_public_key'] as String;
+      final doctorRsaPublicKey =
+          CryptoUtils.rsaPublicKeyFromPem(doctorRsaPublicKeyPem);
+
+      // Step 8: Encrypt AES key with both patient's and doctor's RSA public keys
       final keyData = {
         'key': aesKeyHex,
-        'iv': aesIvHex,
+        'nonce': aesNonceHex,
       };
       final keyDataJson = jsonEncode(keyData);
 
       print('DEBUG: Key data to encrypt: $keyDataJson');
 
-      final rsaEncryptedString =
-          CryptoUtils.rsaEncrypt(keyDataJson, rsaPublicKey);
-      print(
-          'DEBUG: RSA encrypted key data length: ${rsaEncryptedString.length}');
+      final patientRsaEncryptedString =
+          CryptoUtils.rsaEncrypt(keyDataJson, patientRsaPublicKey);
+      final doctorRsaEncryptedString =
+          CryptoUtils.rsaEncrypt(keyDataJson, doctorRsaPublicKey);
 
-      // Step 8: Calculate SHA256 hash of original file
+      print(
+          'DEBUG: Patient RSA encrypted key data length: ${patientRsaEncryptedString.length}');
+      print(
+          'DEBUG: Doctor RSA encrypted key data length: ${doctorRsaEncryptedString.length}');
+
+      // Step 9: Calculate SHA256 hash of original file
       final sha256Hash = _calculateSHA256(fileBytes);
       print('DEBUG: File SHA256 hash: $sha256Hash');
 
-      // Step 9: Upload encrypted file to IPFS with enhanced error handling
+      // Step 10: Upload encrypted file to IPFS with enhanced error handling
       print('DEBUG: Starting IPFS upload...');
       print(
           'DEBUG: Encrypted file size for upload: ${encryptedBytes.length} bytes');
@@ -325,21 +343,12 @@ class _PatientsTabState extends State<PatientsTab> {
       const String jwt =
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI1MjNmNzlmZC0xZjVmLTQ4NzUtOTQwMS01MDcyMDE3NmMyYjYiLCJlbWFpbCI6ImVkd2FyZC5xdWlhbnpvbi5yQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiI5NmM3NGQxNTY4YzBlNDE4MGQ5MiIsInNjb3BlZEtleVNlY3JldCI6IjQ2MDIxYzNkYThmZDIzZDJmY2E4ZmYzNThjMGI3NmE2ODYxMzRhOWMzNDNiOTFmODY3MmIyMzhlYjE2N2FkODkiLCJleHAiOjE3ODU2ODIyMzl9.1VpMdmG4CaQ-eNxNVesfiy-P6J7p9IGLtjD9q1r5mkg';
 
-      // Alternative: Use API Key and Secret instead of JWT (backup method)
-      const String apiKey = '96c74d1568c0e4180d92';
-      const String apiSecret =
-          '46021c3da8fd23d2fca8ff358c0b76a686134a9c343b91f8672b238eb167ad89';
-
       print('DEBUG: Creating multipart request...');
 
       final request = http.MultipartRequest('POST', url);
 
-      // Option 1: Using JWT (recommended)
+      // Using JWT
       request.headers['Authorization'] = 'Bearer $jwt';
-
-      // Option 2: Using API Key/Secret (alternative - comment out if using JWT)
-      // request.headers['pinata_api_key'] = apiKey;
-      // request.headers['pinata_secret_api_key'] = apiSecret;
 
       // Add the encrypted file
       request.files.add(
@@ -393,7 +402,7 @@ class _PatientsTabState extends State<PatientsTab> {
         final ipfsCid = ipfsJson['IpfsHash'] as String;
         print('DEBUG: Upload successful. CID: $ipfsCid');
 
-        // Step 10: Create file record in Files table
+        // Step 11: Create file record in Files table
         final fileResponse = await Supabase.instance.client
             .from('Files')
             .insert({
@@ -412,15 +421,28 @@ class _PatientsTabState extends State<PatientsTab> {
         final fileId = fileResponse['id'];
         print('DEBUG: File inserted with ID: $fileId');
 
-        // Step 11: Insert encrypted AES key into File_Keys
+        // Step 12: Insert encrypted AES keys for BOTH patient and doctor
         try {
+          // Insert key for patient
           await Supabase.instance.client.from('File_Keys').insert({
             'file_id': fileId,
             'recipient_type': 'user',
             'recipient_id': _selectedPatient!['patient_id'],
-            'aes_key_encrypted': rsaEncryptedString,
+            'aes_key_encrypted': patientRsaEncryptedString,
+            'nonce_hex': aesNonceHex,
           });
-          print('DEBUG: File key inserted successfully');
+
+          // Insert key for doctor (yourself)
+          await Supabase.instance.client.from('File_Keys').insert({
+            'file_id': fileId,
+            'recipient_type': 'user',
+            'recipient_id': uploaderId, // Your user ID
+            'aes_key_encrypted': doctorRsaEncryptedString,
+            'nonce_hex': aesNonceHex,
+          });
+
+          print(
+              'DEBUG: File keys inserted successfully for both patient and doctor');
         } catch (fileKeyError) {
           print('ERROR: inserting file key: $fileKeyError');
           Navigator.pop(context);
@@ -428,7 +450,7 @@ class _PatientsTabState extends State<PatientsTab> {
           return;
         }
 
-        // Step 12: Create File_Shares record to share with patient
+        // Step 13: Create File_Shares record to share with patient
         final patientId = _selectedPatient!['patient_id'].toString();
 
         await Supabase.instance.client.from('File_Shares').insert({
@@ -441,7 +463,7 @@ class _PatientsTabState extends State<PatientsTab> {
         // Close loading dialog
         Navigator.pop(context);
 
-        // Step 13: Refresh patient files and show success
+        // Step 14: Refresh patient files and show success
         await _loadPatientFiles(patientId);
         _showSnackBar(
             'File encrypted, uploaded to IPFS and shared successfully!');
@@ -1275,7 +1297,7 @@ class _PatientsTabState extends State<PatientsTab> {
               title: const Text('Download File'),
               onTap: () {
                 Navigator.pop(context);
-                _downloadFile(file);
+                _downloadAndDecryptFile(file);
               },
             ),
             ListTile(
@@ -1308,14 +1330,181 @@ class _PatientsTabState extends State<PatientsTab> {
     );
   }
 
-  void _downloadFile(Map<String, dynamic> file) {
-    final fileUrl = file['file_url'];
-    if (fileUrl != null) {
-      // For web, open in new tab
-      html.window.open(fileUrl, '_blank');
-      _showSnackBar('File opened in new tab');
-    } else {
-      _showSnackBar('File URL not available');
+  Future<void> _previewFile(Map<String, dynamic> file) async {
+    try {
+      final fileType = file['file_type']?.toLowerCase();
+
+      // Only allow preview for images and PDFs
+      if (!['jpg', 'jpeg', 'png', 'pdf'].contains(fileType)) {
+        _showSnackBar('Preview not available for this file type');
+        return;
+      }
+
+      _showSnackBar('Loading file preview...');
+
+      final fileId = file['id'];
+      final ipfsCid = file['ipfs_cid'];
+
+      if (ipfsCid == null) {
+        _showSnackBar('IPFS CID not found');
+        return;
+      }
+
+      // Get current user and decrypt file (same as download)
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        _showSnackBar('Authentication error');
+        return;
+      }
+
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id, rsa_private_key')
+          .eq('email', currentUser.email!)
+          .single();
+
+      final userId = userResponse['id'];
+      final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
+
+      if (rsaPrivateKeyPem == null) {
+        _showSnackBar('RSA private key not found');
+        return;
+      }
+
+      final keyResponse = await Supabase.instance.client
+          .from('File_Keys')
+          .select('aes_key_encrypted, nonce_hex')
+          .eq('file_id', fileId)
+          .eq('recipient_id', userId)
+          .single();
+
+      final encryptedAesKey = keyResponse['aes_key_encrypted'] as String;
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final decryptedKeyDataJson =
+          CryptoUtils.rsaDecrypt(encryptedAesKey, rsaPrivateKey);
+      final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+
+      final aesKeyHex = keyData['key'] as String;
+      final aesNonceHex = keyData['nonce'] as String;
+
+      // Download and decrypt
+      final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
+      final response = await http.get(Uri.parse(ipfsUrl));
+
+      if (response.statusCode != 200) {
+        _showSnackBar('Failed to download file from IPFS');
+        return;
+      }
+
+      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
+      final decryptedBytes = aesHelper.decryptData(response.bodyBytes);
+
+      // Create blob URL and open in new tab for preview
+      final blob = html.Blob([decryptedBytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.window.open(url, '_blank');
+
+      // Clean up the URL after a delay
+      Timer(const Duration(seconds: 30), () {
+        html.Url.revokeObjectUrl(url);
+      });
+
+      _showSnackBar('File preview opened in new tab');
+    } catch (e) {
+      print('ERROR previewing file: $e');
+      _showSnackBar('Error previewing file: $e');
+    }
+  }
+
+  Future<void> _downloadAndDecryptFile(Map<String, dynamic> file) async {
+    try {
+      _showSnackBar('Downloading and decrypting file...');
+
+      final fileId = file['id'];
+      final ipfsCid = file['ipfs_cid'];
+
+      if (ipfsCid == null) {
+        _showSnackBar('IPFS CID not found');
+        return;
+      }
+
+      // Get current user
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        _showSnackBar('Authentication error');
+        return;
+      }
+
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id, rsa_private_key')
+          .eq('email', currentUser.email!)
+          .single();
+
+      final userId = userResponse['id'];
+      final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
+
+      if (rsaPrivateKeyPem == null) {
+        _showSnackBar('RSA private key not found');
+        return;
+      }
+
+      // Get the encrypted AES key for this user
+      final keyResponse = await Supabase.instance.client
+          .from('File_Keys')
+          .select('aes_key_encrypted, nonce_hex')
+          .eq('file_id', fileId)
+          .eq('recipient_id', userId)
+          .single();
+
+      final encryptedAesKey = keyResponse['aes_key_encrypted'] as String;
+      final nonceHex = keyResponse['nonce_hex'] as String;
+
+      // Decrypt the AES key using RSA private key
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final decryptedKeyDataJson =
+          CryptoUtils.rsaDecrypt(encryptedAesKey, rsaPrivateKey);
+      final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+
+      final aesKeyHex = keyData['key'] as String;
+      final aesNonceHex = keyData['nonce'] as String;
+
+      print('DEBUG: Decrypted AES key: $aesKeyHex');
+      print('DEBUG: Decrypted nonce: $aesNonceHex');
+
+      // Download encrypted file from IPFS
+      final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
+      final response = await http.get(Uri.parse(ipfsUrl));
+
+      if (response.statusCode != 200) {
+        _showSnackBar('Failed to download file from IPFS');
+        return;
+      }
+
+      final encryptedBytes = response.bodyBytes;
+      print('DEBUG: Downloaded encrypted file: ${encryptedBytes.length} bytes');
+
+      // Decrypt the file
+      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
+      final decryptedBytes = aesHelper.decryptData(encryptedBytes);
+
+      print('DEBUG: Decrypted file: ${decryptedBytes.length} bytes');
+
+      // Create a blob and download it
+      final blob = html.Blob([decryptedBytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', file['filename'] ?? 'decrypted_file')
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+
+      _showSnackBar('File decrypted and downloaded successfully!');
+    } catch (e, stackTrace) {
+      print('ERROR downloading/decrypting file: $e');
+      print('Stack trace: $stackTrace');
+      _showSnackBar('Error downloading file: $e');
     }
   }
 
