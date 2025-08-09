@@ -1031,7 +1031,7 @@ class _PatientsTabState extends State<PatientsTab> {
   Widget _buildFileCard(Map<String, dynamic> file) {
     final fileType = file['file_type'] ?? 'unknown';
     final category = file['category'] ?? 'other';
-    final fileName = file['name'] ?? 'Unknown File';
+    final fileName = file['filename'] ?? 'Unknown File';
     final description = file['description'] ?? '';
     final createdAt =
         DateTime.tryParse(file['created_at'] ?? '') ?? DateTime.now();
@@ -1513,7 +1513,7 @@ class _PatientsTabState extends State<PatientsTab> {
   }
 
   void _showFileDetails(Map<String, dynamic> file) {
-    final fileName = file['name'] ?? 'Unknown File';
+    final fileName = file['filename'] ?? 'Unknown File';
     final description = file['description'] ?? 'No description';
     final fileType = file['file_type'] ?? 'unknown';
     final category = file['category'] ?? 'other';
