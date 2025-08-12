@@ -78,144 +78,126 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   }
 
   Future<void> _loadEmployeesFromSupabase() async {
-    try {
-      setState(() {
-        isLoading = true;
-        errorMessage = null;
-      });
+  try {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
 
-      print('=== DEBUG: Starting employee loading process ===');
+    print('=== DEBUG: Starting employee loading process (Email lookup only) ===');
 
-      // Get current user's organization ID
-      final currentUser = supabase.auth.currentUser;
-      if (currentUser == null) throw Exception("No user is logged in");
+    // Get current user's email
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) throw Exception("No user is logged in");
 
-      final currentUserOrgResponse = await supabase
-          .from('Organization_User')
-          .select('organization_id')
-          .eq('user_id', currentUser.id)
-          .maybeSingle();
+    print('Current user email: ${currentUser.email}');
 
-      if (currentUserOrgResponse == null) {
-        throw Exception("Current user is not associated with any organization");
-      }
+    // Find organization by email lookup only
+    print('Finding organization by email...');
+    final userByEmailResponse = await supabase
+        .from('Organization_User')
+        .select('''
+          organization_id,
+          User!inner(email, id, person_id)
+        ''')
+        .eq('User.email', currentUser.email)
+        .maybeSingle();
 
-      final currentOrganizationId = currentUserOrgResponse['organization_id'];
-      print('Current organization ID: $currentOrganizationId');
-
-      // Fetch employees using proper joins (similar to patient loading)
-      print('Step 1: Fetching Organization_User records with joins...');
-      final employeesResponse =
-          await supabase.from('Organization_User').select('''
-          *,
-          User!inner(
-            *,
-            Person!inner(*)
-          )
-        ''').eq('organization_id', currentOrganizationId);
-
-      print('Organization_User records found: ${employeesResponse.length}');
-
-      if (employeesResponse.isEmpty) {
-        print('No Organization_User records found for organization!');
-        setState(() {
-          employees = [];
-          isLoading = false;
-          errorMessage = 'No employees found in this organization.';
-        });
-        return;
-      }
-
-      // Build the employees list
-      print('\nStep 2: Building final employee list...');
-      final List<Map<String, dynamic>> loadedEmployees = [];
-
-      for (var orgUser in employeesResponse) {
-        final user = orgUser['User'];
-        final person = user?['Person'];
-
-        print('\nProcessing Organization_User ID: ${orgUser['id']}');
-        print('  - Position: ${orgUser['position']}');
-        print('  - Department: ${orgUser['department']}');
-        print('  - User ID: ${orgUser['user_id']}');
-        print('  - Person data: $person');
-
-        if (person != null) {
-          // Build full name with multiple fallback options
-          String fullName = 'Unknown Employee';
-
-          if (person['first_name'] != null && person['last_name'] != null) {
-            fullName = '${person['first_name']} ${person['last_name']}';
-          } else if (person['first_name'] != null) {
-            fullName = person['first_name'];
-          } else if (person['last_name'] != null) {
-            fullName = person['last_name'];
-          } else if (person['name'] != null) {
-            fullName = person['name'];
-          }
-
-          final employee = {
-            'id': orgUser['id'].toString(), // Organization_User ID
-            'name': fullName,
-            'role': orgUser['position'] ?? 'Staff',
-            'department': orgUser['department'] ?? 'General',
-            'status': 'Active',
-            'assignedPatients': <String>[],
-            'email': person['email'] ?? '',
-            'phone': person['contact_number'] ?? '',
-            'address': person['address'] ?? '',
-            'hireDate': orgUser['created_at'] != null
-                ? DateTime.parse(orgUser['created_at'])
-                    .toString()
-                    .substring(0, 10)
-                : DateTime.now().toString().substring(0, 10),
-            'user_id': orgUser['user_id'], // Actual User ID
-            'person_id': person['id'].toString(), // Person ID
-            'organization_id': orgUser['organization_id'],
-            // Additional useful fields
-            'position': orgUser['position'] ?? 'Staff',
-            'created_at': orgUser['created_at'],
-          };
-
-          loadedEmployees.add(employee);
-          print(
-              '  - ADDED employee: ${employee['name']} (${employee['role']})');
-        } else {
-          print(
-              '  - SKIPPED: No person data found for user_id ${orgUser['user_id']}');
-        }
-      }
-
-      print('\n=== DEBUG: Employee Loading Results ===');
-      print('Total employees loaded: ${loadedEmployees.length}');
-
-      // Print summary by department
-      final deptCounts = <String, int>{};
-      for (var emp in loadedEmployees) {
-        final dept = emp['department'] ?? 'Unknown';
-        deptCounts[dept] = (deptCounts[dept] ?? 0) + 1;
-      }
-      print('Department breakdown:');
-      deptCounts.forEach((dept, count) {
-        print('  - $dept: $count');
-      });
-
-      setState(() {
-        employees = loadedEmployees;
-        isLoading = false;
-      });
-    } catch (e, stackTrace) {
-      print('=== DEBUG: Error loading employees ===');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
-
-      setState(() {
-        errorMessage = 'Error loading employees: $e';
-        isLoading = false;
-        employees = [];
-      });
+    if (userByEmailResponse == null) {
+      throw Exception("Current user (${currentUser.email}) is not associated with any organization. Please contact your administrator to add you to an organization.");
     }
+
+    final currentOrganizationId = userByEmailResponse['organization_id'];
+    print('Found organization by email: $currentOrganizationId');
+
+    // Fetch all employees in the same organization
+    print('Fetching all employees in organization...');
+    final employeesResponse = await supabase.from('Organization_User').select('''
+      *,
+      User!inner(
+        *,
+        Person!inner(*)
+      )
+    ''').eq('organization_id', currentOrganizationId);
+
+    print('Organization_User records found: ${employeesResponse.length}');
+
+    if (employeesResponse.isEmpty) {
+      setState(() {
+        employees = [];
+        isLoading = false;
+        errorMessage = 'No employees found in this organization.';
+      });
+      return;
+    }
+
+    // Build the employees list
+    print('Building employee list...');
+    final List<Map<String, dynamic>> loadedEmployees = [];
+
+    for (var orgUser in employeesResponse) {
+      final user = orgUser['User'];
+      final person = user?['Person'];
+
+      if (person != null) {
+        // Build full name with fallbacks
+        String fullName = 'Unknown Employee';
+
+        if (person['first_name'] != null && person['last_name'] != null) {
+          fullName = '${person['first_name']} ${person['last_name']}';
+        } else if (person['first_name'] != null) {
+          fullName = person['first_name'];
+        } else if (person['last_name'] != null) {
+          fullName = person['last_name'];
+        } else if (person['name'] != null) {
+          fullName = person['name'];
+        }
+
+        final employee = {
+          'id': orgUser['id'].toString(),
+          'name': fullName,
+          'role': orgUser['position'] ?? 'Staff',
+          'department': orgUser['department'] ?? 'General',
+          'status': 'Active',
+          'assignedPatients': <String>[],
+          'email': person['email'] ?? '',
+          'phone': person['contact_number'] ?? '',
+          'address': person['address'] ?? '',
+          'hireDate': orgUser['created_at'] != null
+              ? DateTime.parse(orgUser['created_at'])
+                  .toString()
+                  .substring(0, 10)
+              : DateTime.now().toString().substring(0, 10),
+          'user_id': orgUser['user_id'],
+          'person_id': person['id'].toString(),
+          'organization_id': orgUser['organization_id'],
+          'position': orgUser['position'] ?? 'Staff',
+          'created_at': orgUser['created_at'],
+        };
+
+        loadedEmployees.add(employee);
+        print('Added employee: ${employee['name']} (${employee['role']})');
+      }
+    }
+
+    print('=== Total employees loaded: ${loadedEmployees.length} ===');
+
+    setState(() {
+      employees = loadedEmployees;
+      isLoading = false;
+    });
+  } catch (e, stackTrace) {
+    print('=== ERROR loading employees ===');
+    print('Error: $e');
+    print('Stack trace: $stackTrace');
+
+    setState(() {
+      errorMessage = 'Error loading employees: $e';
+      isLoading = false;
+      employees = [];
+    });
   }
+}
 
 // Optional: Add a method to get employee assignment counts
   Future<void> _loadEmployeeAssignments() async {
