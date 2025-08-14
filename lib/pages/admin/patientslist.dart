@@ -137,19 +137,24 @@ class _PatientListPageState extends State<PatientListPage>
     }
   }
 
+  // Fix 2: Null safety in filteredUsers getter
   List<Map<String, dynamic>> get filteredUsers {
     var filtered = users.where((user) {
+      final name = user['name']?.toString() ?? '';
+      final id = user['id']?.toString() ?? '';
+      final status = user['status']?.toString() ?? '';
+
       final matchesSearch =
-          user['name']!.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              user['id'].toString().contains(searchQuery);
+          name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+              id.contains(searchQuery);
 
       switch (selectedFilter) {
         case 'invited':
-          return matchesSearch && user['status'] == 'invited';
+          return matchesSearch && status == 'invited';
         case 'unassigned':
-          return matchesSearch && user['status'] == 'unassigned';
+          return matchesSearch && status == 'unassigned';
         case 'assigned':
-          return matchesSearch && user['status'] == 'assigned';
+          return matchesSearch && status == 'assigned';
         default:
           return matchesSearch;
       }
@@ -158,13 +163,17 @@ class _PatientListPageState extends State<PatientListPage>
     // Sort by status priority (pending first, then unassigned, then assigned)
     filtered.sort((a, b) {
       const statusPriority = {'invited': 0, 'unassigned': 1, 'assigned': 2};
-      final aPriority = statusPriority[a['status']] ?? 3;
-      final bPriority = statusPriority[b['status']] ?? 3;
+      final aStatus = a['status']?.toString() ?? '';
+      final bStatus = b['status']?.toString() ?? '';
+      final aPriority = statusPriority[aStatus] ?? 3;
+      final bPriority = statusPriority[bStatus] ?? 3;
 
       if (aPriority != bPriority) {
         return aPriority.compareTo(bPriority);
       }
-      return a['name']!.compareTo(b['name']!);
+      final aName = a['name']?.toString() ?? '';
+      final bName = b['name']?.toString() ?? '';
+      return aName.compareTo(bName);
     });
 
     return filtered;
@@ -2272,7 +2281,7 @@ class _PatientListPageState extends State<PatientListPage>
     );
   }
 
-  // Update your _buildSearchAndFilter method to include the invite button and invited filter:
+  // Fix 1: Null safety in _buildSearchAndFilter method
   Widget _buildSearchAndFilter() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -2320,8 +2329,8 @@ class _PatientListPageState extends State<PatientListPage>
               // Invite User Button
               Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [const Color(0xFF3182CE), const Color(0xFF1E40AF)],
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3182CE), Color(0xFF1E40AF)],
                   ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
@@ -2360,15 +2369,15 @@ class _PatientListPageState extends State<PatientListPage>
                 _buildFilterChip('All', 'all'),
                 const SizedBox(width: 8),
                 _buildFilterChip('Invited', 'invited',
-                    color: const Color(0xFF8B5CF6), // Purple for invited
+                    color: const Color(0xFF8B5CF6),
                     icon: Icons.mail_outline_rounded),
                 const SizedBox(width: 8),
                 _buildFilterChip('Unassigned', 'unassigned',
-                    color: const Color(0xFFEF4444), // Red for unassigned
+                    color: const Color(0xFFEF4444),
                     icon: Icons.person_off_rounded),
                 const SizedBox(width: 8),
                 _buildFilterChip('Assigned', 'assigned',
-                    color: const Color(0xFF10B981), // Green for assigned
+                    color: const Color(0xFF10B981),
                     icon: Icons.person_add_alt_rounded),
                 const SizedBox(width: 16),
                 Text(
@@ -2422,9 +2431,16 @@ class _PatientListPageState extends State<PatientListPage>
     );
   }
 
+  // Fix 3: Safe string handling in _buildEnhancedPatientCard
   Widget _buildEnhancedPatientCard(Map<String, dynamic> user, int index) {
-    final String status = user['status'] ?? 'pending';
+    final String status = user['status']?.toString() ?? 'pending';
     final bool hasAssignedDoctor = user['assignedDoctor'] != null;
+    final String userName = user['name']?.toString() ?? 'Unknown Patient';
+    final String userEmail = user['email']?.toString() ?? '';
+    final String userPhone = user['phone']?.toString() ?? '';
+    final String userId = user['id']?.toString() ?? '';
+    final String userType = user['type']?.toString() ?? 'Patient';
+    final String lastVisit = user['lastVisit']?.toString() ?? 'Unknown';
 
     // Define colors based on status
     Color statusColor;
@@ -2457,7 +2473,6 @@ class _PatientListPageState extends State<PatientListPage>
         statusIcon = Icons.mail_outline_rounded;
         statusText = 'Invited';
         break;
-
       default:
         statusColor = Colors.grey;
         borderColor = Colors.grey.withOpacity(0.3);
@@ -2519,15 +2534,15 @@ class _PatientListPageState extends State<PatientListPage>
                         Row(
                           children: [
                             Hero(
-                              tag: 'patient_${user['id']}',
+                              tag: 'patient_$userId',
                               child: Container(
                                 width: 56,
                                 height: 56,
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
+                                  gradient: const LinearGradient(
                                     colors: [
-                                      const Color(0xFF3B82F6),
-                                      const Color(0xFF1E40AF),
+                                      Color(0xFF3B82F6),
+                                      Color(0xFF1E40AF),
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(16),
@@ -2542,8 +2557,8 @@ class _PatientListPageState extends State<PatientListPage>
                                 ),
                                 child: Center(
                                   child: Text(
-                                    user['name']!.isNotEmpty
-                                        ? user['name']![0].toUpperCase()
+                                    userName.isNotEmpty
+                                        ? userName[0].toUpperCase()
                                         : 'P',
                                     style: const TextStyle(
                                       color: Colors.white,
@@ -2560,7 +2575,7 @@ class _PatientListPageState extends State<PatientListPage>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    user['name']!,
+                                    userName,
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -2580,7 +2595,7 @@ class _PatientListPageState extends State<PatientListPage>
                                               BorderRadius.circular(12),
                                         ),
                                         child: Text(
-                                          user['type']!,
+                                          userType,
                                           style: const TextStyle(
                                             fontSize: 12,
                                             color: Color(0xFF3B82F6),
@@ -2590,7 +2605,7 @@ class _PatientListPageState extends State<PatientListPage>
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'ID: ${user['id']}',
+                                        'ID: $userId',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey.shade600,
@@ -2647,9 +2662,8 @@ class _PatientListPageState extends State<PatientListPage>
                               children: [
                                 Row(
                                   children: [
-                                    Icon(Icons.pending_actions_rounded,
-                                        size: 20,
-                                        color: const Color(0xFFF59E0B)),
+                                    const Icon(Icons.pending_actions_rounded,
+                                        size: 20, color: Color(0xFFF59E0B)),
                                     const SizedBox(width: 8),
                                     const Expanded(
                                       child: Text(
@@ -2666,6 +2680,46 @@ class _PatientListPageState extends State<PatientListPage>
                                 const SizedBox(height: 8),
                                 Text(
                                   'Review patient information and approve to allow doctor assignment',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (status == 'invited') ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color:
+                                      const Color(0xFF8B5CF6).withOpacity(0.2)),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.mail_outline_rounded,
+                                        size: 20, color: Color(0xFF8B5CF6)),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'Invitation sent to this user',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF8B5CF6),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'User will need to accept the invitation to become an active patient',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade600,
@@ -2704,7 +2758,7 @@ class _PatientListPageState extends State<PatientListPage>
                                     Expanded(
                                       child: Text(
                                         hasAssignedDoctor
-                                            ? 'Assigned to: ${user['assignedDoctor']}'
+                                            ? 'Assigned to: ${user['assignedDoctor'] ?? 'Unknown Doctor'}'
                                             : 'No doctor assigned',
                                         style: TextStyle(
                                           fontSize: 14,
@@ -2715,52 +2769,6 @@ class _PatientListPageState extends State<PatientListPage>
                                         ),
                                       ),
                                     ),
-                                    if (status == 'invited') ...[
-                                      Container(
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF8B5CF6)
-                                              .withOpacity(0.05),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                              color: const Color(0xFF8B5CF6)
-                                                  .withOpacity(0.2)),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Icon(Icons.mail_outline_rounded,
-                                                    size: 20,
-                                                    color: const Color(
-                                                        0xFF8B5CF6)),
-                                                const SizedBox(width: 8),
-                                                const Expanded(
-                                                  child: Text(
-                                                    'Invitation sent to this user',
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: Color(0xFF8B5CF6),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'User will need to accept the invitation to become an active patient',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -2770,20 +2778,20 @@ class _PatientListPageState extends State<PatientListPage>
                                         size: 16, color: Colors.grey.shade600),
                                     const SizedBox(width: 6),
                                     Text(
-                                      'Last visit: ${user['lastVisit']}',
+                                      'Last visit: $lastVisit',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.grey.shade600,
                                       ),
                                     ),
                                     const Spacer(),
-                                    if (user['email'].isNotEmpty) ...[
+                                    if (userEmail.isNotEmpty) ...[
                                       Icon(Icons.email_outlined,
                                           size: 16,
                                           color: Colors.grey.shade600),
                                       const SizedBox(width: 4),
                                     ],
-                                    if (user['phone'].isNotEmpty) ...[
+                                    if (userPhone.isNotEmpty) ...[
                                       Icon(Icons.phone_outlined,
                                           size: 16,
                                           color: Colors.grey.shade600),
