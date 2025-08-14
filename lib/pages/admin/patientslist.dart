@@ -18,6 +18,9 @@ class _PatientListPageState extends State<PatientListPage>
   String? errorMessage;
   String searchQuery = '';
   String selectedFilter = 'all';
+  List<Map<String, dynamic>> searchResults = []; // For user search results
+  bool isSearching = false;
+  String userSearchQuery = '';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   String? currentOrganizationId;
@@ -141,8 +144,8 @@ class _PatientListPageState extends State<PatientListPage>
               user['id'].toString().contains(searchQuery);
 
       switch (selectedFilter) {
-        case 'pending':
-          return matchesSearch && user['status'] == 'pending';
+        case 'invited':
+          return matchesSearch && user['status'] == 'invited';
         case 'unassigned':
           return matchesSearch && user['status'] == 'unassigned';
         case 'assigned':
@@ -154,7 +157,7 @@ class _PatientListPageState extends State<PatientListPage>
 
     // Sort by status priority (pending first, then unassigned, then assigned)
     filtered.sort((a, b) {
-      const statusPriority = {'pending': 0, 'unassigned': 1, 'assigned': 2};
+      const statusPriority = {'invited': 0, 'unassigned': 1, 'assigned': 2};
       final aPriority = statusPriority[a['status']] ?? 3;
       final bPriority = statusPriority[b['status']] ?? 3;
 
@@ -466,6 +469,545 @@ class _PatientListPageState extends State<PatientListPage>
       print('=== DEBUG: Error loading assignments ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _searchUsersToInvite(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        searchResults = [];
+        isSearching = false;
+      });
+      return;
+    }
+
+    setState(() {
+      isSearching = true;
+    });
+
+    try {
+      print('=== DEBUG: Searching for users to invite ===');
+      print('Search query: $query');
+      print('Current organization ID: $currentOrganizationId');
+
+      // Get users that match the search query with proper join
+      final searchResponse = await supabase.from('User').select('''
+        *,
+        Person!inner(*)
+      ''');
+
+      print('Search response: ${searchResponse.length} users found');
+
+      if (searchResponse.isEmpty) {
+        setState(() {
+          searchResults = [];
+          isSearching = false;
+        });
+        return;
+      }
+
+      // Get list of user IDs already in this organization as patients
+      final existingPatients = await supabase
+          .from('Patient')
+          .select('user_id')
+          .eq('organization_id', currentOrganizationId!);
+
+      final existingUserIds =
+          existingPatients.map((p) => p['user_id'].toString()).toSet();
+
+      print('Existing patient user IDs in org: $existingUserIds');
+
+      // Filter users based on search query and exclude existing patients
+      final List<Map<String, dynamic>> availableUsers = [];
+      final searchLower = query.toLowerCase();
+
+      for (var user in searchResponse) {
+        final person = user['Person'];
+        final userId = user['id'].toString();
+
+        // Skip if user is already a patient in this organization
+        if (existingUserIds.contains(userId)) {
+          print('Skipping existing patient: $userId');
+          continue;
+        }
+
+        if (person != null) {
+          final firstName = person['first_name']?.toString() ?? '';
+          final lastName = person['last_name']?.toString() ?? '';
+          final email = person['email']?.toString() ?? '';
+
+          final fullName = firstName.isNotEmpty && lastName.isNotEmpty
+              ? '$firstName $lastName'
+              : firstName.isNotEmpty
+                  ? firstName
+                  : lastName.isNotEmpty
+                      ? lastName
+                      : 'Unknown User';
+
+          // Check if user matches search criteria
+          if (fullName.toLowerCase().contains(searchLower) ||
+              email.toLowerCase().contains(searchLower) ||
+              firstName.toLowerCase().contains(searchLower) ||
+              lastName.toLowerCase().contains(searchLower)) {
+            availableUsers.add({
+              'id': userId,
+              'user_id': userId,
+              'name': fullName,
+              'email': email,
+              'phone': person['contact_number'] ?? '',
+              'address': person['address'] ?? '',
+              'person': person,
+            });
+
+            print('Added user to search results: $fullName ($email)');
+          }
+        }
+      }
+
+      print('Available users to invite: ${availableUsers.length}');
+      availableUsers.forEach((user) {
+        print('  - ${user['name']} (${user['email']})');
+      });
+
+      setState(() {
+        searchResults = availableUsers;
+        isSearching = false;
+      });
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error searching users ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      setState(() {
+        searchResults = [];
+        isSearching = false;
+      });
+      _showSnackBar('Error searching users: $e', const Color(0xFFE53E3E));
+    }
+  }
+
+// Add this method to invite a user:
+  Future<void> _inviteUser(Map<String, dynamic> userToInvite) async {
+    try {
+      print('=== DEBUG: Inviting user to organization ===');
+      print('User to invite: ${userToInvite['name']}');
+      print('User ID: ${userToInvite['user_id']}');
+      print('Organization ID: $currentOrganizationId');
+
+      // Check if user is already a patient in this organization
+      final existingPatient = await supabase
+          .from('Patient')
+          .select('*')
+          .eq('user_id', userToInvite['user_id'])
+          .eq('organization_id', currentOrganizationId!)
+          .maybeSingle();
+
+      if (existingPatient != null) {
+        _showSnackBar(
+            '${userToInvite['name']} is already a patient in this organization',
+            const Color(0xFFD69E2E));
+        return;
+      }
+
+      // Create patient record with invited status
+      final patientData = {
+        'user_id': userToInvite['user_id'],
+        'organization_id': currentOrganizationId,
+        'status': 'invited',
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      print('Creating patient record: $patientData');
+
+      final result =
+          await supabase.from('Patient').insert(patientData).select().single();
+
+      print('Patient record created: $result');
+
+      // Add to local list
+      final newPatient = {
+        'id': result['id'].toString(),
+        'name': userToInvite['name'],
+        'type': 'Patient',
+        'email': userToInvite['email'],
+        'phone': userToInvite['phone'],
+        'address': userToInvite['address'],
+        'lastVisit': DateTime.now().toString().split(' ')[0],
+        'status': 'invited',
+        'assignedDoctor': null,
+        'assignedDoctorId': null,
+        'assignmentId': null,
+        'patientId': result['id'].toString(),
+        'personId': userToInvite['person']['id'].toString(),
+        'userId': userToInvite['user_id'],
+      };
+
+      setState(() {
+        users.insert(0, newPatient); // Add to beginning of list
+        searchResults = []; // Clear search results
+        userSearchQuery = ''; // Clear search query
+      });
+
+      // Close the dialog
+      Navigator.of(context).pop();
+
+      _showSnackBar(
+          '${userToInvite['name']} has been invited to join as a patient',
+          const Color(0xFF38A169));
+
+      // TODO: Here you can add notification/email logic to inform the user about the invitation
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error inviting user ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      _showSnackBar('Failed to invite user: $e', const Color(0xFFE53E3E));
+    }
+  }
+
+// Add this method to show the invite dialog:
+  // Replace your _showInviteUserDialog method with this fixed version:
+
+  void _showInviteUserDialog() {
+    // Reset search when opening dialog
+    userSearchQuery = '';
+    searchResults = [];
+    isSearching = false; // Make sure this is false initially
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.person_add_rounded, color: Color(0xFF3182CE)),
+              SizedBox(width: 8),
+              Text('Invite User as Patient'),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: Column(
+              children: [
+                // Search Bar
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: TextField(
+                    onChanged: (value) {
+                      setDialogState(() {
+                        userSearchQuery = value;
+                      });
+                      // Call search and update dialog state when results come back
+                      _searchUsersToInviteWithDialog(value, setDialogState);
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search by name or email...',
+                      hintStyle: TextStyle(color: Colors.grey.shade500),
+                      prefixIcon: Icon(Icons.search_rounded,
+                          color: Colors.grey.shade400),
+                      suffixIcon: userSearchQuery.isNotEmpty
+                          ? IconButton(
+                              onPressed: () {
+                                setDialogState(() {
+                                  userSearchQuery = '';
+                                  searchResults = [];
+                                  isSearching = false;
+                                });
+                              },
+                              icon: Icon(Icons.clear_rounded,
+                                  color: Colors.grey.shade400),
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Search Results
+                Expanded(
+                  child: isSearching
+                      ? const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                  color: Color(0xFF3182CE)),
+                              SizedBox(height: 16),
+                              Text('Searching users...'),
+                            ],
+                          ),
+                        )
+                      : userSearchQuery.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.search_rounded,
+                                    size: 48,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Start typing to search for users',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : searchResults.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.person_search_rounded,
+                                        size: 48,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'No users found',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Try searching with a different name or email',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 14,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: searchResults.length,
+                                  itemBuilder: (context, index) {
+                                    final user = searchResults[index];
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: Colors.grey.shade200),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.05),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ListTile(
+                                        leading: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF3182CE),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            user['name']!.isNotEmpty
+                                                ? user['name']![0].toUpperCase()
+                                                : 'U',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        title: Text(
+                                          user['name']!,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                        subtitle: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            if (user['email'].isNotEmpty)
+                                              Text(
+                                                user['email'],
+                                                style: const TextStyle(
+                                                    color: Color(0xFF4A5568)),
+                                              ),
+                                            if (user['phone'].isNotEmpty)
+                                              Text(
+                                                user['phone'],
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Color(0xFF718096),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        trailing: ElevatedButton(
+                                          onPressed: () => _inviteUser(user),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                const Color(0xFF3182CE),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          child: const Text('Invite',
+                                              style: TextStyle(fontSize: 12)),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Color(0xFF718096))),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Add this new method that updates the dialog state:
+  Future<void> _searchUsersToInviteWithDialog(
+      String query, StateSetter setDialogState) async {
+    if (query.isEmpty) {
+      setDialogState(() {
+        searchResults = [];
+        isSearching = false;
+      });
+      return;
+    }
+
+    setDialogState(() {
+      isSearching = true;
+    });
+
+    try {
+      print('=== DEBUG: Searching for users to invite ===');
+      print('Search query: $query');
+      print('Current organization ID: $currentOrganizationId');
+
+      // Get users that match the search query with proper join
+      final searchResponse = await supabase.from('User').select('''
+        *,
+        Person!inner(*)
+      ''');
+
+      print('Search response: ${searchResponse.length} users found');
+
+      if (searchResponse.isEmpty) {
+        setDialogState(() {
+          searchResults = [];
+          isSearching = false;
+        });
+        return;
+      }
+
+      // Get list of user IDs already in this organization as patients
+      final existingPatients = await supabase
+          .from('Patient')
+          .select('user_id')
+          .eq('organization_id', currentOrganizationId!);
+
+      final existingUserIds =
+          existingPatients.map((p) => p['user_id'].toString()).toSet();
+
+      print('Existing patient user IDs in org: $existingUserIds');
+
+      // Filter users based on search query and exclude existing patients
+      final List<Map<String, dynamic>> availableUsers = [];
+      final searchLower = query.toLowerCase();
+
+      for (var user in searchResponse) {
+        final person = user['Person'];
+        final userId = user['id'].toString();
+
+        // Skip if user is already a patient in this organization
+        if (existingUserIds.contains(userId)) {
+          print('Skipping existing patient: $userId');
+          continue;
+        }
+
+        if (person != null) {
+          final firstName = person['first_name']?.toString() ?? '';
+          final lastName = person['last_name']?.toString() ?? '';
+          final email = person['email']?.toString() ?? '';
+
+          final fullName = firstName.isNotEmpty && lastName.isNotEmpty
+              ? '$firstName $lastName'
+              : firstName.isNotEmpty
+                  ? firstName
+                  : lastName.isNotEmpty
+                      ? lastName
+                      : 'Unknown User';
+
+          // Check if user matches search criteria
+          if (fullName.toLowerCase().contains(searchLower) ||
+              email.toLowerCase().contains(searchLower) ||
+              firstName.toLowerCase().contains(searchLower) ||
+              lastName.toLowerCase().contains(searchLower)) {
+            availableUsers.add({
+              'id': userId,
+              'user_id': userId,
+              'name': fullName,
+              'email': email,
+              'phone': person['contact_number'] ?? '',
+              'address': person['address'] ?? '',
+              'person': person,
+            });
+
+            print('Added user to search results: $fullName ($email)');
+          }
+        }
+      }
+
+      print('Available users to invite: ${availableUsers.length}');
+      availableUsers.forEach((user) {
+        print('  - ${user['name']} (${user['email']})');
+      });
+
+      setDialogState(() {
+        searchResults = availableUsers;
+        isSearching = false;
+      });
+    } catch (e, stackTrace) {
+      print('=== DEBUG: Error searching users ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      setDialogState(() {
+        searchResults = [];
+        isSearching = false;
+      });
+      _showSnackBar('Error searching users: $e', const Color(0xFFE53E3E));
     }
   }
 
@@ -1730,56 +2272,96 @@ class _PatientListPageState extends State<PatientListPage>
     );
   }
 
+  // Update your _buildSearchAndFilter method to include the invite button and invited filter:
   Widget _buildSearchAndFilter() {
     return Container(
       margin: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Search Bar (existing code remains the same)
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
+          // Search Bar and Invite Button Row
+          Row(
+            children: [
+              // Search Bar
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    onChanged: (value) => setState(() => searchQuery = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search patients by name or ID...',
+                      hintStyle: TextStyle(color: Colors.grey.shade500),
+                      prefixIcon: Icon(Icons.search_rounded,
+                          color: Colors.grey.shade400),
+                      suffixIcon: searchQuery.isNotEmpty
+                          ? IconButton(
+                              onPressed: () => setState(() => searchQuery = ''),
+                              icon: Icon(Icons.clear_rounded,
+                                  color: Colors.grey.shade400),
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                    ),
+                  ),
                 ),
-              ],
-            ),
-            child: TextField(
-              onChanged: (value) => setState(() => searchQuery = value),
-              decoration: InputDecoration(
-                hintText: 'Search patients by name or ID...',
-                hintStyle: TextStyle(color: Colors.grey.shade500),
-                prefixIcon:
-                    Icon(Icons.search_rounded, color: Colors.grey.shade400),
-                suffixIcon: searchQuery.isNotEmpty
-                    ? IconButton(
-                        onPressed: () => setState(() => searchQuery = ''),
-                        icon: Icon(Icons.clear_rounded,
-                            color: Colors.grey.shade400),
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               ),
-            ),
+              const SizedBox(width: 12),
+              // Invite User Button
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF3182CE), const Color(0xFF1E40AF)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3182CE).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showInviteUserDialog,
+                    borderRadius: BorderRadius.circular(16),
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Icon(
+                        Icons.person_add_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
 
-          // Updated Filter Chips with Pending
+          // Updated Filter Chips with Invited
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildFilterChip('All', 'all'),
                 const SizedBox(width: 8),
-                _buildFilterChip('Pending', 'pending',
-                    color: const Color(0xFFF59E0B), // Orange for pending
-                    icon: Icons.hourglass_empty_rounded),
+                _buildFilterChip('Invited', 'invited',
+                    color: const Color(0xFF8B5CF6), // Purple for invited
+                    icon: Icons.mail_outline_rounded),
                 const SizedBox(width: 8),
                 _buildFilterChip('Unassigned', 'unassigned',
                     color: const Color(0xFFEF4444), // Red for unassigned
@@ -1869,6 +2451,13 @@ class _PatientListPageState extends State<PatientListPage>
         statusIcon = Icons.check_circle_rounded;
         statusText = 'Assigned';
         break;
+      case 'invited':
+        statusColor = const Color(0xFF8B5CF6);
+        borderColor = const Color(0xFF8B5CF6).withOpacity(0.3);
+        statusIcon = Icons.mail_outline_rounded;
+        statusText = 'Invited';
+        break;
+
       default:
         statusColor = Colors.grey;
         borderColor = Colors.grey.withOpacity(0.3);
@@ -2126,6 +2715,52 @@ class _PatientListPageState extends State<PatientListPage>
                                         ),
                                       ),
                                     ),
+                                    if (status == 'invited') ...[
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF8B5CF6)
+                                              .withOpacity(0.05),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: const Color(0xFF8B5CF6)
+                                                  .withOpacity(0.2)),
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(Icons.mail_outline_rounded,
+                                                    size: 20,
+                                                    color: const Color(
+                                                        0xFF8B5CF6)),
+                                                const SizedBox(width: 8),
+                                                const Expanded(
+                                                  child: Text(
+                                                    'Invitation sent to this user',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Color(0xFF8B5CF6),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'User will need to accept the invitation to become an active patient',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 8),
