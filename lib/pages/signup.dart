@@ -1,16 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
-import 'package:pointycastle/export.dart'
-    hide State; // Hide State from pointycastle
-import 'package:asn1lib/asn1lib.dart';
-import 'dart:typed_data';
-import 'dart:convert';
-import 'dart:math';
-import 'dart:isolate';
-import 'package:flutter/foundation.dart';
-import 'package:health_share_org/services/crypto_utils.dart' as crypto;
-import 'package:health_share_org/services/rsa_generation_service.dart' as rsa;
+import 'package:health_share_org/functions/login_function.dart'; // Import your login service
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -22,7 +11,6 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _firstNameController = TextEditingController();
@@ -37,8 +25,6 @@ class _SignupPageState extends State<SignupPage> {
   List<Map<String, dynamic>> _organizations = [];
   bool _isLoading = false;
   bool _isLoadingOrgs = true;
-  DateTime? _lastSignupAttempt;
-  static const int _signupCooldownSeconds = 45;
 
   @override
   void initState() {
@@ -49,7 +35,6 @@ class _SignupPageState extends State<SignupPage> {
   @override
   void dispose() {
     _emailController.dispose();
-
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _firstNameController.dispose();
@@ -64,13 +49,9 @@ class _SignupPageState extends State<SignupPage> {
 
   Future<void> _loadOrganizations() async {
     try {
-      final response = await Supabase.instance.client
-          .from('Organization')
-          .select('id, name')
-          .order('name');
-
+      final organizations = await SignupService.loadOrganizations();
       setState(() {
-        _organizations = List<Map<String, dynamic>>.from(response);
+        _organizations = organizations;
         _isLoadingOrgs = false;
       });
     } catch (e) {
@@ -88,199 +69,53 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
-    // Check rate limiting
-    if (_lastSignupAttempt != null) {
-      final timeSinceLastAttempt =
-          DateTime.now().difference(_lastSignupAttempt!).inSeconds;
-      if (timeSinceLastAttempt < _signupCooldownSeconds) {
-        final remainingTime = _signupCooldownSeconds - timeSinceLastAttempt;
-        _showErrorSnackBar(
-            'Please wait $remainingTime seconds before trying again.');
-        return;
-      }
+    // Check if signup is rate limited
+    if (!SignupService.canAttemptSignup()) {
+      final remainingTime = SignupService.getRemainingSignupCooldownTime();
+      _showErrorSnackBar(
+          'Please wait $remainingTime seconds before trying again.');
+      return;
     }
 
     setState(() {
       _isLoading = true;
     });
 
-    _lastSignupAttempt = DateTime.now();
-
     try {
-      final currentTime = DateTime.now().toIso8601String();
-
-      // Generate RSA Key Pair using CryptoUtils (proper ASN.1 format)
-      print('🔐 Generating RSA key pair using CryptoUtils...');
-
-      // Use the crypto prefix to specify which CryptoUtils to use
-      final keyData =
-          crypto.CryptoUtils.generateRSAKeyPairAsPem(bitLength: 2048);
-
-      final publicKeyPem = keyData['publicKey']!;
-      final privateKeyPem = keyData['privateKey']!;
-
-      // Generate fingerprint
-      final keyFingerprint = _generateKeyFingerprint(publicKeyPem);
-
-      // Test the keys to make sure they work
-      final testResult = crypto.CryptoUtils.testRSAEncryption(bitLength: 2048);
-      if (!testResult) {
-        throw Exception('Generated RSA keys failed validation test');
-      }
-
-      print('✅ RSA keys generated and validated successfully');
-      print('🔑 Key fingerprint: $keyFingerprint');
-
-      // Step 1: Create Supabase Auth user FIRST
-      print('👤 Creating Auth user...');
-      final authResponse = await Supabase.instance.client.auth.signUp(
+      final result = await SignupService.signup(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        data: {
-          'first_name': _firstNameController.text.trim(),
-          'last_name': _lastNameController.text.trim(),
-          'role': 'employee',
-          'key_fingerprint': keyFingerprint, // Store fingerprint in metadata
-        },
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        middleName: _middleNameController.text.trim().isEmpty
+            ? null
+            : _middleNameController.text.trim(),
+        address: _addressController.text.trim(),
+        contactNumber: _contactNumberController.text.trim(),
+        position: _positionController.text.trim(),
+        department: _departmentController.text.trim(),
+        organizationId: _selectedOrganizationId!,
       );
 
-      if (authResponse.user == null) {
-        throw Exception('Failed to create authentication account');
-      }
+      if (result.success) {
+        _showSuccessSnackBar(result.message!);
 
-      final authUserId = authResponse.user!.id;
-      print('✅ Auth user created with ID: $authUserId');
-
-      // Step 2: Create Person record
-      print('👥 Creating Person record...');
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .insert({
-            'first_name': _firstNameController.text.trim(),
-            'middle_name': _middleNameController.text.trim().isEmpty
-                ? null
-                : _middleNameController.text.trim(),
-            'last_name': _lastNameController.text.trim(),
-            'address': _addressController.text.trim(),
-            'contact_number': _contactNumberController.text.trim(),
-            'auth_user_id': authUserId,
-            'created_at': currentTime,
-          })
-          .select()
-          .single();
-
-      final personUuid = personResponse['id'];
-      print('✅ Person created with UUID: $personUuid');
-
-      // Step 3: Create User record with RSA keys
-      print('🔐 Creating User record with RSA keys...');
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .insert({
-            'email': _emailController.text.trim(),
-            'person_id': personUuid,
-            'created_at': currentTime,
-            'rsa_private_key': privateKeyPem, // Store private key securely
-            'rsa_public_key': publicKeyPem, // Store public key
-            'key_created_at': currentTime,
-          })
-          .select()
-          .single();
-
-      final userUuid = userResponse['id'];
-      print('✅ User created with UUID: $userUuid');
-
-      // Step 4: Create Organization_User record
-      print('🏢 Creating Organization_User record...');
-      await Supabase.instance.client.from('Organization_User').insert({
-        'position': _positionController.text.trim(),
-        'department': _departmentController.text.trim(),
-        'created_at': currentTime,
-        'organization_id': _selectedOrganizationId,
-        'user_id': userUuid,
-      });
-
-      print('✅ Organization_User created successfully');
-
-      // Step 5: Optionally store key metadata in RSA_Keys table
-      print('🔑 Creating RSA key metadata record...');
-      try {
-        await Supabase.instance.client.from('RSA_Keys').insert({
-          'person_id': personUuid,
-          'key_fingerprint': keyFingerprint,
-          'rsa_public_key': publicKeyPem,
-          'rsa_private_key':
-              privateKeyPem, // Consider if you need this here too
-          'key_size': 2048,
-          'algorithm': 'RSA',
-          'created_at': currentTime,
-          'is_active': true,
-        });
-        print('✅ RSA key metadata record created successfully');
-      } catch (e) {
-        print('⚠️ RSA_Keys table might not exist or have different schema: $e');
-        // Continue without failing if RSA_Keys table doesn't exist
-      }
-
-      _showSuccessSnackBar(
-          '🎉 Employee account created successfully with RSA keys! Please check your email to verify your account before signing in.');
-
-      // Navigate back to login page
-      if (mounted) {
-        Navigator.pop(context);
+        // Navigate back to login page
+        if (mounted) {
+          Navigator.pop(context);
+        }
+      } else {
+        _showErrorSnackBar(result.errorMessage!);
       }
     } catch (e) {
-      print('❌ Signup error: $e');
-      print('Error type: ${e.runtimeType}');
-
-      String errorMessage = _getErrorMessage(e);
-      _showErrorSnackBar(errorMessage);
+      print('❌ Signup error in UI: $e');
+      _showErrorSnackBar('An unexpected error occurred. Please try again.');
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
-    }
-  }
-
-// Add this helper method to generate key fingerprint
-  String _generateKeyFingerprint(String publicKeyPem) {
-    final keyBytes = utf8.encode(publicKeyPem);
-    final digest = sha256.convert(keyBytes);
-    return digest.toString().substring(0, 16); // First 16 chars of SHA256
-  }
-
-  String _getErrorMessage(dynamic error) {
-    String errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('duplicate key')) {
-      if (errorString.contains('email') ||
-          errorString.contains('users_email_key')) {
-        return 'An account with this email already exists.';
-      } else {
-        return 'An account with this information already exists.';
-      }
-    } else if (errorString.contains('foreign key') ||
-        errorString.contains('violates foreign key constraint')) {
-      return 'Invalid organization selected. Please try again.';
-    } else if (errorString.contains('invalid input syntax')) {
-      return 'Invalid data format. Please check your input.';
-    } else if (errorString.contains('rate limit') ||
-        errorString.contains('429') ||
-        errorString.contains('too many')) {
-      return 'Too many signup attempts. Please wait a moment before trying again.';
-    } else if (errorString.contains('weak password') ||
-        errorString.contains('password')) {
-      return 'Password is too weak. Please use a stronger password with at least 6 characters.';
-    } else if (errorString.contains('invalid email') ||
-        errorString.contains('email')) {
-      return 'Invalid email address. Please check your email and try again.';
-    } else if (errorString.contains('network') ||
-        errorString.contains('connection')) {
-      return 'Network error. Please check your internet connection and try again.';
-    } else {
-      return 'Signup failed. Please check your information and try again.';
     }
   }
 
@@ -430,8 +265,7 @@ class _SignupPageState extends State<SignupPage> {
                           },
                           items: _organizations.map((org) {
                             return DropdownMenuItem<String>(
-                              value: org[
-                                  'id'], // Remove .toString() - UUIDs are already strings
+                              value: org['id'], // UUIDs are already strings
                               child: Text(org['name']),
                             );
                           }).toList(),
@@ -445,6 +279,8 @@ class _SignupPageState extends State<SignupPage> {
                         ),
                         icon: Icons.business,
                       ),
+
+                      // Full
 
                       // Full Name
                       _buildInputField(

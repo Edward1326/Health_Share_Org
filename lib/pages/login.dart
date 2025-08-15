@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'admin/admin_dashboard.dart';
 import 'staff/staff_dashboard.dart';
 import 'reset_password.dart';
+import 'package:health_share_org/functions/login_function.dart'; // Import your new service
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -20,8 +20,6 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
-  DateTime? _lastLoginAttempt;
-  static const int _loginCooldownSeconds = 5;
 
   @override
   void initState() {
@@ -59,312 +57,54 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Check rate limiting
-    if (_lastLoginAttempt != null) {
-      final timeSinceLastAttempt =
-          DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-      if (timeSinceLastAttempt < _loginCooldownSeconds) {
-        final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
-        _showErrorSnackBar(
-            'Please wait $remainingTime seconds before trying again.');
-        return;
-      }
+    // Check rate limiting before attempting login
+    if (!LoginService.canAttemptLogin()) {
+      final remainingTime = LoginService.getRemainingCooldownTime();
+      _showErrorSnackBar(
+          'Please wait $remainingTime seconds before trying again.');
+      return;
     }
 
     setState(() {
       _isLoading = true;
     });
 
-    _lastLoginAttempt = DateTime.now();
-
     try {
-      final input = _emailOrUsernameController.text.trim();
-      final password = _passwordController.text;
-
-      print('DEBUG: Input received: $input'); // DEBUG LINE
-
-      String email = input;
-
-      // If input doesn't contain @, it's likely a username - we need to find the email
-      if (!input.contains('@')) {
-        print(
-            'DEBUG: Treating input as username, looking up email...'); // DEBUG LINE
-
-        // Query the User table to find the email associated with this username
-        // Note: Since username field was removed from your schema, this might need adjustment
-        // For now, assuming we're only using email for login
-        throw Exception(
-            'Username login not supported. Please use email address.');
-      } else {
-        print('DEBUG: Treating input as email directly'); // DEBUG LINE
-      }
-
-      print('DEBUG: Attempting to sign in with email: $email'); // DEBUG LINE
-
-      // Use Supabase Auth to sign in
-      final authResponse =
-          await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: password,
+      final result = await LoginService.login(
+        emailOrUsername: _emailOrUsernameController.text,
+        password: _passwordController.text,
       );
 
-      print(
-          'DEBUG: Auth response received: ${authResponse.user?.id}'); // DEBUG LINE
-
-      if (authResponse.user == null) {
-        throw Exception('Login failed');
-      }
-
-      final user = authResponse.user!;
-      print('Auth user signed in: ${user.id}');
-
-      // Get comprehensive user details after successful authentication
-      final userDetails = await _getUserDetailsFromAuth(user);
-
-      // Store user session
-      await _storeUserSession(userDetails, user);
-
-      print('Login successful, navigating to dashboard...');
-
-      // Navigate to staff dashboard
-      String userPosition = '';
-      if (userDetails['organization_users'].isNotEmpty) {
-        userPosition = userDetails['organization_users'][0]['position']
-                ?.toString()
-                .toLowerCase() ??
-            '';
-      }
-
-      if (mounted) {
-        if (userPosition == 'administrator') {
-          // Navigate to admin dashboard
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const Dashboard(), // Your admin dashboard
-            ),
-          );
-        } else {
-          // Navigate to staff dashboard for all other positions
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const StaffDashboard(),
-            ),
-          );
+      if (result.success) {
+        // Navigate based on user position
+        if (mounted) {
+          if (result.userPosition == 'administrator') {
+            // Navigate to admin dashboard
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const Dashboard(), // Your admin dashboard
+              ),
+            );
+          } else {
+            // Navigate to staff dashboard for all other positions
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const StaffDashboard(),
+              ),
+            );
+          }
         }
-      }
-    } catch (e) {
-      print('Login error: $e');
-
-      String errorMessage = 'Login failed: ';
-
-      if (e.toString().contains('Username not supported')) {
-        errorMessage = 'Please use your email address to login.';
-      } else if (e.toString().contains('Invalid login credentials') ||
-          e.toString().contains('Email not confirmed')) {
-        errorMessage +=
-            'Invalid email or password. Please check your credentials.';
-      } else if (e.toString().contains('Email not confirmed')) {
-        errorMessage += 'Please verify your email address before signing in.';
-      } else if (e.toString().contains('Too many requests')) {
-        errorMessage +=
-            'Too many login attempts. Please wait before trying again.';
       } else {
-        errorMessage += 'Something went wrong. Please try again.';
+        _showErrorSnackBar(result.errorMessage ?? 'Login failed');
       }
-
-      _showErrorSnackBar(errorMessage);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-// Updated function to get user details from auth user
-  Future<Map<String, dynamic>> _getUserDetailsFromAuth(User authUser) async {
-    try {
-      // Get Person details using auth_user_id
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('*')
-          .eq('auth_user_id', authUser.id)
-          .single();
-
-      print('DEBUG: Person found: ${personResponse['id']}');
-
-      // Get User details using person_id (User table links to Person via person_id)
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('*')
-          .eq('person_id', personResponse['id'])
-          .single();
-
-      print('DEBUG: User found: ${userResponse['id']}');
-
-      // Get Organization_User details using person_id
-      final orgUserResponse = await Supabase.instance.client
-          .from('Organization_User')
-          .select('*, Organization(*)')
-          .eq('user_id', userResponse['id']);
-
-      print(
-          'DEBUG: Organization_User found: ${orgUserResponse.length} records');
-
-      return {
-        'person': personResponse,
-        'user': userResponse,
-        'organization_users': orgUserResponse,
-        'auth_user': {
-          'id': authUser.id,
-          'email': authUser.email,
-          'user_metadata': authUser.userMetadata,
-        },
-      };
-    } catch (e) {
-      print('Error getting user details: $e');
-      throw Exception('Failed to load user details');
-    }
-  }
-
-  Future<Map<String, dynamic>> _getUserDetailsFromMetadata(User user) async {
-    try {
-      final userId = user.userMetadata?['user_id'];
-      final personId = user.userMetadata?['person_id'];
-
-      if (userId == null || personId == null) {
-        throw Exception('User metadata incomplete');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
-
-      return await _getComprehensiveUserDetails(
-          personId.toString(), userId.toString());
-    } catch (e) {
-      print('Error getting user details from metadata: $e');
-      // Fallback to email lookup
-      return await _getUserDetailsByEmail(user.email!);
-    }
-  }
-
-  Future<Map<String, dynamic>> _getUserDetailsByEmail(String email) async {
-    try {
-      // Find Person by email
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('*')
-          .eq('email', email)
-          .single();
-
-      // Find User by person_id
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('*')
-          .eq('person_id', personResponse['id'])
-          .single();
-
-      return await _getComprehensiveUserDetails(
-          personResponse['id'].toString(), userResponse['id'].toString());
-    } catch (e) {
-      print('Error getting user details by email: $e');
-      throw Exception('Failed to load user information');
-    }
-  }
-
-  Future<Map<String, dynamic>> _getComprehensiveUserDetails(
-      String personId, String userId) async {
-    try {
-      // Get Person details
-      final personResponse = await Supabase.instance.client
-          .from('Person')
-          .select('*')
-          .eq('id', personId)
-          .single();
-
-      // Get User details
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('*')
-          .eq('id', userId)
-          .single();
-
-      // Get Organization_User details if they exist
-      final orgUserResponse = await Supabase.instance.client
-          .from('Organization_User')
-          .select('*')
-          .eq('user_id', userId);
-
-      List<Map<String, dynamic>> organizationUsers = [];
-      List<Map<String, dynamic>> organizations = [];
-
-      if (orgUserResponse.isNotEmpty) {
-        for (var orgUser in orgUserResponse) {
-          organizationUsers.add(orgUser);
-
-          // Get organization details
-          final orgId = orgUser['organization_id'].toString();
-          final orgResponse = await Supabase.instance.client
-              .from('Organization')
-              .select('*')
-              .eq('id', orgId)
-              .single();
-
-          organizations.add(orgResponse);
-        }
-      }
-
-      return {
-        'person': personResponse,
-        'user': userResponse,
-        'organization_users': organizationUsers,
-        'organizations': organizations,
-      };
-    } catch (e) {
-      print('Error fetching comprehensive user details: $e');
-      throw Exception('Failed to load user information');
-    }
-  }
-
-  Future<void> _storeUserSession(
-      Map<String, dynamic> userDetails, User authUser) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Store auth user info
-      await prefs.setString('auth_user_id', authUser.id);
-      await prefs.setString('auth_user_email', authUser.email ?? '');
-
-      // Store internal user info
-      await prefs.setString(
-          'user_id', userDetails['user']['id']?.toString() ?? '');
-      await prefs.setString(
-          'person_id', userDetails['person']['id']?.toString() ?? '');
-      await prefs.setString(
-          'username', userDetails['user']['username']?.toString() ?? '');
-      await prefs.setString('user_name',
-          '${userDetails['person']['first_name'] ?? ''} ${userDetails['person']['last_name'] ?? ''}');
-      await prefs.setString(
-          'user_email', userDetails['person']['email']?.toString() ?? '');
-
-      if (userDetails['organization_users'].isNotEmpty) {
-        await prefs.setBool('is_organization_user', true);
-        await prefs.setString(
-            'organization_id',
-            userDetails['organization_users'][0]['organization_id']
-                    ?.toString() ??
-                '');
-        await prefs.setString('user_position',
-            userDetails['organization_users'][0]['position']?.toString() ?? '');
-        await prefs.setString(
-            'user_department',
-            userDetails['organization_users'][0]['department']?.toString() ??
-                '');
-        await prefs.setString('organization_name',
-            userDetails['organizations'][0]['name']?.toString() ?? '');
-      } else {
-        await prefs.setBool('is_organization_user', false);
-      }
-    } catch (e) {
-      print('Error storing session data: $e');
     }
   }
 
@@ -392,48 +132,22 @@ class _LoginPageState extends State<LoginPage> {
     );
 
     try {
-      String email = input;
-
-      // If input doesn't contain @, it's likely a username - we need to find the email
-      if (!input.contains('@')) {
-        // Get user by username
-        final userResponse = await Supabase.instance.client
-            .from('User')
-            .select('person_id')
-            .eq('username', input)
-            .maybeSingle();
-
-        if (userResponse == null) {
-          Navigator.of(context).pop(); // Close loading dialog
-          _showErrorSnackBar('Username not found.');
-          return;
-        }
-
-        // Get email from Person table
-        final personId = userResponse['person_id'];
-        final personResponse = await Supabase.instance.client
-            .from('Person')
-            .select('email')
-            .eq('id', personId)
-            .single();
-
-        email = personResponse['email'];
-      }
-
-      // Send reset email using Supabase Auth with redirect URL
-      await Supabase.instance.client.auth.resetPasswordForEmail(
-        email,
+      final result = await LoginService.resetPassword(
+        emailOrUsername: input,
         redirectTo:
             'your-app-scheme://reset-password', // Replace with your app's deep link scheme
       );
 
       Navigator.of(context).pop(); // Close loading dialog
 
-      // Show success dialog with instructions
-      _showPasswordResetDialog(email);
+      if (result.success) {
+        // Show success dialog with instructions
+        _showPasswordResetDialog(result.email!);
+      } else {
+        _showErrorSnackBar(result.errorMessage ?? 'Failed to send reset email');
+      }
     } catch (e) {
       Navigator.of(context).pop(); // Close loading dialog
-      print('Password reset error: $e');
       _showErrorSnackBar(
           'Failed to send password reset email. Please try again.');
     }
@@ -778,20 +492,12 @@ class _LoginPageState extends State<LoginPage> {
                                   ? null
                                   : () {
                                       // Check cooldown before attempting login
-                                      if (_lastLoginAttempt != null) {
-                                        final timeSinceLastAttempt =
-                                            DateTime.now()
-                                                .difference(_lastLoginAttempt!)
-                                                .inSeconds;
-                                        if (timeSinceLastAttempt <
-                                            _loginCooldownSeconds) {
-                                          final remainingTime =
-                                              _loginCooldownSeconds -
-                                                  timeSinceLastAttempt;
-                                          _showErrorSnackBar(
-                                              'Please wait $remainingTime seconds before trying again.');
-                                          return;
-                                        }
+                                      if (!LoginService.canAttemptLogin()) {
+                                        final remainingTime = LoginService
+                                            .getRemainingCooldownTime();
+                                        _showErrorSnackBar(
+                                            'Please wait $remainingTime seconds before trying again.');
+                                        return;
                                       }
                                       _login();
                                     },
