@@ -140,13 +140,11 @@ class _PatientListPageState extends State<PatientListPage>
   // Fix 2: Null safety in filteredUsers getter
   List<Map<String, dynamic>> get filteredUsers {
     var filtered = users.where((user) {
-      final name = user['name']?.toString() ?? '';
-      final id = user['id']?.toString() ?? '';
+      final email = user['email']?.toString() ?? '';
       final status = user['status']?.toString() ?? '';
 
       final matchesSearch =
-          name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              id.contains(searchQuery);
+          email.toLowerCase().contains(searchQuery.toLowerCase());
 
       switch (selectedFilter) {
         case 'invited':
@@ -171,14 +169,15 @@ class _PatientListPageState extends State<PatientListPage>
       if (aPriority != bPriority) {
         return aPriority.compareTo(bPriority);
       }
-      final aName = a['name']?.toString() ?? '';
-      final bName = b['name']?.toString() ?? '';
-      return aName.compareTo(bName);
+      final aEmail = a['email']?.toString() ?? '';
+      final bEmail = b['email']?.toString() ?? '';
+      return aEmail.compareTo(bEmail); // Changed from name to email sorting
     });
 
     return filtered;
   }
 
+  // Also fix the _loadUsersFromSupabase method for consistency
   Future<void> _loadUsersFromSupabase() async {
     try {
       print('=== DEBUG: Starting patient loading process ===');
@@ -187,12 +186,12 @@ class _PatientListPageState extends State<PatientListPage>
       // Fetch patients from the organization with proper joins
       print('Step 1: Fetching Patient records for organization...');
       final patientsResponse = await supabase.from('Patient').select('''
+          *,
+          User!inner(
             *,
-            User!inner(
-              *,
-              Person!inner(*)
-            )
-          ''').eq('organization_id', currentOrganizationId!);
+            Person!inner(*)
+          )
+        ''').eq('organization_id', currentOrganizationId!);
 
       print('Patient records found: ${patientsResponse.length}');
 
@@ -224,7 +223,7 @@ class _PatientListPageState extends State<PatientListPage>
             'id': patient['id'].toString(),
             'name': fullName,
             'type': 'Patient',
-            'email': person['email'] ?? '',
+            'email': user['email'] ?? '', // Email is in User table
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
             'lastVisit': patient['created_at'] != null
@@ -499,11 +498,12 @@ class _PatientListPageState extends State<PatientListPage>
       print('Search query: $query');
       print('Current organization ID: $currentOrganizationId');
 
-      // Get users that match the search query with proper join
+      // Get users that match the EMAIL search query
+      // Fixed: Email is in User table, not Person table
       final searchResponse = await supabase.from('User').select('''
-        *,
-        Person!inner(*)
-      ''');
+      *,
+      Person(*)
+    ''').ilike('email', '%$query%'); // Email is directly in User table
 
       print('Search response: ${searchResponse.length} users found');
 
@@ -526,9 +526,8 @@ class _PatientListPageState extends State<PatientListPage>
 
       print('Existing patient user IDs in org: $existingUserIds');
 
-      // Filter users based on search query and exclude existing patients
+      // Build available users list
       final List<Map<String, dynamic>> availableUsers = [];
-      final searchLower = query.toLowerCase();
 
       for (var user in searchResponse) {
         final person = user['Person'];
@@ -543,7 +542,8 @@ class _PatientListPageState extends State<PatientListPage>
         if (person != null) {
           final firstName = person['first_name']?.toString() ?? '';
           final lastName = person['last_name']?.toString() ?? '';
-          final email = person['email']?.toString() ?? '';
+          final email =
+              user['email']?.toString() ?? ''; // Email is in User table
 
           final fullName = firstName.isNotEmpty && lastName.isNotEmpty
               ? '$firstName $lastName'
@@ -553,30 +553,21 @@ class _PatientListPageState extends State<PatientListPage>
                       ? lastName
                       : 'Unknown User';
 
-          // Check if user matches search criteria
-          if (fullName.toLowerCase().contains(searchLower) ||
-              email.toLowerCase().contains(searchLower) ||
-              firstName.toLowerCase().contains(searchLower) ||
-              lastName.toLowerCase().contains(searchLower)) {
-            availableUsers.add({
-              'id': userId,
-              'user_id': userId,
-              'name': fullName,
-              'email': email,
-              'phone': person['contact_number'] ?? '',
-              'address': person['address'] ?? '',
-              'person': person,
-            });
+          availableUsers.add({
+            'id': userId,
+            'user_id': userId,
+            'name': fullName,
+            'email': email,
+            'phone': person['contact_number'] ?? '',
+            'address': person['address'] ?? '',
+            'person': person,
+          });
 
-            print('Added user to search results: $fullName ($email)');
-          }
+          print('Added user to search results: $fullName ($email)');
         }
       }
 
       print('Available users to invite: ${availableUsers.length}');
-      availableUsers.forEach((user) {
-        print('  - ${user['name']} (${user['email']})');
-      });
 
       setState(() {
         searchResults = availableUsers;
@@ -711,11 +702,11 @@ class _PatientListPageState extends State<PatientListPage>
                       setDialogState(() {
                         userSearchQuery = value;
                       });
-                      // Call search and update dialog state when results come back
                       _searchUsersToInviteWithDialog(value, setDialogState);
                     },
                     decoration: InputDecoration(
-                      hintText: 'Search by name or email...',
+                      hintText:
+                          'Search by email...', // Changed from "name or email"
                       hintStyle: TextStyle(color: Colors.grey.shade500),
                       prefixIcon: Icon(Icons.search_rounded,
                           color: Colors.grey.shade400),
@@ -906,6 +897,8 @@ class _PatientListPageState extends State<PatientListPage>
   }
 
 // Add this new method that updates the dialog state:
+  // Fixed version for dialog search as well
+  // Fixed version for dialog search as well
   Future<void> _searchUsersToInviteWithDialog(
       String query, StateSetter setDialogState) async {
     if (query.isEmpty) {
@@ -925,11 +918,12 @@ class _PatientListPageState extends State<PatientListPage>
       print('Search query: $query');
       print('Current organization ID: $currentOrganizationId');
 
-      // Get users that match the search query with proper join
+      // Get users that match the EMAIL search query
+      // Fixed: Email is in User table, not Person table
       final searchResponse = await supabase.from('User').select('''
-        *,
-        Person!inner(*)
-      ''');
+      *,
+      Person(*)
+    ''').ilike('email', '%$query%'); // Email is directly in User table
 
       print('Search response: ${searchResponse.length} users found');
 
@@ -952,9 +946,8 @@ class _PatientListPageState extends State<PatientListPage>
 
       print('Existing patient user IDs in org: $existingUserIds');
 
-      // Filter users based on search query and exclude existing patients
+      // Build available users list
       final List<Map<String, dynamic>> availableUsers = [];
-      final searchLower = query.toLowerCase();
 
       for (var user in searchResponse) {
         final person = user['Person'];
@@ -969,7 +962,8 @@ class _PatientListPageState extends State<PatientListPage>
         if (person != null) {
           final firstName = person['first_name']?.toString() ?? '';
           final lastName = person['last_name']?.toString() ?? '';
-          final email = person['email']?.toString() ?? '';
+          final email =
+              user['email']?.toString() ?? ''; // Email is in User table
 
           final fullName = firstName.isNotEmpty && lastName.isNotEmpty
               ? '$firstName $lastName'
@@ -979,30 +973,21 @@ class _PatientListPageState extends State<PatientListPage>
                       ? lastName
                       : 'Unknown User';
 
-          // Check if user matches search criteria
-          if (fullName.toLowerCase().contains(searchLower) ||
-              email.toLowerCase().contains(searchLower) ||
-              firstName.toLowerCase().contains(searchLower) ||
-              lastName.toLowerCase().contains(searchLower)) {
-            availableUsers.add({
-              'id': userId,
-              'user_id': userId,
-              'name': fullName,
-              'email': email,
-              'phone': person['contact_number'] ?? '',
-              'address': person['address'] ?? '',
-              'person': person,
-            });
+          availableUsers.add({
+            'id': userId,
+            'user_id': userId,
+            'name': fullName,
+            'email': email,
+            'phone': person['contact_number'] ?? '',
+            'address': person['address'] ?? '',
+            'person': person,
+          });
 
-            print('Added user to search results: $fullName ($email)');
-          }
+          print('Added user to search results: $fullName ($email)');
         }
       }
 
       print('Available users to invite: ${availableUsers.length}');
-      availableUsers.forEach((user) {
-        print('  - ${user['name']} (${user['email']})');
-      });
 
       setDialogState(() {
         searchResults = availableUsers;
@@ -2307,7 +2292,8 @@ class _PatientListPageState extends State<PatientListPage>
                   child: TextField(
                     onChanged: (value) => setState(() => searchQuery = value),
                     decoration: InputDecoration(
-                      hintText: 'Search patients by name or ID...',
+                      hintText:
+                          'Search patients by email...', // Changed from "name or ID"
                       hintStyle: TextStyle(color: Colors.grey.shade500),
                       prefixIcon: Icon(Icons.search_rounded,
                           color: Colors.grey.shade400),
