@@ -8,6 +8,7 @@ import 'pages/health_share/create_organization.dart';
 import 'pages/staff/staff_settings.dart';
 import 'pages/staff/staff_dashboard.dart';
 import 'pages/reset_password.dart';
+import 'pages/admin/profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +43,7 @@ class MyApp extends StatelessWidget {
         '/staff_settings': (context) => const StaffSettingsScreen(),
         '/staff_dashboard': (context) => const StaffDashboard(),
         '/reset_password': (context) => const ResetPasswordPage(),
+        '/profile': (context) => const AdminProfilePage(),
       },
       // Handle unknown routes
     );

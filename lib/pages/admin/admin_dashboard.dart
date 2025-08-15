@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'employeelist.dart';
 import 'patientslist.dart';
 import 'allfiles.dart';
+import 'profile.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
@@ -16,7 +17,7 @@ class Dashboard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Section
+              // Header Section with updated PopupMenuButton
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -41,7 +42,6 @@ class Dashboard extends StatelessWidget {
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
@@ -53,9 +53,69 @@ class Dashboard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.menu,
-                      color: Color(0xFF2D3748),
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.menu,
+                        color: Color(0xFF2D3748),
+                      ),
+                      offset: const Offset(0, 45),
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onSelected: (String value) {
+                        switch (value) {
+                          case 'profile':
+                            // Navigate directly to AdminProfilePage
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AdminProfilePage(),
+                              ),
+                            );
+                            break;
+                          case 'settings':
+                            Navigator.pushNamed(context, '/settings');
+                            break;
+                        }
+                      },
+                      itemBuilder: (BuildContext context) =>
+                          <PopupMenuEntry<String>>[
+                        const PopupMenuItem<String>(
+                          value: 'profile',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.person,
+                              color: Color(0xFF2D3748),
+                            ),
+                            title: Text(
+                              'Profile',
+                              style: TextStyle(
+                                color: Color(0xFF2D3748),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: 'settings',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.settings,
+                              color: Color(0xFF2D3748),
+                            ),
+                            title: Text(
+                              'Settings',
+                              style: TextStyle(
+                                color: Color(0xFF2D3748),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
