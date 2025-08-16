@@ -9,14 +9,17 @@ import 'pages/staff/staff_settings.dart';
 import 'pages/staff/staff_dashboard.dart';
 import 'pages/reset_password.dart';
 import 'pages/admin/profile.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+
   await Supabase.initialize(
-    url: 'https://iqrlfiwtgdnmsxhyoiaw.supabase.co', // Supabase project URL
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxcmxmaXd0Z2RubXN4aHlvaWF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3Mzc3MDEsImV4cCI6MjA2NDMxMzcwMX0._N_v5dh3RXbBIdpngAZGd7cqLIRR-WagQbJ65laZvX8', // From your Supabase project settings
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
   runApp(const MyApp());
