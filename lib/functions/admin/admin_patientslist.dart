@@ -365,7 +365,7 @@ class AdminPatientListFunctions {
       final searchResponse = await supabase.from('User').select('''
       *,
       Person(*)
-    ''').ilike('email', '%$query%');
+    ''').like('email', '$query%');
 
       print('Search response: ${searchResponse.length} users found');
 
