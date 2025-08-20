@@ -26,6 +26,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   // Controllers for editing
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _licenseController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _contactController = TextEditingController();
 
   @override
   void initState() {
@@ -37,6 +41,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   void dispose() {
     _nameController.dispose();
     _licenseController.dispose();
+    _descriptionController.dispose();
+    _locationController.dispose();
+    _emailController.dispose();
+    _contactController.dispose();
     super.dispose();
   }
 
@@ -51,6 +59,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         // Initialize controllers with existing data
         _nameController.text = response['name'] ?? '';
         _licenseController.text = response['organization_license'] ?? '';
+        _descriptionController.text = response['description'] ?? '';
+        _locationController.text = response['location'] ?? '';
+        _emailController.text = response['email'] ?? '';
+        _contactController.text = response['contact_number'] ?? '';
       });
     } catch (error) {
       setState(() {
@@ -140,6 +152,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       await supabase.from('Organization').update({
         'name': _nameController.text.trim(),
         'organization_license': _licenseController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'location': _locationController.text.trim(),
+        'email': _emailController.text.trim(),
+        'contact_number': _contactController.text.trim(),
       }).eq('id', organizationData!['id']);
 
       await _loadOrganizationData();
@@ -327,6 +343,43 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                       const SizedBox(height: 16),
 
                       _buildInfoCard(
+                        'Description',
+                        organizationData!['description'] ?? 'Not specified',
+                        Icons.description,
+                        const Color(0xFF9F7AEA),
+                        isDescription: true,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _buildInfoCard(
+                        'Location',
+                        organizationData!['location'] ?? 'Not specified',
+                        Icons.location_on,
+                        const Color(0xFFED8936),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _buildInfoCard(
+                        'Email',
+                        organizationData!['email'] ?? 'Not specified',
+                        Icons.email,
+                        const Color(0xFF38B2AC),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _buildInfoCard(
+                        'Contact Number',
+                        organizationData!['contact_number'] ?? 'Not specified',
+                        Icons.phone,
+                        const Color(0xFF4299E1),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _buildInfoCard(
                         'License Number',
                         organizationData!['organization_license'] ??
                             'Not specified',
@@ -384,7 +437,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   Widget _buildInfoCard(
-      String title, String content, IconData icon, Color iconColor) {
+      String title, String content, IconData icon, Color iconColor, {bool isDescription = false}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -399,6 +452,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         ],
       ),
       child: Row(
+        crossAxisAlignment: isDescription ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -432,6 +486,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                     fontSize: 16,
                     color: Colors.grey[600],
                   ),
+                  maxLines: isDescription ? null : 2,
+                  overflow: isDescription ? null : TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -445,6 +501,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     // Reset controllers with current data
     _nameController.text = organizationData!['name'] ?? '';
     _licenseController.text = organizationData!['organization_license'] ?? '';
+    _descriptionController.text = organizationData!['description'] ?? '';
+    _locationController.text = organizationData!['location'] ?? '';
+    _emailController.text = organizationData!['email'] ?? '';
+    _contactController.text = organizationData!['contact_number'] ?? '';
 
     showDialog(
       context: context,
@@ -460,25 +520,72 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               color: Color(0xFF2D3748),
             ),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Organization Name',
-                  border: OutlineInputBorder(),
-                ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Organization Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.business),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _descriptionController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.description),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _locationController,
+                    decoration: const InputDecoration(
+                      labelText: 'Location',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.location_on),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _contactController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact Number',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _licenseController,
+                    decoration: const InputDecoration(
+                      labelText: 'License Number',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.verified_user),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _licenseController,
-                decoration: const InputDecoration(
-                  labelText: 'License Number',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
