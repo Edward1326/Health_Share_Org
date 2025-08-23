@@ -205,7 +205,98 @@ class CryptoUtils {
     }
   }
 
-  // ... rest of your existing methods remain the same ...
+  /// Enhanced RSA decrypt method with better error handling and debugging
+  static String rsaDecryptWithDebug(
+      String encryptedText, pc.RSAPrivateKey privateKey) {
+    try {
+      print('DEBUG: RSA Decrypt - Input length: ${encryptedText.length}');
+      print(
+          'DEBUG: RSA Decrypt - Private key modulus bit length: ${privateKey.modulus!.bitLength}');
+
+      final cipher = pc.OAEPEncoding(pc.RSAEngine())
+        ..init(false, pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey));
+
+      // Decode base64
+      late Uint8List encryptedBytes;
+      try {
+        encryptedBytes = base64Decode(encryptedText);
+        print(
+            'DEBUG: RSA Decrypt - Decoded ${encryptedBytes.length} bytes from base64');
+      } catch (e) {
+        throw Exception('Base64 decoding failed: $e');
+      }
+
+      // Check if the encrypted data size matches expected RSA block size
+      final expectedBlockSize = (privateKey.modulus!.bitLength + 7) ~/ 8;
+      print(
+          'DEBUG: RSA Decrypt - Expected block size: $expectedBlockSize, Actual: ${encryptedBytes.length}');
+
+      if (encryptedBytes.length != expectedBlockSize) {
+        print(
+            'DEBUG: WARNING - Block size mismatch! This might indicate a key mismatch.');
+      }
+
+      // Perform RSA decryption
+      late Uint8List decryptedBytes;
+      try {
+        decryptedBytes = cipher.process(encryptedBytes);
+        print('DEBUG: RSA Decrypt - Decrypted ${decryptedBytes.length} bytes');
+      } catch (e) {
+        print(
+            'DEBUG: RSA Decrypt - Cipher processing failed. This usually means key mismatch.');
+        print(
+            'DEBUG: RSA Decrypt - Encrypted data hex: ${encryptedBytes.take(32).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}...');
+        throw Exception('RSA cipher processing failed: $e');
+      }
+
+      // Convert to string
+      late String result;
+      try {
+        result = utf8.decode(decryptedBytes);
+        print('DEBUG: RSA Decrypt - UTF8 decoded ${result.length} characters');
+        print(
+            'DEBUG: RSA Decrypt - Result preview: ${result.substring(0, result.length > 50 ? 50 : result.length)}');
+      } catch (e) {
+        print(
+            'DEBUG: RSA Decrypt - UTF8 decoding failed, raw bytes: ${decryptedBytes.take(20).toList()}');
+        throw Exception('UTF8 decoding failed: $e');
+      }
+
+      return result;
+    } catch (e) {
+      print('ERROR: RSA decryption failed at some step: $e');
+      throw Exception('RSA decryption failed: $e');
+    }
+  }
+
+  /// Test RSA key compatibility with a known encrypted value
+  static bool testRSAKeyPair(String privateKeyPem, String publicKeyPem) {
+    try {
+      final privateKey = rsaPrivateKeyFromPem(privateKeyPem);
+      final publicKey = rsaPublicKeyFromPem(publicKeyPem);
+
+      final testMessage = 'test_rsa_compatibility';
+      final encrypted = rsaEncrypt(testMessage, publicKey);
+      final decrypted = rsaDecryptWithDebug(encrypted, privateKey);
+
+      return testMessage == decrypted;
+    } catch (e) {
+      print('RSA key pair test failed: $e');
+      return false;
+    }
+  }
+
+  /// Debug method to get RSA public key from private key for comparison
+  static String getPublicKeyFromPrivateKey(String privateKeyPem) {
+    try {
+      final privateKey = rsaPrivateKeyFromPem(privateKeyPem);
+      final publicKey =
+          pc.RSAPublicKey(privateKey.modulus!, privateKey.publicExponent!);
+      return rsaPublicKeyToPem(publicKey);
+    } catch (e) {
+      throw Exception('Failed to derive public key: $e');
+    }
+  }
 
   /// Generate RSA key pair
   static pc.AsymmetricKeyPair<pc.RSAPublicKey, pc.RSAPrivateKey>

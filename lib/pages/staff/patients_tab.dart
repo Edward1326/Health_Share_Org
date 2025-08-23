@@ -10,8 +10,8 @@ import 'package:encrypt/encrypt.dart' as encrypt;
 import 'dart:math';
 import 'package:pointycastle/export.dart' as pc;
 import 'package:crypto/crypto.dart';
-import 'package:health_share_org/functions/upload_file.dart';
-import 'package:health_share_org/functions/decrypt_file.dart';
+import 'package:health_share_org/functions/files/upload_file.dart';
+import 'package:health_share_org/functions/files/decrypt_file.dart';
 import 'dart:async';
 
 class PatientsTab extends StatefulWidget {
@@ -132,6 +132,108 @@ class _PatientsTabState extends State<PatientsTab> {
         _loadingPatients = false;
       });
       _showSnackBar('Error loading patients: $e');
+    }
+  }
+
+// Add this function to your _PatientsTabState class - loads ALL files for the patient
+  // Add this function to your _PatientsTabState class - loads ALL files for the patient
+  Future<void> _loadAllFilesForPatient(String patientId) async {
+    setState(() {
+      _loadingFiles = true;
+    });
+
+    try {
+      // Load files shared with the patient
+      final sharedFilesResponse = await Supabase.instance.client
+          .from('File_Shares')
+          .select('''
+        id,
+        shared_at,
+        Files!inner(
+          id,
+          filename,
+          category,
+          file_type,
+          uploaded_at,
+          file_size,
+          ipfs_cid,
+          sha256_hash,
+          uploaded_by,
+          uploader:User!uploaded_by(
+            Person!person_id(
+              first_name,
+              last_name
+            )
+          )
+        )
+      ''')
+          .eq('shared_with_user_id', patientId)
+          .order('shared_at', ascending: false);
+
+      // Load files uploaded by the patient
+      final patientFilesResponse =
+          await Supabase.instance.client.from('Files').select('''
+        id,
+        filename,
+        category,
+        file_type,
+        uploaded_at,
+        file_size,
+        ipfs_cid,
+        sha256_hash,
+        uploaded_by,
+        uploader:User!uploaded_by(
+          Person!person_id(
+            first_name,
+            last_name
+          )
+        )
+      ''').eq('uploaded_by', patientId).order('uploaded_at', ascending: false);
+
+      // Combine both lists
+      List<Map<String, dynamic>> allFiles = [];
+
+      // Add shared files - cast each item properly
+      for (var share in sharedFilesResponse) {
+        allFiles.add(Map<String, dynamic>.from(share as Map));
+      }
+
+      // Add patient's own files - transform to match structure
+      for (var file in patientFilesResponse) {
+        allFiles.add(<String, dynamic>{
+          'id': null, // No File_Shares id
+          'shared_at': null,
+          'Files': Map<String, dynamic>.from(file as Map),
+          'is_patient_file': true, // Flag to identify patient's own files
+        });
+      }
+
+      // Sort all files by date (most recent first)
+      allFiles.sort((a, b) {
+        final aDate = DateTime.tryParse(
+                a['shared_at'] ?? a['Files']['uploaded_at'] ?? '') ??
+            DateTime.now();
+        final bDate = DateTime.tryParse(
+                b['shared_at'] ?? b['Files']['uploaded_at'] ?? '') ??
+            DateTime.now();
+        return bDate.compareTo(aDate);
+      });
+
+      setState(() {
+        _selectedPatientFiles = allFiles;
+        _loadingFiles = false;
+      });
+
+      final sharedCount = sharedFilesResponse.length;
+      final patientCount = patientFilesResponse.length;
+      print(
+          'Loaded $sharedCount shared files and $patientCount patient files for patient $patientId');
+    } catch (e) {
+      print('Error loading all patient files: $e');
+      setState(() {
+        _loadingFiles = false;
+      });
+      _showSnackBar('Error loading files: $e');
     }
   }
 
@@ -368,7 +470,7 @@ class _PatientsTabState extends State<PatientsTab> {
                 _selectedPatient = patient;
               });
               final patientId = patient['patient_id'].toString();
-              _loadPatientFiles(patientId);
+              _loadAllFilesForPatient(patientId);
             },
           ),
         );
@@ -519,7 +621,8 @@ class _PatientsTabState extends State<PatientsTab> {
     final fileType = file['file_type'] ?? 'unknown';
     final category = file['category'] ?? 'other';
     final fileName = file['filename'] ?? 'Unknown File';
-    final description = file['description'] ?? '';
+    // Remove this line since description doesn't exist:
+    // final description = file['description'] ?? '';
     final createdAt =
         DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
     final uploader = file['uploader'];
@@ -569,18 +672,7 @@ class _PatientsTabState extends State<PatientsTab> {
                       fontSize: 16,
                     ),
                   ),
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                  // Remove the description section since it doesn't exist
                   const SizedBox(height: 4),
                   Row(
                     children: [
