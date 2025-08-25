@@ -7,6 +7,22 @@ class AdminPatientListFunctions {
   String? currentOrganizationId;
 
   // Helper function to get current organization ID
+  Future<Map<String, dynamic>?> getPatientByUserId(String userId) async {
+    try {
+      final response = await supabase
+          .from('Patient')
+          .select('id')
+          .eq('user_id',
+              userId) // This assumes Patient table has a user_id field
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      print('Error getting patient by user ID: $e');
+      return null;
+    }
+  }
+
   Future<String?> getCurrentOrganizationId() async {
     try {
       if (currentOrganizationId != null) {
@@ -147,6 +163,8 @@ class AdminPatientListFunctions {
     }
   }
 
+  // Add this method to your AdminPatientListFunctions class
+
   // Load doctors from Supabase
   Future<List<Map<String, dynamic>>> loadDoctorsFromSupabase() async {
     try {
@@ -263,7 +281,8 @@ class AdminPatientListFunctions {
   }
 
   // Load assignments from database
-  Future<void> loadAssignmentsFromDatabase(List<Map<String, dynamic>> users) async {
+  Future<void> loadAssignmentsFromDatabase(
+      List<Map<String, dynamic>> users) async {
     try {
       print('=== DEBUG: Loading assignments from database ===');
 
@@ -435,7 +454,8 @@ class AdminPatientListFunctions {
   }
 
   // Invite user to organization
-  Future<Map<String, dynamic>> inviteUser(Map<String, dynamic> userToInvite) async {
+  Future<Map<String, dynamic>> inviteUser(
+      Map<String, dynamic> userToInvite) async {
     try {
       print('=== DEBUG: Inviting user to organization ===');
       print('User to invite: ${userToInvite['name']}');
@@ -451,7 +471,8 @@ class AdminPatientListFunctions {
           .maybeSingle();
 
       if (existingPatient != null) {
-        throw Exception('${userToInvite['name']} is already a patient in this organization');
+        throw Exception(
+            '${userToInvite['name']} is already a patient in this organization');
       }
 
       // Create patient record with invited status
@@ -647,8 +668,9 @@ class AdminPatientListFunctions {
       // Update patient status if we found it in Patient table
       if (patientTableCheck != null) {
         try {
-          await supabase.from('Patient').update({'status': 'assigned'}).eq(
-              'id', patientUserId);
+          await supabase
+              .from('Patient')
+              .update({'status': 'assigned'}).eq('id', patientUserId);
           print('Updated patient status to assigned');
         } catch (e) {
           print('Warning: Could not update Patient table status: $e');

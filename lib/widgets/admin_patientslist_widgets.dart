@@ -350,15 +350,18 @@ class PatientListWidgets {
               children: [
                 buildFilterChip('All', 'all', selectedFilter, onFilterChanged),
                 const SizedBox(width: 8),
-                buildFilterChip('Invited', 'invited', selectedFilter, onFilterChanged,
+                buildFilterChip(
+                    'Invited', 'invited', selectedFilter, onFilterChanged,
                     color: const Color(0xFF8B5CF6),
                     icon: Icons.mail_outline_rounded),
                 const SizedBox(width: 8),
-                buildFilterChip('Unassigned', 'unassigned', selectedFilter, onFilterChanged,
+                buildFilterChip(
+                    'Unassigned', 'unassigned', selectedFilter, onFilterChanged,
                     color: const Color(0xFFEF4444),
                     icon: Icons.person_off_rounded),
                 const SizedBox(width: 8),
-                buildFilterChip('Assigned', 'assigned', selectedFilter, onFilterChanged,
+                buildFilterChip(
+                    'Assigned', 'assigned', selectedFilter, onFilterChanged,
                     color: const Color(0xFF10B981),
                     icon: Icons.person_add_alt_rounded),
                 const SizedBox(width: 16),
@@ -379,8 +382,9 @@ class PatientListWidgets {
   }
 
   // Filter Chip
-  static Widget buildFilterChip(String label, String value, String selectedFilter, 
-      ValueChanged<String> onFilterChanged, {Color? color, IconData? icon}) {
+  static Widget buildFilterChip(String label, String value,
+      String selectedFilter, ValueChanged<String> onFilterChanged,
+      {Color? color, IconData? icon}) {
     final isSelected = selectedFilter == value;
     final chipColor = color ?? const Color(0xFF3B82F6);
 
@@ -1034,7 +1038,8 @@ class PatientListWidgets {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

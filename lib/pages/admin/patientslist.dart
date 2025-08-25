@@ -1,6 +1,6 @@
 // admin_patientslist.dart - Main Patient List Page
 import 'package:flutter/material.dart';
-import 'package:health_share_org/functions/admin/admin_patientslist.dart ';
+import 'package:health_share_org/functions/admin/admin_patientslist.dart';
 import 'package:health_share_org/widgets/admin_patientslist_widgets.dart';
 
 class AdminPatientsListPage extends StatefulWidget {
@@ -12,17 +12,16 @@ class AdminPatientsListPage extends StatefulWidget {
 
 class _AdminPatientsListPageState extends State<AdminPatientsListPage>
     with TickerProviderStateMixin {
-  
   // Controllers and animations
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   // Data and state management
   final AdminPatientListFunctions _functions = AdminPatientListFunctions();
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _filteredUsers = [];
   List<Map<String, dynamic>> _doctors = [];
-  
+
   // UI state
   String _searchQuery = '';
   String _selectedFilter = 'all';
@@ -66,7 +65,7 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
       // Load users and doctors
       final users = await _functions.loadUsersFromSupabase();
       final doctors = await _functions.loadDoctorsFromSupabase();
-      
+
       // Load assignments
       await _functions.loadAssignmentsFromDatabase(users);
 
@@ -78,7 +77,6 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
 
       _applyFilters();
       _animationController.forward();
-
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -103,16 +101,19 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
     // Apply status filter
     switch (_selectedFilter) {
       case 'invited':
-        filtered = filtered.where((user) => user['status'] == 'invited').toList();
+        filtered =
+            filtered.where((user) => user['status'] == 'invited').toList();
         break;
       case 'unassigned':
-        filtered = filtered.where((user) => 
-          user['status'] == 'unassigned' || 
-          (user['status'] != 'pending' && user['assignedDoctor'] == null)
-        ).toList();
+        filtered = filtered
+            .where((user) =>
+                user['status'] == 'unassigned' ||
+                (user['status'] != 'pending' && user['assignedDoctor'] == null))
+            .toList();
         break;
       case 'assigned':
-        filtered = filtered.where((user) => user['assignedDoctor'] != null).toList();
+        filtered =
+            filtered.where((user) => user['assignedDoctor'] != null).toList();
         break;
       case 'all':
       default:
@@ -173,9 +174,16 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
 
   Future<void> _onApprove(Map<String, dynamic> user) async {
     try {
-      await _functions.approvePendingPatient(user['patientId'] ?? user['id']);
+      // Use the Patient table's primary key (id)
+      String patientId = user['id']?.toString() ?? '';
+
+      if (patientId.isEmpty) {
+        throw Exception('No valid patient ID found');
+      }
+
+      await _functions.approvePendingPatient(patientId);
       await _loadData();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -198,9 +206,9 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
 
   Future<void> _onReject(Map<String, dynamic> user) async {
     try {
-      await _functions.rejectPendingPatient(user['patientId'] ?? user['id']);
+      await _functions.rejectPendingPatient(user['patient_id'] ?? user['id']);
       await _loadData();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -281,13 +289,10 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
       );
     }
 
-    if (_users.isEmpty) {
-      return PatientListWidgets.buildModernEmptyState(_onRefresh);
-    }
-
+    // Always show the search and filter section, even when no users
     return Column(
       children: [
-        // Search and Filter Section
+        // Search and Filter Section - Always visible
         PatientListWidgets.buildSearchAndFilter(
           searchQuery: _searchQuery,
           onSearchChanged: _onSearchChanged,
@@ -297,27 +302,33 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
           onFilterChanged: _onFilterChanged,
           filteredUsers: _filteredUsers,
         ),
-        
-        // Patient List
+
+        // Patient List or Empty State
         Expanded(
-          child: _filteredUsers.isEmpty
-              ? _buildEmptyFilteredState()
-              : ListView.builder(
-                  itemCount: _filteredUsers.length,
-                  itemBuilder: (context, index) {
-                    final user = _filteredUsers[index];
-                    return PatientListWidgets.buildEnhancedPatientCard(
-                      user: user,
-                      index: index,
-                      fadeAnimation: _fadeAnimation,
-                      animationController: _animationController,
-                      onViewDetails: () => _onViewDetails(user),
-                      onAssignDoctor: () => _onAssignDoctor(user),
-                      onApprove: user['status'] == 'pending' ? () => _onApprove(user) : null,
-                      onReject: user['status'] == 'pending' ? () => _onReject(user) : null,
-                    );
-                  },
-                ),
+          child: _users.isEmpty
+              ? PatientListWidgets.buildModernEmptyState(_onRefresh)
+              : _filteredUsers.isEmpty
+                  ? _buildEmptyFilteredState()
+                  : ListView.builder(
+                      itemCount: _filteredUsers.length,
+                      itemBuilder: (context, index) {
+                        final user = _filteredUsers[index];
+                        return PatientListWidgets.buildEnhancedPatientCard(
+                          user: user,
+                          index: index,
+                          fadeAnimation: _fadeAnimation,
+                          animationController: _animationController,
+                          onViewDetails: () => _onViewDetails(user),
+                          onAssignDoctor: () => _onAssignDoctor(user),
+                          onApprove: user['status'] == 'pending'
+                              ? () => _onApprove(user)
+                              : null,
+                          onReject: user['status'] == 'pending'
+                              ? () => _onReject(user)
+                              : null,
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -568,7 +579,7 @@ class _UserDetailsDialog extends StatelessWidget {
       title: Row(
         children: [
           Hero(
-            tag: 'patient_${user['id']}',
+            tag: 'patient_${user['patient_id'] ?? user['id']}',
             child: CircleAvatar(
               backgroundColor: const Color(0xFF3B82F6),
               child: Text(
@@ -647,7 +658,8 @@ class _DoctorAssignmentDialog extends StatefulWidget {
   });
 
   @override
-  State<_DoctorAssignmentDialog> createState() => _DoctorAssignmentDialogState();
+  State<_DoctorAssignmentDialog> createState() =>
+      _DoctorAssignmentDialogState();
 }
 
 class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
@@ -662,19 +674,26 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
 
   Future<void> _assignDoctor() async {
     if (_selectedDoctorId == null) return;
+    print("widget.user = ${widget.user}");
 
     setState(() {
       _isLoading = true;
     });
 
     try {
+      String patientId = widget.user['patientId']?.toString() ?? '';
+
+      if (patientId.isEmpty) {
+        throw Exception('No valid patient ID found');
+      }
+
       await widget.functions.saveAssignmentToDatabase(
-        widget.user['userId'] ?? widget.user['id'],
+        patientId,
         _selectedDoctorId!,
       );
-      
+
       widget.onAssignmentChanged();
-      
+
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -688,7 +707,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
       setState(() {
         _isLoading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -707,9 +726,9 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
 
     try {
       await widget.functions.removeAssignment(widget.user);
-      
+
       widget.onAssignmentChanged();
-      
+
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -723,7 +742,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
       setState(() {
         _isLoading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
