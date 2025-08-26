@@ -419,354 +419,413 @@ class PatientListWidgets {
   }
 
   // Enhanced Patient Card
-  static Widget buildEnhancedPatientCard({
-    required Map<String, dynamic> user,
-    required int index,
-    required Animation<double> fadeAnimation,
-    required AnimationController animationController,
-    required VoidCallback onViewDetails,
-    required VoidCallback onAssignDoctor,
-    required VoidCallback? onApprove,
-    required VoidCallback? onReject,
-  }) {
-    final String status = user['status']?.toString() ?? 'pending';
-    final bool hasAssignedDoctor = user['assignedDoctor'] != null;
-    final String userName = user['name']?.toString() ?? 'Unknown Patient';
-    final String userEmail = user['email']?.toString() ?? '';
-    final String userPhone = user['phone']?.toString() ?? '';
-    final String userId = user['id']?.toString() ?? '';
-    final String userType = user['type']?.toString() ?? 'Patient';
-    final String lastVisit = user['lastVisit']?.toString() ?? 'Unknown';
+// Enhanced Patient Card - Fixed for your database schema
+static Widget buildEnhancedPatientCard({
+  required Map<String, dynamic> user,
+  required int index,
+  required Animation<double> fadeAnimation,
+  required AnimationController animationController,
+  required VoidCallback onViewDetails,
+  required Future<void> Function() onAssignDoctor,  // Changed to async function
+  required VoidCallback? onApprove,
+  required VoidCallback? onReject,
+  required VoidCallback? onRefresh,
+}) {
+  // Extract data based on your actual database schema
+  final String status = user['status']?.toString() ?? 'pending';
+  
+  // Check for doctor assignment information
+  // This should come from a JOIN with Doctor_User_Assignment table
+  final bool hasAssignedDoctor = user['doctor_id'] != null && 
+                                user['doctor_id'].toString().isNotEmpty;
+  
+  final String assignedDoctorId = user['doctor_id']?.toString() ?? '';
+  final String assignedDoctorName = user['doctor_name']?.toString() ?? 
+                                   user['doctorName']?.toString() ?? 
+                                   'Unknown Doctor';
+  
+  // User information
+  final String userName = user['name']?.toString() ?? 'Unknown Patient';
+  final String userEmail = user['email']?.toString() ?? '';
+  final String userPhone = user['phone']?.toString() ?? '';
+  
+  // Use the correct ID fields based on your schema
+  final String userId = user['id']?.toString() ?? '';  // User table ID
+  final String patientId = user['patient_id']?.toString() ?? 
+                          user['patientId']?.toString() ?? '';  // Patient table ID if available
+  
+  final String userType = 'Patient'; // Based on your schema
+  
+  // Format dates properly
+  final String lastVisit = user['lastVisit']?.toString() ?? 
+                          user['last_visit']?.toString() ?? 
+                          'No visits yet';
+  
+  final String joinedAt = user['joined_at']?.toString() ?? 
+                         user['created_at']?.toString() ?? 
+                         'Unknown';
 
-    // Define colors based on status
-    Color statusColor;
-    Color borderColor;
-    IconData statusIcon;
-    String statusText;
+  // Define colors based on status and assignment
+  Color statusColor;
+  Color borderColor;
+  IconData statusIcon;
+  String statusText;
 
-    switch (status) {
-      case 'pending':
-        statusColor = const Color(0xFFF59E0B);
-        borderColor = const Color(0xFFF59E0B).withOpacity(0.3);
-        statusIcon = Icons.hourglass_empty_rounded;
-        statusText = 'Pending Approval';
-        break;
-      case 'unassigned':
-        statusColor = const Color(0xFFEF4444);
-        borderColor = const Color(0xFFEF4444).withOpacity(0.3);
-        statusIcon = Icons.person_off_rounded;
-        statusText = 'Unassigned';
-        break;
-      case 'assigned':
-        statusColor = const Color(0xFF10B981);
-        borderColor = const Color(0xFF10B981).withOpacity(0.3);
-        statusIcon = Icons.check_circle_rounded;
-        statusText = 'Assigned';
-        break;
-      case 'invited':
-        statusColor = const Color(0xFF8B5CF6);
-        borderColor = const Color(0xFF8B5CF6).withOpacity(0.3);
-        statusIcon = Icons.mail_outline_rounded;
-        statusText = 'Invited';
-        break;
-      default:
-        statusColor = Colors.grey;
-        borderColor = Colors.grey.withOpacity(0.3);
-        statusIcon = Icons.help_outline_rounded;
-        statusText = 'Unknown';
-    }
+  // Update status logic based on your database values
+  String effectiveStatus = status.toLowerCase();
+  
+  // If user is active but has no doctor assignment, show as unassigned
+  if (effectiveStatus == 'active' && !hasAssignedDoctor) {
+    effectiveStatus = 'unassigned';
+  } else if (effectiveStatus == 'active' && hasAssignedDoctor) {
+    effectiveStatus = 'assigned';
+  }
 
-    return FadeTransition(
-      opacity: fadeAnimation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.3),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(
-          parent: animationController,
-          curve: Interval(
-            (index * 0.1).clamp(0.0, 1.0),
-            1.0,
-            curve: Curves.easeOutBack,
-          ),
-        )),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Card(
-            elevation: 0,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white,
-                    Colors.grey.shade50,
-                  ],
-                ),
-                border: Border.all(color: borderColor, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
+  switch (effectiveStatus) {
+    case 'pending':
+      statusColor = const Color(0xFFF59E0B);
+      borderColor = const Color(0xFFF59E0B).withOpacity(0.3);
+      statusIcon = Icons.hourglass_empty_rounded;
+      statusText = 'Pending Approval';
+      break;
+    case 'unassigned':
+      statusColor = const Color(0xFFEF4444);
+      borderColor = const Color(0xFFEF4444).withOpacity(0.3);
+      statusIcon = Icons.person_off_rounded;
+      statusText = 'Active - Unassigned';
+      break;
+    case 'assigned':
+      statusColor = const Color(0xFF10B981);
+      borderColor = const Color(0xFF10B981).withOpacity(0.3);
+      statusIcon = Icons.check_circle_rounded;
+      statusText = 'Active - Assigned';
+      break;
+    case 'invited':
+      statusColor = const Color(0xFF8B5CF6);
+      borderColor = const Color(0xFF8B5CF6).withOpacity(0.3);
+      statusIcon = Icons.mail_outline_rounded;
+      statusText = 'Invited';
+      break;
+    case 'inactive':
+      statusColor = Colors.grey;
+      borderColor = Colors.grey.withOpacity(0.3);
+      statusIcon = Icons.pause_circle_outline_rounded;
+      statusText = 'Inactive';
+      break;
+    default:
+      statusColor = Colors.grey;
+      borderColor = Colors.grey.withOpacity(0.3);
+      statusIcon = Icons.help_outline_rounded;
+      statusText = 'Unknown Status';
+  }
+
+  return FadeTransition(
+    opacity: fadeAnimation,
+    child: SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, 0.3),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(
+        parent: animationController,
+        curve: Interval(
+          (index * 0.1).clamp(0.0, 1.0),
+          1.0,
+          curve: Curves.easeOutBack,
+        ),
+      )),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.grey.shade50,
                 ],
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onViewDetails,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header Row with Status Badge
-                        Row(
-                          children: [
-                            Hero(
-                              tag: 'patient_$userId',
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF3B82F6),
-                                      Color(0xFF1E40AF),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFF3B82F6)
-                                          .withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
+              border: Border.all(color: borderColor, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onViewDetails,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header Row with Status Badge
+                      Row(
+                        children: [
+                          Hero(
+                            tag: 'patient_$userId',
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF3B82F6),
+                                    Color(0xFF1E40AF),
                                   ],
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    userName.isNotEmpty
-                                        ? userName[0].toUpperCase()
-                                        : 'P',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  userName.isNotEmpty ? userName[0].toUpperCase() : 'P',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    userName,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1F2937),
-                                    ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  userName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1F2937),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF3B82F6)
-                                              .withOpacity(0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          userType,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFF3B82F6),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF3B82F6).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'ID: $userId',
+                                      child: const Text(
+                                        'Patient',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: Color(0xFF3B82F6),
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                    ],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'ID: $userId',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Status Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: statusColor.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(statusIcon, color: statusColor, size: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  statusText,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Status-specific content section
+                      if (effectiveStatus == 'pending') ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: const Color(0xFFF59E0B).withOpacity(0.2)),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.pending_actions_rounded,
+                                      size: 20, color: Color(0xFFF59E0B)),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'This patient is awaiting your approval',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF59E0B),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                            // Status Badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: statusColor.withOpacity(0.3)),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Review patient information and approve to allow doctor assignment',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                            ],
+                          ),
+                        ),
+                      ] else if (effectiveStatus == 'invited') ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF8B5CF6).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.2)),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
                                 children: [
-                                  Icon(statusIcon,
-                                      color: statusColor, size: 16),
+                                  const Icon(Icons.mail_outline_rounded,
+                                      size: 20, color: Color(0xFF8B5CF6)),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Invitation sent to this user',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF8B5CF6),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'User will need to accept the invitation to become an active patient',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        // Doctor Assignment Section for active patients
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: hasAssignedDoctor
+                                ? const Color(0xFF10B981).withOpacity(0.05)
+                                : const Color(0xFFEF4444).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: hasAssignedDoctor
+                                  ? const Color(0xFF10B981).withOpacity(0.2)
+                                  : const Color(0xFFEF4444).withOpacity(0.2),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.medical_services_rounded,
+                                    size: 20,
+                                    color: hasAssignedDoctor
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFFEF4444),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      hasAssignedDoctor
+                                          ? 'Assigned to: $assignedDoctorName'
+                                          : 'No doctor assigned yet',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: hasAssignedDoctor
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFEF4444),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(Icons.person_add_rounded,
+                                      size: 16, color: Colors.grey.shade600),
                                   const SizedBox(width: 6),
                                   Text(
-                                    statusText,
+                                    'Joined: ${_formatDate(joinedAt)}',
                                     style: TextStyle(
-                                      color: statusColor,
                                       fontSize: 12,
-                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade600,
                                     ),
                                   ),
+                                  const Spacer(),
+                                  if (userEmail.isNotEmpty) ...[
+                                    Icon(Icons.email_outlined,
+                                        size: 16, color: Colors.grey.shade600),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  if (userPhone.isNotEmpty) ...[
+                                    Icon(Icons.phone_outlined,
+                                        size: 16, color: Colors.grey.shade600),
+                                  ],
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Status-specific content section
-                        if (status == 'pending') ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF59E0B).withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color:
-                                      const Color(0xFFF59E0B).withOpacity(0.2)),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.pending_actions_rounded,
-                                        size: 20, color: Color(0xFFF59E0B)),
-                                    const SizedBox(width: 8),
-                                    const Expanded(
-                                      child: Text(
-                                        'This patient is awaiting your approval',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFFF59E0B),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Review patient information and approve to allow doctor assignment',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else if (status == 'invited') ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF8B5CF6).withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color:
-                                      const Color(0xFF8B5CF6).withOpacity(0.2)),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.mail_outline_rounded,
-                                        size: 20, color: Color(0xFF8B5CF6)),
-                                    const SizedBox(width: 8),
-                                    const Expanded(
-                                      child: Text(
-                                        'Invitation sent to this user',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF8B5CF6),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'User will need to accept the invitation to become an active patient',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else ...[
-                          // Doctor Assignment Section for non-pending patients
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: hasAssignedDoctor
-                                  ? const Color(0xFF10B981).withOpacity(0.05)
-                                  : const Color(0xFFEF4444).withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: hasAssignedDoctor
-                                    ? const Color(0xFF10B981).withOpacity(0.2)
-                                    : const Color(0xFFEF4444).withOpacity(0.2),
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.medical_services_rounded,
-                                      size: 20,
-                                      color: hasAssignedDoctor
-                                          ? const Color(0xFF10B981)
-                                          : const Color(0xFFEF4444),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        hasAssignedDoctor
-                                            ? 'Assigned to: ${user['assignedDoctor'] ?? 'Unknown Doctor'}'
-                                            : 'No doctor assigned',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: hasAssignedDoctor
-                                              ? const Color(0xFF10B981)
-                                              : const Color(0xFFEF4444),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              if (hasAssignedDoctor) ...[
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
@@ -780,122 +839,123 @@ class PatientListWidgets {
                                         color: Colors.grey.shade600,
                                       ),
                                     ),
-                                    const Spacer(),
-                                    if (userEmail.isNotEmpty) ...[
-                                      Icon(Icons.email_outlined,
-                                          size: 16,
-                                          color: Colors.grey.shade600),
-                                      const SizedBox(width: 4),
-                                    ],
-                                    if (userPhone.isNotEmpty) ...[
-                                      Icon(Icons.phone_outlined,
-                                          size: 16,
-                                          color: Colors.grey.shade600),
-                                    ],
                                   ],
                                 ),
                               ],
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+
+                      // Action Buttons
+                      if (effectiveStatus == 'pending') ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: onReject,
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                label: const Text('Reject'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFFEF4444),
+                                  side: const BorderSide(color: Color(0xFFEF4444)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: onApprove,
+                                icon: const Icon(Icons.check_rounded, size: 18),
+                                label: const Text('Approve'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (effectiveStatus == 'inactive') ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: onViewDetails,
+                            icon: const Icon(Icons.visibility_outlined, size: 18),
+                            label: const Text('View Details'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.grey,
+                              side: const BorderSide(color: Colors.grey),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 16),
-
-                        // Status-specific Action Buttons
-                        if (status == 'pending') ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: onReject,
-                                  icon:
-                                      const Icon(Icons.close_rounded, size: 18),
-                                  label: const Text('Reject'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFFEF4444),
-                                    side: const BorderSide(
-                                        color: Color(0xFFEF4444)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
+                        ),
+                      ] else ...[
+                        // Regular action buttons for active patients
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: onViewDetails,
+                                icon: const Icon(Icons.visibility_outlined, size: 18),
+                                label: const Text('View Details'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF3B82F6),
+                                  side: const BorderSide(color: Color(0xFF3B82F6)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: onApprove,
-                                  icon:
-                                      const Icon(Icons.check_rounded, size: 18),
-                                  label: const Text('Approve'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF10B981),
-                                    foregroundColor: Colors.white,
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  await onAssignDoctor();
+                                  // Trigger refresh after assignment
+                                  if (onRefresh != null) {
+                                    onRefresh();
+                                  }
+                                },
+                                icon: Icon(
+                                  hasAssignedDoctor
+                                      ? Icons.edit_rounded
+                                      : Icons.person_add_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(hasAssignedDoctor ? 'Change Doctor' : 'Assign Doctor'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: hasAssignedDoctor
+                                      ? const Color(0xFFF59E0B)
+                                      : const Color(0xFF3B82F6),
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
                                 ),
                               ),
-                            ],
-                          ),
-                        ] else ...[
-                          // Regular action buttons for approved patients
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: onViewDetails,
-                                  icon: const Icon(Icons.visibility_outlined,
-                                      size: 18),
-                                  label: const Text('View Details'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF3B82F6),
-                                    side: const BorderSide(
-                                        color: Color(0xFF3B82F6)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: onAssignDoctor,
-                                  icon: Icon(
-                                    hasAssignedDoctor
-                                        ? Icons.edit_rounded
-                                        : Icons.person_add_rounded,
-                                    size: 18,
-                                  ),
-                                  label: Text(
-                                      hasAssignedDoctor ? 'Change' : 'Assign'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: hasAssignedDoctor
-                                        ? const Color(0xFFF59E0B)
-                                        : const Color(0xFF3B82F6),
-                                    foregroundColor: Colors.white,
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -903,8 +963,19 @@ class PatientListWidgets {
           ),
         ),
       ),
-    );
+    ),
+  );
+}
+
+// Helper method to format dates
+static String _formatDate(String dateString) {
+  try {
+    final date = DateTime.parse(dateString);
+    return '${date.day}/${date.month}/${date.year}';
+  } catch (e) {
+    return 'Unknown';
   }
+}
 
   // User Details Row
   static Widget buildUserDetailsRow(String label, String value, IconData icon) {

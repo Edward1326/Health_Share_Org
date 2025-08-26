@@ -159,18 +159,18 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
     _showUserDetailsDialog(user);
   }
 
-  void _onAssignDoctor(Map<String, dynamic> user) {
-    if (!_functions.validateUserForAssignment(user)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot assign doctor to this patient'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    _showDoctorAssignmentDialog(user);
+  Future<void> _onAssignDoctor(Map<String, dynamic> user) async {
+  if (!_functions.validateUserForAssignment(user)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Cannot assign doctor to this patient'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
   }
+  
+}
 
   Future<void> _onApprove(Map<String, dynamic> user) async {
     try {
@@ -314,19 +314,20 @@ class _AdminPatientsListPageState extends State<AdminPatientsListPage>
                       itemBuilder: (context, index) {
                         final user = _filteredUsers[index];
                         return PatientListWidgets.buildEnhancedPatientCard(
-                          user: user,
-                          index: index,
-                          fadeAnimation: _fadeAnimation,
-                          animationController: _animationController,
-                          onViewDetails: () => _onViewDetails(user),
-                          onAssignDoctor: () => _onAssignDoctor(user),
-                          onApprove: user['status'] == 'pending'
-                              ? () => _onApprove(user)
-                              : null,
-                          onReject: user['status'] == 'pending'
-                              ? () => _onReject(user)
-                              : null,
-                        );
+  user: user,
+  index: index,
+  fadeAnimation: _fadeAnimation,
+  animationController: _animationController,
+  onViewDetails: () => _onViewDetails(user),
+  onAssignDoctor: () => _onAssignDoctor(user),
+  onApprove: user['status'] == 'pending'
+      ? () => _onApprove(user)
+      : null,
+  onReject: user['status'] == 'pending'
+      ? () => _onReject(user)
+      : null,
+  onRefresh: _onRefresh, // Add this line
+);
                       },
                     ),
         ),
