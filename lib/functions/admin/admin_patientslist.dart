@@ -281,107 +281,104 @@ class AdminPatientListFunctions {
   }
 
   // Updated loadAssignmentsFromDatabase method with extensive debugging
-Future<void> loadAssignmentsFromDatabase(List<Map<String, dynamic>> users) async {
-  try {
-    print("=== DEBUG: Loading assignments from database ===");
-    print("Number of users to check: ${users.length}");
-    
-    // Print patient IDs from your user objects
-    final patientIdsFromUsers = <String>{};
-    for (var user in users) {
-      final patientId = user['id']?.toString(); // This should be the Patient table ID
-      if (patientId != null) {
-        patientIdsFromUsers.add(patientId);
-        print("User ${user['name']} has Patient ID: $patientId");
+  // Updated loadAssignmentsFromDatabase method - COMPLETE VERSION
+  Future<void> loadAssignmentsFromDatabase(
+      List<Map<String, dynamic>> users) async {
+    try {
+      print('=== DEBUG: Loading assignments ===');
+
+      // Extract patient IDs from users (these are Patient table IDs)
+      final patientIds = users
+          .map((user) =>
+              user['id'].toString()) // user['id'] is already the Patient.id
+          .toSet();
+
+      if (patientIds.isEmpty) {
+        print('No patient IDs found');
+        return;
       }
-    }
-    
-    print("Looking for assignments for Patient IDs: $patientIdsFromUsers");
-    
-    // Get assignments that match these patient IDs
-    final assignmentsResponse = await supabase
-        .from('Doctor_User_Assignment')
-        .select('*')
-        .in_('patient_id', patientIdsFromUsers.toList())
-        .eq('status', 'active');
 
-    print("Found ${assignmentsResponse.length} active assignments:");
-    for (var assignment in assignmentsResponse) {
-      print("  Patient: ${assignment['patient_id']} -> Doctor: ${assignment['doctor_id']}");
-    }
+      print('Looking for assignments for Patient IDs: $patientIds');
 
-    // Get doctor information for all assigned doctors
-    final doctorIds = assignmentsResponse
-        .map((a) => a['doctor_id']?.toString())
-        .where((id) => id != null)
-        .toSet();
+      // Query assignments using Patient IDs directly
+      final response = await supabase.from('Doctor_User_Assignment').select('''
+          patient_id,
+          doctor_id,
+          status,
+          assigned_at
+        ''').in_('patient_id', patientIds.toList()).eq('status', 'active');
 
-    Map<String, Map<String, dynamic>> doctorInfo = {};
-    
-    if (doctorIds.isNotEmpty) {
-      final doctorsResponse = await supabase
-          .from('Organization_User')
-          .select('''
+      print('Found ${response.length} active assignments:');
+
+      // Get doctor details for all assigned doctors
+      final doctorIds = response
+          .map((assignment) => assignment['doctor_id'].toString())
+          .toSet();
+
+      if (doctorIds.isNotEmpty) {
+        final doctorResponse =
+            await supabase.from('Organization_User').select('''
             id,
-            user:User!inner(
-              name,
-              email
-            )
-          ''')
-          .in_('id', doctorIds.toList());
+            User!inner(
+              Person!inner(
+                first_name,
+                last_name
+              )
+            ),
+            position,
+            department
+          ''').in_('id', doctorIds.toList());
 
-      for (var doctor in doctorsResponse) {
-        doctorInfo[doctor['id']] = {
-          'name': doctor['user']['name'],
-          'email': doctor['user']['email'],
-        };
-        print("Doctor info loaded: ${doctor['id']} -> ${doctor['user']['name']}");
-      }
-    }
+        // Create doctor lookup map
+        final doctorMap = <String, Map<String, dynamic>>{};
+        for (final doctor in doctorResponse) {
+          final person = doctor['User']['Person'];
+          final doctorName = person != null &&
+                  person['first_name'] != null &&
+                  person['last_name'] != null
+              ? '${person['first_name']} ${person['last_name']}'
+              : 'Dr. ${doctor['position'] ?? 'Unknown'}';
 
-    // Update user objects with assignment data
-    int matchedAssignments = 0;
-    for (var user in users) {
-      final patientId = user['id']?.toString();
-      
-      if (patientId != null) {
-        // Find assignment for this patient
-        final assignment = assignmentsResponse.firstWhere(
-          (a) => a['patient_id']?.toString() == patientId,
-          orElse: () => null,
-        );
-        
-        if (assignment != null) {
-          final doctorId = assignment['doctor_id']?.toString();
-          final doctor = doctorId != null ? doctorInfo[doctorId] : null;
-          
-          if (doctor != null) {
-            // Update the user object with assignment data
-            user['assignedDoctorId'] = doctorId;
-            user['assignedDoctor'] = doctor['name'];
-            user['assignedDoctorEmail'] = doctor['email'];
-            user['assignedAt'] = assignment['assigned_at'];
-            user['assignmentId'] = assignment['id'];
-            
-            matchedAssignments++;
-            print("MATCHED: Patient ${user['name']} (ID: $patientId) -> Doctor ${doctor['name']}");
+          doctorMap[doctor['id'].toString()] = {
+            'id': doctor['id'],
+            'name': doctorName,
+            'position': doctor['position'],
+            'department': doctor['department'],
+          };
+        }
+
+        // Process assignments and update users
+        for (final assignment in response) {
+          final patientId = assignment['patient_id'].toString();
+          final doctorId = assignment['doctor_id'].toString();
+          final doctorInfo = doctorMap[doctorId];
+
+          print(
+              '  Patient: $patientId -> Doctor: $doctorId (${doctorInfo?['name']})');
+
+          // Find and update the user
+          final userIndex = users.indexWhere((user) => user['id'] == patientId);
+          if (userIndex != -1) {
+            users[userIndex]['doctor_id'] = doctorId;
+            users[userIndex]['doctor_name'] =
+                doctorInfo?['name'] ?? 'Unknown Doctor';
+            users[userIndex]['assignedDoctor'] = doctorInfo?['name'];
+            users[userIndex]['assignedDoctorId'] = doctorId;
+            users[userIndex]['assignmentId'] =
+                assignment['patient_id']; // for tracking
+
+            print(
+                '    -> Updated user ${users[userIndex]['name']} with doctor ${doctorInfo?['name']}');
           }
-        } else {
-          print("NO ASSIGNMENT: Patient ${user['name']} (ID: $patientId)");
         }
       }
-    }
 
-    print("=== Assignment Loading Summary ===");
-    print("Total users: ${users.length}");
-    print("Assignments in database: ${assignmentsResponse.length}");
-    print("Successfully matched: $matchedAssignments");
-    
-  } catch (e, stackTrace) {
-    print("Error loading assignments: $e");
-    print("Stack trace: $stackTrace");
+      print('=== Assignment loading complete ===');
+    } catch (e) {
+      print('Error loading assignments: $e');
+      throw e;
+    }
   }
-}
 
   // Search users to invite
   Future<List<Map<String, dynamic>>> searchUsersToInvite(String query) async {
@@ -551,34 +548,34 @@ Future<void> loadAssignmentsFromDatabase(List<Map<String, dynamic>> users) async
   }
 
   // Save assignment to database
-  Future<void> saveAssignmentToDatabase(String patientId, String doctorId) async {
-  try {
-    print("=== DEBUG: Saving assignment to database ===");
-    print("Patient ID (from Patient table): $patientId");
-    print("Doctor Organization_User ID: $doctorId");
+  Future<void> saveAssignmentToDatabase(
+      String patientId, String doctorId) async {
+    try {
+      print("=== DEBUG: Saving assignment to database ===");
+      print("Patient ID (from Patient table): $patientId");
+      print("Doctor Organization_User ID: $doctorId");
 
-    // Since you've already corrected the FK to reference Patient.id directly,
-    // we can insert the patientId directly without any resolution
-    final assignmentData = {
-      'patient_id': patientId,  // This is now the Patient table's id
-      'doctor_id': doctorId,    // Organization_User table's id
-      'status': 'active',
-      'assigned_at': DateTime.now().toIso8601String(),
-    };
+      // Since you've already corrected the FK to reference Patient.id directly,
+      // we can insert the patientId directly without any resolution
+      final assignmentData = {
+        'patient_id': patientId, // This is now the Patient table's id
+        'doctor_id': doctorId, // Organization_User table's id
+        'status': 'active',
+        'assigned_at': DateTime.now().toIso8601String(),
+      };
 
-    print("=== DEBUG: Creating assignment with data: $assignmentData ===");
+      print("=== DEBUG: Creating assignment with data: $assignmentData ===");
 
-    final response = await supabase
-        .from('Doctor_User_Assignment')
-        .insert(assignmentData);
+      final response =
+          await supabase.from('Doctor_User_Assignment').insert(assignmentData);
 
-    print("=== DEBUG: Assignment saved successfully ===");
-  } catch (e) {
-    print("=== DEBUG: Error saving assignment ===");
-    print("Error: $e");
-    rethrow;
+      print("=== DEBUG: Assignment saved successfully ===");
+    } catch (e) {
+      print("=== DEBUG: Error saving assignment ===");
+      print("Error: $e");
+      rethrow;
+    }
   }
-}
 
   // Remove assignment
   Future<void> removeAssignment(Map<String, dynamic> user) async {
