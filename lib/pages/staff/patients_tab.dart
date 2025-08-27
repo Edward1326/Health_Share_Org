@@ -83,28 +83,34 @@ class _PatientsTabState extends State<PatientsTab> {
           doctorLookupResponse.map((doctor) => doctor['id']).toList();
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
+      // Fixed query - now joins through Patient table instead of User table
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
-      id,
-      doctor_id,
-      patient_id,
-      status,
-      assigned_at,
-      patient_user:User!patient_id(
-        id,
-        person_id,
-        email,
-        Person!person_id(
           id,
-          first_name,
-          middle_name,
-          last_name,
-          address,
-          contact_number
-        )
-      )
-    ''')
+          doctor_id,
+          patient_id,
+          status,
+          assigned_at,
+          Patient!patient_id(
+            id,
+            user_id,
+            organization_id,
+            User!user_id(
+              id,
+              person_id,
+              email,
+              Person!person_id(
+                id,
+                first_name,
+                middle_name,
+                last_name,
+                address,
+                contact_number
+              )
+            )
+          )
+        ''')
           .in_('doctor_id', doctorIds)
           .eq('status', 'active');
 
@@ -113,12 +119,16 @@ class _PatientsTabState extends State<PatientsTab> {
       final transformedPatients =
           response.map<Map<String, dynamic>>((assignment) {
         final assignmentMap = assignment as Map<String, dynamic>;
+        final patientData = assignmentMap['Patient'] as Map<String, dynamic>;
+
         return {
           'patient_id': assignmentMap['patient_id'],
           'doctor_id': assignmentMap['doctor_id'],
           'status': assignmentMap['status'],
           'assigned_at': assignmentMap['assigned_at'],
-          'User': assignmentMap['patient_user'],
+          // Transform the nested structure to match your expected format
+          'User': patientData['User'],
+          'Patient': patientData, // Include patient data if needed
         };
       }).toList();
 
