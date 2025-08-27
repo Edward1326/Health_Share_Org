@@ -62,6 +62,15 @@ class FileUploadService {
   ) async {
     if (selectedPatient == null) return;
 
+    // DEBUG: Print selected patient structure
+    print('DEBUG: selectedPatient structure: $selectedPatient');
+    print('DEBUG: selectedPatient keys: ${selectedPatient.keys}');
+    if (selectedPatient.containsKey('patient_id')) {
+      print('DEBUG: patient_id value: ${selectedPatient['patient_id']}');
+      print(
+          'DEBUG: patient_id type: ${selectedPatient['patient_id'].runtimeType}');
+    }
+
     try {
       // Step 1: Create HTML file input for web compatibility
       final html.InputElement uploadInput = html.InputElement(type: 'file');
@@ -110,21 +119,61 @@ class FileUploadService {
         ),
       );
 
-      // Step 4: Get current user info for uploaded_by field
+      // Step 4: Get current user info for uploaded_by field - FIXED
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         Navigator.pop(context);
-        showSnackBar('Authentication error');
+        showSnackBar('Authentication error: Not logged in');
         return;
       }
 
+      // Debug: Print current user info
+      print('DEBUG: Current user email: ${currentUser.email}');
+      print('DEBUG: Current user ID: ${currentUser.id}');
+
+      // Try to find user by email first
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('id')
-          .eq('email', currentUser.email!)
-          .single();
+          .eq('email', currentUser.email!);
 
-      final uploaderId = userResponse['id'];
+      String? uploaderId;
+
+      if (userResponse.isEmpty) {
+        // User doesn't exist in User table, create them
+        print('DEBUG: User not found in User table, creating new user record');
+
+        try {
+          final newUserResponse = await Supabase.instance.client
+              .from('User')
+              .insert({
+                'id': currentUser.id, // Use auth user ID
+                'email': currentUser.email!,
+                'created_at': DateTime.now().toIso8601String(),
+                // Add other required fields here if needed
+              })
+              .select('id')
+              .single();
+
+          uploaderId = newUserResponse['id'];
+          print('DEBUG: Created new user with ID: $uploaderId');
+        } catch (createError) {
+          Navigator.pop(context);
+          showSnackBar('Error creating user record: $createError');
+          print('ERROR: Failed to create user: $createError');
+          return;
+        }
+      } else {
+        // User exists, get their ID
+        uploaderId = userResponse.first['id'];
+        print('DEBUG: Found existing user with ID: $uploaderId');
+      }
+
+      if (uploaderId == null) {
+        Navigator.pop(context);
+        showSnackBar('Failed to get user ID');
+        return;
+      }
 
       // Step 5: Generate AES key and nonce for GCM mode, then encrypt file
       final aesKeyBytes = _generateRandomBytes(32); // 32 bytes for AES-256
@@ -144,29 +193,82 @@ class FileUploadService {
       print('DEBUG: Original file size: ${fileBytes.length} bytes');
       print('DEBUG: Encrypted file size: ${encryptedBytes.length} bytes');
 
-      // Step 6: Get patient's RSA public key
-      final patientResponse = await Supabase.instance.client
-          .from('User')
-          .select('rsa_public_key')
-          .eq('id', selectedPatient['patient_id'])
-          .single();
+      // Step 6: Get patient's RSA public key - UPDATED for Patient table
+      final patientId = selectedPatient['patient_id'];
+      print('DEBUG: Looking for patient with ID: $patientId');
+      print('DEBUG: Selected patient data: $selectedPatient');
 
+      // First, get the patient record from Patient table
+      final patientResponse = await Supabase.instance.client
+          .from('Patient')
+          .select('id, user_id') // Assuming Patient table has a user_id field
+          .eq('id', patientId);
+
+      print('DEBUG: Patient query response: $patientResponse');
+
+      if (patientResponse.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar(
+            'Patient not found in Patient table. Patient ID: $patientId');
+        print('DEBUG: Patient lookup failed');
+        return;
+      }
+
+      final patientData = patientResponse.first;
+      final patientUserId = patientData['user_id'];
+
+      print('DEBUG: Patient found, associated user_id: $patientUserId');
+
+      // Now get the RSA public key from the User table using the patient's user_id
+      final patientUserResponse = await Supabase.instance.client
+          .from('User')
+          .select('id, rsa_public_key, email')
+          .eq('id', patientUserId);
+
+      if (patientUserResponse.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar('Patient user record not found. User ID: $patientUserId');
+        return;
+      }
+
+      final patientUserData = patientUserResponse.first;
       final patientRsaPublicKeyPem =
-          patientResponse['rsa_public_key'] as String;
+          patientUserData['rsa_public_key'] as String?;
+
+      if (patientRsaPublicKeyPem == null || patientRsaPublicKeyPem.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar('Patient does not have an RSA public key');
+        return;
+      }
+
       print(
           'DEBUG: Patient RSA Public Key: ${patientRsaPublicKeyPem.substring(0, 100)}...');
 
       final patientRsaPublicKey =
           CryptoUtils.rsaPublicKeyFromPem(patientRsaPublicKeyPem);
 
-      // Step 7: Also get doctor's (your) RSA public key
+      // Step 7: Also get doctor's (your) RSA public key - ADD ERROR HANDLING
       final doctorResponse = await Supabase.instance.client
           .from('User')
           .select('rsa_public_key')
-          .eq('id', uploaderId)
-          .single();
+          .eq('id', uploaderId);
 
-      final doctorRsaPublicKeyPem = doctorResponse['rsa_public_key'] as String;
+      if (doctorResponse.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar('Doctor user record not found');
+        return;
+      }
+
+      final doctorData = doctorResponse.first;
+      final doctorRsaPublicKeyPem = doctorData['rsa_public_key'] as String?;
+
+      if (doctorRsaPublicKeyPem == null || doctorRsaPublicKeyPem.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar(
+            'Doctor does not have an RSA public key. Please generate keys first.');
+        return;
+      }
+
       final doctorRsaPublicKey =
           CryptoUtils.rsaPublicKeyFromPem(doctorRsaPublicKeyPem);
 
@@ -202,6 +304,12 @@ class FileUploadService {
 
       // Your actual Pinata credentials
       final String jwt = dotenv.env['PINATA_JWT'] ?? '';
+
+      if (jwt.isEmpty) {
+        Navigator.pop(context);
+        showSnackBar('Pinata JWT not configured');
+        return;
+      }
 
       print('DEBUG: Creating multipart request...');
 
@@ -283,23 +391,50 @@ class FileUploadService {
 
         // Step 12: Insert encrypted AES keys for BOTH patient and doctor
         try {
-          // Insert key for patient
-          await Supabase.instance.client.from('File_Keys').insert({
+          // Debug: Print all the values we're about to insert
+          print('DEBUG: About to insert File_Keys with values:');
+          print('  - fileId: $fileId (type: ${fileId.runtimeType})');
+          print(
+              '  - patientUserId: $patientUserId (type: ${patientUserId.runtimeType})');
+          print(
+              '  - uploaderId: $uploaderId (type: ${uploaderId.runtimeType})');
+          print(
+              '  - patientRsaEncryptedString length: ${patientRsaEncryptedString.length}');
+          print(
+              '  - doctorRsaEncryptedString length: ${doctorRsaEncryptedString.length}');
+          print('  - aesNonceHex: $aesNonceHex');
+
+          // Insert key for patient (using their user_id, not patient_id)
+          final patientKeyInsert = {
             'file_id': fileId,
             'recipient_type': 'user',
-            'recipient_id': selectedPatient['patient_id'],
+            'recipient_id': patientUserId.toString(), // Ensure it's a string
             'aes_key_encrypted': patientRsaEncryptedString,
             'nonce_hex': aesNonceHex,
-          });
+          };
+
+          print('DEBUG: Patient key insert data: $patientKeyInsert');
+
+          await Supabase.instance.client
+              .from('File_Keys')
+              .insert(patientKeyInsert);
+          print('DEBUG: Patient key inserted successfully');
 
           // Insert key for doctor (yourself)
-          await Supabase.instance.client.from('File_Keys').insert({
+          final doctorKeyInsert = {
             'file_id': fileId,
             'recipient_type': 'user',
-            'recipient_id': uploaderId, // Your user ID
+            'recipient_id': uploaderId.toString(), // Ensure it's a string
             'aes_key_encrypted': doctorRsaEncryptedString,
             'nonce_hex': aesNonceHex,
-          });
+          };
+
+          print('DEBUG: Doctor key insert data: $doctorKeyInsert');
+
+          await Supabase.instance.client
+              .from('File_Keys')
+              .insert(doctorKeyInsert);
+          print('DEBUG: Doctor key inserted successfully');
 
           print(
               'DEBUG: File keys inserted successfully for both patient and doctor');
@@ -311,14 +446,20 @@ class FileUploadService {
         }
 
         // Step 13: Create File_Shares record to share with patient
-        final patientId = selectedPatient['patient_id'].toString();
-
-        await Supabase.instance.client.from('File_Shares').insert({
+        final fileSharesInsert = {
           'file_id': fileId,
-          'shared_with_user_id': patientId,
-          'shared_by_user_id': uploaderId,
+          'shared_with_user_id':
+              patientUserId.toString(), // Use patient's user_id
+          'shared_by_user_id': uploaderId.toString(),
           'shared_at': DateTime.now().toIso8601String(),
-        });
+        };
+
+        print('DEBUG: File_Shares insert data: $fileSharesInsert');
+
+        await Supabase.instance.client
+            .from('File_Shares')
+            .insert(fileSharesInsert);
+        print('DEBUG: File_Shares record created successfully');
 
         // Close loading dialog
         Navigator.pop(context);
