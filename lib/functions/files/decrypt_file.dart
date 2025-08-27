@@ -38,9 +38,10 @@ class FileDecryptionService {
 
       print('DEBUG: Current user email: ${currentUser.email}');
 
+      // Get user info with correct schema - removed created_at since it doesn't exist
       final userResponse = await Supabase.instance.client
           .from('User')
-          .select('id, rsa_private_key')
+          .select('id, rsa_private_key, rsa_public_key')
           .eq('email', currentUser.email!)
           .single();
 
@@ -54,232 +55,247 @@ class FileDecryptionService {
         return;
       }
 
-      // Check if user has an Organization_User record (doctor profile)
+      // Check if user has Organization_User records (doctor/organization roles)
       final orgUserResponse = await Supabase.instance.client
           .from('Organization_User')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle();
+          .select('id, organization_id')
+          .eq('user_id', userId);
 
-      final doctorId = orgUserResponse?['id'];
+      print('DEBUG: Organization_User records: $orgUserResponse');
 
-      print('DEBUG: Doctor Organization_User ID: $doctorId');
+      // Collect all possible recipient IDs
+      final List<String> possibleRecipientIds = [
+        userId
+      ]; // Always include user ID
 
-      // Use both user ID and doctor ID for lookups
-      final List<String> possibleRecipientIds = [userId];
-      if (doctorId != null) {
-        possibleRecipientIds.add(doctorId);
+      for (var orgUser in orgUserResponse) {
+        possibleRecipientIds.add(orgUser['id']); // Add Organization_User ID
       }
 
       print('DEBUG: Possible recipient IDs: $possibleRecipientIds');
 
-      // Check access permissions - prioritize File_Keys over File_Shares
-      print('DEBUG: Checking access permissions...');
-
-      bool hasAccess = false;
-      String accessReason = '';
-
-      // First, check if user is the file owner
-      final fileOwnerCheck = await Supabase.instance.client
+      // Get file info and check ownership - removed created_at since it doesn't exist
+      final fileInfo = await Supabase.instance.client
           .from('Files')
-          .select('uploaded_by')
+          .select('uploaded_by, filename, category')
           .eq('id', fileId)
           .single();
 
+      print('DEBUG: File info: $fileInfo');
       print(
-          'DEBUG: File uploaded_by: ${fileOwnerCheck['uploaded_by']}, Current user: $userId');
+          'DEBUG: File uploaded_by: ${fileInfo['uploaded_by']}, Current user: $userId');
 
-      if (fileOwnerCheck['uploaded_by'] == userId) {
-        hasAccess = true;
-        accessReason = 'User is file owner';
-        print('DEBUG: $accessReason');
-      }
+      bool isOwner = fileInfo['uploaded_by'] == userId;
+      print('DEBUG: User is file owner: $isOwner');
 
-      // If not owner, check if there's a valid File_Keys record (this indicates sharing)
-      if (!hasAccess) {
-        final keyResponse = await Supabase.instance.client
-            .from('File_Keys')
-            .select('recipient_id, recipient_type')
-            .eq('file_id', fileId)
-            .in_('recipient_id', possibleRecipientIds)
-            .maybeSingle();
+      // First, check if file sharing is still active
+      print('DEBUG: Checking file sharing permissions...');
+      final fileShares = await Supabase.instance.client
+          .from('File_Shares')
+          .select('shared_with_user_id, shared_with_doctor, revoked_at')
+          .eq('file_id', fileId);
 
-        if (keyResponse != null) {
-          hasAccess = true;
-          accessReason =
-              'User has decryption key (${keyResponse['recipient_type']}: ${keyResponse['recipient_id']})';
-          print('DEBUG: $accessReason');
+      bool hasActiveShare = false;
 
-          // Optional: Check if the share has been explicitly revoked (but allow if key exists)
-          final shareCheck = await Supabase.instance.client
-              .from('File_Shares')
-              .select('revoked_at')
-              .eq('file_id', fileId)
-              .or('shared_with_doctor.eq.${keyResponse['recipient_id']},shared_with_user_id.eq.${keyResponse['recipient_id']}')
-              .maybeSingle();
+      if (isOwner) {
+        hasActiveShare = true;
+        print('DEBUG: User is file owner - access granted');
+      } else {
+        // Check for active (non-revoked) shares
+        for (var share in fileShares) {
+          if (share['revoked_at'] == null) {
+            // Check if share is for current user or doctor
+            if (share['shared_with_user_id'] == userId) {
+              hasActiveShare = true;
+              print('DEBUG: Found active user share');
+              break;
+            }
 
-          if (shareCheck != null && shareCheck['revoked_at'] != null) {
+            // Check doctor shares against Organization_User IDs
+            for (var orgUser in orgUserResponse) {
+              if (share['shared_with_doctor'] == orgUser['id']) {
+                hasActiveShare = true;
+                print(
+                    'DEBUG: Found active doctor share for Organization_User: ${orgUser['id']}');
+                break;
+              }
+            }
+
+            if (hasActiveShare) break;
+          } else {
             print(
-                'DEBUG: Warning - Share was revoked at ${shareCheck['revoked_at']}, but decryption key still exists');
-            // You can choose to block access here or allow it since the key exists
-            // For now, we'll allow it but log the warning
+                'DEBUG: Found revoked share - revoked at: ${share['revoked_at']}');
           }
         }
       }
 
-      if (!hasAccess) {
-        showSnackBar('Access denied: No valid decryption key found');
-        print('DEBUG: User has no access to this file');
+      if (!hasActiveShare) {
+        showSnackBar(
+            'Access denied: File sharing has been revoked or you do not have permission');
+        print('DEBUG: No active file sharing permissions found');
         return;
       }
 
-      // Now get the encryption key from File_Keys using both possible IDs
+      // Find the correct File_Keys record
       Map<String, dynamic>? keyResponse;
 
       try {
-        // Try to find File_Keys record using any of the possible recipient IDs
-        keyResponse = await Supabase.instance.client
+        // Get all File_Keys for this file to understand the sharing structure
+        // Removed created_at since it doesn't exist in File_Keys table
+        final allFileKeys = await Supabase.instance.client
             .from('File_Keys')
-            .select(
-                'aes_key_encrypted, nonce_hex, recipient_type, recipient_id')
-            .eq('file_id', fileId)
-            .in_('recipient_id', possibleRecipientIds)
-            .maybeSingle();
-
-        print('DEBUG: File_Keys lookup result: $keyResponse');
-      } catch (e) {
-        print('DEBUG: File_Keys lookup failed: $e');
-      }
-
-      if (keyResponse == null) {
-        // Second try: Get all keys for this file and find the right one
-        final allKeys = await Supabase.instance.client
-            .from('File_Keys')
-            .select('*')
+            .select('id, recipient_id, recipient_type, aes_key_encrypted')
             .eq('file_id', fileId);
 
-        print('DEBUG: All File_Keys for this file: $allKeys');
+        print('DEBUG: All File_Keys for this file:');
+        for (var key in allFileKeys) {
+          print(
+              'DEBUG:   - ID: ${key['id']}, Recipient: ${key['recipient_type']} ${key['recipient_id']}');
+        }
 
-        // Find a key that matches our sharing scenario
-        for (var key in allKeys) {
-          if (possibleRecipientIds.contains(key['recipient_id'])) {
+        // Find a File_Keys record we can use
+        for (var key in allFileKeys) {
+          String recipientId = key['recipient_id'];
+          String recipientType = key['recipient_type'];
+
+          // Check different recipient types
+          bool canUseKey = false;
+
+          if (recipientType == 'user' && recipientId == userId) {
+            canUseKey = true;
+            print('DEBUG: Found direct user key match');
+          } else if (recipientType == 'doctor') {
+            // For doctor keys, check if the recipient_id matches our Organization_User ID
+            if (possibleRecipientIds.contains(recipientId)) {
+              canUseKey = true;
+              print('DEBUG: Found doctor key match via Organization_User ID');
+            } else if (recipientId == userId) {
+              // Some systems might store User ID as doctor recipient - this seems to be your case
+              canUseKey = true;
+              print(
+                  'DEBUG: Found doctor key match via User ID (legacy format)');
+            }
+          } else if (recipientType == 'group') {
+            // Handle group sharing if needed
+            print('DEBUG: Found group key, checking group membership...');
+            // You might need additional logic here to check group membership
+          }
+
+          if (canUseKey) {
             keyResponse = key;
             print(
-                'DEBUG: Found matching key for recipient: ${key['recipient_id']}');
+                'DEBUG: Using File_Keys record for recipient: ${key['recipient_id']} (${key['recipient_type']})');
             break;
           }
         }
 
-        if (keyResponse == null && allKeys.isNotEmpty) {
-          // Last resort: if there's only one key and user has access, try it
-          if (allKeys.length == 1) {
-            keyResponse = allKeys.first;
-            print('DEBUG: Using single available key as fallback');
-          }
+        // If no direct match and user is owner, try any key (they should be able to decrypt their own files)
+        if (keyResponse == null && isOwner && allFileKeys.isNotEmpty) {
+          keyResponse = allFileKeys.first;
+          print('DEBUG: User is owner, using first available key as fallback');
         }
+      } catch (e) {
+        print('DEBUG: Error querying File_Keys: $e');
       }
 
       if (keyResponse == null) {
-        showSnackBar('Decryption key not found');
-        print(
-            'ERROR: No valid decryption key found for user $userId and file $fileId');
+        showSnackBar('No decryption key found for this file');
+        print('DEBUG: No accessible File_Keys record found');
+
+        // Enhanced debugging for key issues
+        await _analyzeKeyAccessIssues(fileId, userId, possibleRecipientIds);
         return;
       }
 
       final encryptedAesKey = keyResponse['aes_key_encrypted'] as String?;
-      final nonceHex = keyResponse['nonce_hex'] as String?;
-
       if (encryptedAesKey == null || encryptedAesKey.isEmpty) {
-        showSnackBar('Encrypted AES key is missing from File_Keys record');
-        print('ERROR: aes_key_encrypted is null or empty in File_Keys record');
+        showSnackBar('Encrypted AES key is missing');
         return;
       }
 
       print(
           'DEBUG: Found encrypted AES key (length: ${encryptedAesKey.length})');
       print(
-          'DEBUG: Encrypted AES key preview: ${encryptedAesKey.substring(0, 50)}...');
+          'DEBUG: Key recipient: ${keyResponse['recipient_type']} ${keyResponse['recipient_id']}');
 
-      // Always use the user's RSA private key for decryption
-      print('DEBUG: Using user RSA private key for decryption');
-
-      // Decrypt the AES key using the correct RSA private key
+      // Attempt RSA decryption
       try {
         print('DEBUG: Parsing RSA private key...');
         final rsaPrivateKey =
             CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
         print('DEBUG: RSA private key parsed successfully');
 
-        // Derive the public key from the current private key for comparison
-        try {
-          final derivedPublicKey =
-              CryptoUtils.getPublicKeyFromPrivateKey(rsaPrivateKeyPem);
-          print('DEBUG: Public key derived from current private key:');
-          print('DEBUG: ${derivedPublicKey.substring(0, 100)}...');
+        // Get the public key from private key for comparison
+        print('DEBUG: Extracting public key info...');
+        // You might need to implement getPublicKeyInfo() in CryptoUtils
+        // This would help identify which public key was used for encryption
 
-          // Check the stored public key for comparison
-          final userKeyInfo = await Supabase.instance.client
-              .from('User')
-              .select('rsa_public_key, created_at, updated_at')
-              .eq('id', userId)
-              .single();
+        print('DEBUG: Checking if we need to try different keys...');
 
-          final storedPublicKey = userKeyInfo['rsa_public_key'] as String?;
-          print('DEBUG: User key created: ${userKeyInfo['created_at']}');
-          print('DEBUG: User key updated: ${userKeyInfo['updated_at']}');
+        // If the key is stored with recipient_type 'doctor' but recipient_id is User ID,
+        // we might need to get the correct doctor's RSA key
+        if (keyResponse['recipient_type'] == 'doctor' &&
+            keyResponse['recipient_id'] == userId &&
+            orgUserResponse.isNotEmpty) {
+          print(
+              'DEBUG: Key shows doctor recipient but uses User ID. Checking if we should use doctor keys...');
 
-          if (storedPublicKey != null) {
-            print(
-                'DEBUG: Stored public key preview: ${storedPublicKey.substring(0, 100)}...');
+          // Try to get the organization user's RSA key if it exists
+          try {
+            final doctorId = orgUserResponse.first['id'];
+            print('DEBUG: Trying to get RSA key for doctor ID: $doctorId');
 
-            // Compare stored public key with derived public key
-            if (storedPublicKey.trim() == derivedPublicKey.trim()) {
-              print('DEBUG: ✓ Stored public key matches derived public key');
+            // Check if there's a separate RSA key for the doctor role
+            final doctorKeyResponse = await Supabase.instance.client
+                .from('Organization_User')
+                .select('rsa_private_key, rsa_public_key')
+                .eq('id', doctorId)
+                .maybeSingle();
+
+            if (doctorKeyResponse != null &&
+                doctorKeyResponse['rsa_private_key'] != null) {
+              print(
+                  'DEBUG: Found separate doctor RSA key, trying that instead...');
+              final doctorPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(
+                  doctorKeyResponse['rsa_private_key']);
+
+              final decryptedKeyDataJson = CryptoUtils.rsaDecryptWithDebug(
+                  encryptedAesKey, doctorPrivateKey);
+              print('DEBUG: RSA decryption successful with doctor key!');
+
+              final keyData =
+                  jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+              final aesKeyHex = keyData['key'] as String;
+              final aesNonceHex = keyData['nonce'] as String;
+
+              print('DEBUG: AES key extracted successfully');
+              // Continue with file download and decryption...
             } else {
               print(
-                  'DEBUG: ✗ Stored public key does NOT match derived public key');
-              print(
-                  'DEBUG: This suggests the private key was updated but public key wasn\'t, or vice versa');
+                  'DEBUG: No separate doctor RSA key found, using user key...');
+              throw Exception('No doctor RSA key available');
             }
-          } else {
-            print('DEBUG: No stored public key found');
+          } catch (doctorKeyError) {
+            print('DEBUG: Doctor key approach failed: $doctorKeyError');
+            print('DEBUG: Falling back to user RSA key...');
           }
-
-          // Check when the File_Keys record was created vs when keys were created/updated
-          final fileKeyDetails = await Supabase.instance.client
-              .from('File_Keys')
-              .select('created_at, updated_at')
-              .eq('file_id', fileId)
-              .single();
-
-          print(
-              'DEBUG: File_Keys record created: ${fileKeyDetails['created_at']}');
-          print(
-              'DEBUG: File_Keys record updated: ${fileKeyDetails['updated_at']}');
-        } catch (e) {
-          print('DEBUG: Failed to derive/compare public keys: $e');
         }
 
-        print('DEBUG: Attempting RSA decryption...');
+        // Try decryption with the user's private key
+        print('DEBUG: Attempting RSA decryption with user private key...');
         final decryptedKeyDataJson =
             CryptoUtils.rsaDecryptWithDebug(encryptedAesKey, rsaPrivateKey);
-        print(
-            'DEBUG: RSA decryption successful, result length: ${decryptedKeyDataJson.length}');
-        print(
-            'DEBUG: Decrypted data preview: ${decryptedKeyDataJson.substring(0, decryptedKeyDataJson.length > 100 ? 100 : decryptedKeyDataJson.length)}');
 
-        print('DEBUG: Parsing JSON...');
+        print('DEBUG: RSA decryption successful!');
+
         final keyData =
             jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-        print('DEBUG: JSON parsed successfully: ${keyData.keys}');
-
         final aesKeyHex = keyData['key'] as String;
         final aesNonceHex = keyData['nonce'] as String;
 
-        print(
-            'DEBUG: AES key length: ${aesKeyHex.length}, nonce length: ${aesNonceHex.length}');
+        print('DEBUG: AES key extracted successfully');
 
-        // Download encrypted file from IPFS
+        // Download file from IPFS
         print('DEBUG: Downloading file from IPFS...');
         final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
         final response = await http.get(Uri.parse(ipfsUrl));
@@ -295,19 +311,19 @@ class FileDecryptionService {
             'DEBUG: Downloaded encrypted file: ${encryptedBytes.length} bytes');
 
         // Decrypt the file
-        print('DEBUG: Creating AES helper...');
+        print('DEBUG: Decrypting file content...');
         final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-        print('DEBUG: Decrypting file data...');
         final decryptedBytes = aesHelper.decryptData(encryptedBytes);
 
-        print('DEBUG: Decrypted file: ${decryptedBytes.length} bytes');
+        print(
+            'DEBUG: File decrypted successfully: ${decryptedBytes.length} bytes');
 
-        // Create a blob and download it
+        // Create blob and trigger download
         final blob = html.Blob([decryptedBytes]);
         final url = html.Url.createObjectUrlFromBlob(blob);
 
         final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', file['filename'] ?? 'decrypted_file')
+          ..setAttribute('download', fileInfo['filename'] ?? 'decrypted_file')
           ..click();
 
         html.Url.revokeObjectUrl(url);
@@ -316,36 +332,112 @@ class FileDecryptionService {
       } catch (rsaError) {
         print('ERROR: RSA decryption failed: $rsaError');
 
-        // Additional debugging for RSA issues
-        print(
-            'DEBUG: RSA Private key preview: ${rsaPrivateKeyPem.substring(0, 100)}...');
+        // Try to debug the key mismatch issue
+        await _debugRSAKeyMismatch(fileId, userId, keyResponse, userResponse);
 
-        // Try to validate the private key format
-        try {
-          final testKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
-          print('DEBUG: Private key parsing works independently');
-        } catch (e) {
-          print('DEBUG: Private key parsing also fails: $e');
-        }
-
-        showSnackBar('RSA decryption failed - key mismatch or corrupted data');
-
-        print('DEBUG: TROUBLESHOOTING TIPS:');
-        print(
-            'DEBUG: 1. Check if the file was encrypted using the user\'s public key');
-        print(
-            'DEBUG: 2. Verify that File_Keys were created with the user ID as recipient');
-        print(
-            'DEBUG: 3. Ensure RSA key pairs are properly generated and stored');
-        print(
-            'DEBUG: 4. Check if keys were regenerated after the file was shared');
-
+        showSnackBar('Decryption failed: Key mismatch or corrupted data');
         return;
       }
     } catch (e, stackTrace) {
-      print('ERROR downloading/decrypting file: $e');
+      print('ERROR in downloadAndDecryptFile: $e');
       print('Stack trace: $stackTrace');
       showSnackBar('Error downloading file: $e');
+    }
+  }
+
+// Enhanced debugging for key access issues
+  static Future<void> _analyzeKeyAccessIssues(
+    String fileId,
+    String userId,
+    List<String> possibleRecipientIds,
+  ) async {
+    try {
+      print('DEBUG: === KEY ACCESS ANALYSIS ===');
+
+      // Check File_Shares table
+      final fileShares = await Supabase.instance.client
+          .from('File_Shares')
+          .select('shared_with_user_id, shared_with_doctor, revoked_at')
+          .eq('file_id', fileId);
+
+      print('DEBUG: File_Shares records:');
+      for (var share in fileShares) {
+        print(
+            'DEBUG:   - User: ${share['shared_with_user_id']}, Doctor: ${share['shared_with_doctor']}');
+        print('DEBUG:   - Revoked: ${share['revoked_at']}');
+      }
+
+      // Check if there are any File_Keys at all
+      final allKeys = await Supabase.instance.client
+          .from('File_Keys')
+          .select('recipient_id, recipient_type')
+          .eq('file_id', fileId);
+
+      if (allKeys.isEmpty) {
+        print('DEBUG: ⚠️  NO File_Keys records exist for this file!');
+        print(
+            'DEBUG: This suggests the file was never properly encrypted or shared.');
+      } else {
+        print('DEBUG: Available keys but none match user access:');
+        for (var key in allKeys) {
+          final hasAccess = possibleRecipientIds.contains(key['recipient_id']);
+          print(
+              'DEBUG:   - ${key['recipient_type']} ${key['recipient_id']} - Access: $hasAccess');
+        }
+      }
+
+      print('DEBUG: === END ANALYSIS ===');
+    } catch (e) {
+      print('DEBUG: Analysis failed: $e');
+    }
+  }
+
+// Debug RSA key mismatch issues
+  static Future<void> _debugRSAKeyMismatch(
+    String fileId,
+    String userId,
+    Map<String, dynamic> keyResponse,
+    Map<String, dynamic> userResponse,
+  ) async {
+    try {
+      print('DEBUG: === RSA KEY MISMATCH ANALYSIS ===');
+
+      // Check if the key was created for a different recipient type
+      final keyRecipientType = keyResponse['recipient_type'];
+      final keyRecipientId = keyResponse['recipient_id'];
+
+      print(
+          'DEBUG: Key was encrypted for: $keyRecipientType ID $keyRecipientId');
+      print('DEBUG: Current user ID: $userId');
+
+      if (keyRecipientType == 'doctor' && keyRecipientId != userId) {
+        print(
+            'DEBUG: ⚠️  Key was encrypted for a doctor role, not direct user');
+
+        // Check if this doctor ID belongs to current user
+        final doctorCheck = await Supabase.instance.client
+            .from('Organization_User')
+            .select('user_id, organization_id')
+            .eq('id', keyRecipientId)
+            .maybeSingle();
+
+        if (doctorCheck != null) {
+          print(
+              'DEBUG: Doctor record belongs to user: ${doctorCheck['user_id']}');
+          if (doctorCheck['user_id'] == userId) {
+            print('DEBUG: ✅ Doctor ID matches current user');
+          } else {
+            print(
+                'DEBUG: ❌ Doctor ID belongs to different user: ${doctorCheck['user_id']}');
+          }
+        } else {
+          print('DEBUG: ❌ Doctor ID not found in Organization_User table');
+        }
+      }
+
+      print('DEBUG: === END RSA ANALYSIS ===');
+    } catch (e) {
+      print('DEBUG: RSA analysis failed: $e');
     }
   }
 

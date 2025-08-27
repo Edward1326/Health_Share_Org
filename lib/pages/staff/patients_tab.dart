@@ -153,13 +153,47 @@ class _PatientsTabState extends State<PatientsTab> {
     });
 
     try {
-      // Load files shared with the patient
+      // First, get the user_id from the Patient table
+      final patientResponse = await Supabase.instance.client
+          .from('Patient')
+          .select('user_id')
+          .eq('id', patientId)
+          .single();
+
+      final userId = patientResponse['user_id'];
+      print('DEBUG: Patient ID: $patientId, User ID: $userId');
+
+      // Load files shared with the patient (using user_id)
       final sharedFilesResponse = await Supabase.instance.client
           .from('File_Shares')
           .select('''
-        id,
-        shared_at,
-        Files!inner(
+          id,
+          shared_at,
+          Files!inner(
+            id,
+            filename,
+            category,
+            file_type,
+            uploaded_at,
+            file_size,
+            ipfs_cid,
+            sha256_hash,
+            uploaded_by,
+            uploader:User!uploaded_by(
+              Person!person_id(
+                first_name,
+                last_name
+              )
+            )
+          )
+        ''')
+          .eq('shared_with_user_id', userId) // Use userId instead of patientId
+          .order('shared_at', ascending: false);
+
+      // Load files uploaded by the patient (using user_id)
+      final patientFilesResponse = await Supabase.instance.client
+          .from('Files')
+          .select('''
           id,
           filename,
           category,
@@ -175,30 +209,9 @@ class _PatientsTabState extends State<PatientsTab> {
               last_name
             )
           )
-        )
-      ''')
-          .eq('shared_with_user_id', patientId)
-          .order('shared_at', ascending: false);
-
-      // Load files uploaded by the patient
-      final patientFilesResponse =
-          await Supabase.instance.client.from('Files').select('''
-        id,
-        filename,
-        category,
-        file_type,
-        uploaded_at,
-        file_size,
-        ipfs_cid,
-        sha256_hash,
-        uploaded_by,
-        uploader:User!uploaded_by(
-          Person!person_id(
-            first_name,
-            last_name
-          )
-        )
-      ''').eq('uploaded_by', patientId).order('uploaded_at', ascending: false);
+        ''')
+          .eq('uploaded_by', userId) // Use userId instead of patientId
+          .order('uploaded_at', ascending: false);
 
       // Combine both lists
       List<Map<String, dynamic>> allFiles = [];
@@ -237,7 +250,7 @@ class _PatientsTabState extends State<PatientsTab> {
       final sharedCount = sharedFilesResponse.length;
       final patientCount = patientFilesResponse.length;
       print(
-          'Loaded $sharedCount shared files and $patientCount patient files for patient $patientId');
+          'Loaded $sharedCount shared files and $patientCount patient files for patient $patientId (user: $userId)');
     } catch (e) {
       print('Error loading all patient files: $e');
       setState(() {
