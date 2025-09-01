@@ -1,15 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:typed_data';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:health_share_org/services/aes_helper.dart';
-import 'package:health_share_org/services/crypto_utils.dart';
-import 'dart:html' as html;
-import 'package:encrypt/encrypt.dart' as encrypt;
-import 'dart:math';
-import 'package:pointycastle/export.dart' as pc;
-import 'package:crypto/crypto.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
 import 'dart:async';
@@ -872,16 +862,106 @@ class _PatientsTabState extends State<PatientsTab> {
     }
   }
 
-  void _showFileActions(Map<String, dynamic> file) {
-    FileDecryptionService.showFileActions(
-      context,
-      file,
-      _showSnackBar,
-      onRemoveShare: () => _removeFileShare(file),
-      onShare: () => _shareFile(file),
-      showRemoveShare: true,
-    );
-  }
+  // Replace the _showFileActions method in your PatientsTab class with this:
+void _showFileActions(Map<String, dynamic> file) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(
+                _getFileTypeIcon(file['file_type'] ?? ''),
+                color: _getFileTypeColor(file['file_type'] ?? ''),
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  file['filename'] ?? 'Unknown File',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          
+          // Actions
+          _buildActionTile(
+            icon: Icons.visibility,
+            title: 'Preview File',
+            onTap: () {
+              Navigator.pop(context);
+              FileDecryptionService.previewFile(context, file, _showSnackBar);
+            },
+          ),
+          _buildActionTile(
+            icon: Icons.open_in_new,
+            title: 'Preview in New Tab',
+            onTap: () {
+              Navigator.pop(context);
+              FileDecryptionService.previewFileInNewTab(context, file, _showSnackBar);
+            },
+          ),
+          _buildActionTile(
+            icon: Icons.download,
+            title: 'Download File',
+            onTap: () {
+              Navigator.pop(context);
+              FileDecryptionService.downloadAndDecryptFile(context, file, _showSnackBar);
+            },
+          ),
+          _buildActionTile(
+            icon: Icons.share,
+            title: 'Share File',
+            onTap: () {
+              Navigator.pop(context);
+              _shareFile(file);
+            },
+          ),
+          _buildActionTile(
+            icon: Icons.remove_circle_outline,
+            title: 'Remove Share',
+            color: Colors.red,
+            onTap: () {
+              Navigator.pop(context);
+              _removeFileShare(file);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Add this helper method to your PatientsTab class:
+Widget _buildActionTile({
+  required IconData icon,
+  required String title,
+  required VoidCallback onTap,
+  Color? color,
+}) {
+  return ListTile(
+    leading: Icon(icon, color: color),
+    title: Text(
+      title,
+      style: TextStyle(color: color),
+    ),
+    onTap: onTap,
+    contentPadding: EdgeInsets.zero,
+  );
+}
 
   void _shareFile(Map<String, dynamic> file) {
     _showSnackBar('Share functionality coming soon!');

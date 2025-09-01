@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:health_share_org/services/aes_helper.dart';
-import 'package:health_share_org/services/crypto_utils.dart';
+import 'package:health_share_org/services/crypto_utilstest.dart';
 import 'dart:html' as html;
 import 'dart:math';
 import 'package:crypto/crypto.dart';
@@ -245,7 +245,7 @@ class FileUploadService {
           'DEBUG: Patient RSA Public Key: ${patientRsaPublicKeyPem.substring(0, 100)}...');
 
       final patientRsaPublicKey =
-          CryptoUtils.rsaPublicKeyFromPem(patientRsaPublicKeyPem);
+          MyCryptoUtils.rsaPublicKeyFromPem(patientRsaPublicKeyPem);
 
       // Step 7: Also get doctor's (your) RSA public key - ADD ERROR HANDLING
       final doctorResponse = await Supabase.instance.client
@@ -270,7 +270,7 @@ class FileUploadService {
       }
 
       final doctorRsaPublicKey =
-          CryptoUtils.rsaPublicKeyFromPem(doctorRsaPublicKeyPem);
+          MyCryptoUtils.rsaPublicKeyFromPem(doctorRsaPublicKeyPem);
 
       // Step 8: Encrypt AES key with both patient's and doctor's RSA public keys
       final keyData = {
@@ -282,9 +282,9 @@ class FileUploadService {
       print('DEBUG: Key data to encrypt: $keyDataJson');
 
       final patientRsaEncryptedString =
-          CryptoUtils.rsaEncrypt(keyDataJson, patientRsaPublicKey);
+          MyCryptoUtils.rsaEncrypt(keyDataJson, patientRsaPublicKey);
       final doctorRsaEncryptedString =
-          CryptoUtils.rsaEncrypt(keyDataJson, doctorRsaPublicKey);
+          MyCryptoUtils.rsaEncrypt(keyDataJson, doctorRsaPublicKey);
 
       print(
           'DEBUG: Patient RSA encrypted key data length: ${patientRsaEncryptedString.length}');
