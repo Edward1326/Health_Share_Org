@@ -42,6 +42,12 @@ dependencies:
   rsa_encrypt: ^2.0.0
   image_picker: ^1.0.4
   flutter_dotenv: ^5.2.1
+  open_file: ^3.3.0
+  file_picker: ^10.2.1 # for picking any file type
+  path_provider: ^2.1.2 # for access to directories (optional)
+  path: ^1.9.0 # for manipulating file paths
+  dio: ^5.4.0 # for uploading files (or use http/multipart)
+  permission_handler: ^11.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
