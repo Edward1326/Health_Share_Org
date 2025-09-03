@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
 import 'dart:async';
+import 'package:health_share_org/services/file_preview.dart';
 
 class PatientsTab extends StatefulWidget {
   const PatientsTab({Key? key}) : super(key: key);
@@ -630,104 +631,6 @@ class _PatientsTabState extends State<PatientsTab> {
     );
   }
 
-  Widget _buildFileCard(Map<String, dynamic> file) {
-    final fileType = file['file_type'] ?? 'unknown';
-    final category = file['category'] ?? 'other';
-    final fileName = file['filename'] ?? 'Unknown File';
-    // Remove this line since description doesn't exist:
-    // final description = file['description'] ?? '';
-    final createdAt =
-        DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
-    final uploader = file['uploader'];
-    final uploaderName = uploader != null
-        ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
-        : 'Unknown';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _getFileTypeColor(fileType),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _getFileTypeIcon(fileType),
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    fileName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  // Remove the description section since it doesn't exist
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _getCategoryColor(category).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          category.replaceAll('_', ' ').toUpperCase(),
-                          style: TextStyle(
-                            color: _getCategoryColor(category),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${_formatDate(createdAt)} • $uploaderName',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: () => _showFileActions(file),
-              icon: const Icon(Icons.more_vert, color: darkGray),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // Helper methods
   Color _getPatientAvatarColor(int index) {
     final colors = [primaryBlue, coral, orange, Colors.purple, Colors.teal];
@@ -862,106 +765,412 @@ class _PatientsTabState extends State<PatientsTab> {
     }
   }
 
-  // Replace the _showFileActions method in your PatientsTab class with this:
-void _showFileActions(Map<String, dynamic> file) {
+  void _showFileActions(Map<String, dynamic> file) {
   showModalBottomSheet(
     context: context,
+    isScrollControlled: true, // Add this to allow custom height
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (context) => Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              Icon(
-                _getFileTypeIcon(file['file_type'] ?? ''),
-                color: _getFileTypeColor(file['file_type'] ?? ''),
-                size: 24,
+    builder: (context) => DraggableScrollableSheet(
+      initialChildSize: 0.7, // Start at 70% of screen height
+      minChildSize: 0.5, // Minimum 50% of screen height
+      maxChildSize: 0.9, // Maximum 90% of screen height
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Drag handle
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  file['filename'] ?? 'Unknown File',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+            ),
+            
+            // Fixed header with file info
+            Container(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _getFileTypeIcon(file['file_type'] ?? ''),
+                      color: _getFileTypeColor(file['file_type'] ?? ''),
+                      size: 24,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          file['filename'] ?? 'Unknown File',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_formatFileSize(file['file_size'] ?? 0)} • ${(file['file_type'] ?? '').toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          
-          // Actions
-          _buildActionTile(
-            icon: Icons.visibility,
-            title: 'Preview File',
-            onTap: () {
-              Navigator.pop(context);
-              FileDecryptionService.previewFile(context, file, _showSnackBar);
-            },
-          ),
-          _buildActionTile(
-            icon: Icons.open_in_new,
-            title: 'Preview in New Tab',
-            onTap: () {
-              Navigator.pop(context);
-              FileDecryptionService.previewFileInNewTab(context, file, _showSnackBar);
-            },
-          ),
-          _buildActionTile(
-            icon: Icons.download,
-            title: 'Download File',
-            onTap: () {
-              Navigator.pop(context);
-              FileDecryptionService.downloadAndDecryptFile(context, file, _showSnackBar);
-            },
-          ),
-          _buildActionTile(
-            icon: Icons.share,
-            title: 'Share File',
-            onTap: () {
-              Navigator.pop(context);
-              _shareFile(file);
-            },
-          ),
-          _buildActionTile(
-            icon: Icons.remove_circle_outline,
-            title: 'Remove Share',
-            color: Colors.red,
-            onTap: () {
-              Navigator.pop(context);
-              _removeFileShare(file);
-            },
-          ),
-        ],
+            ),
+            
+            // Scrollable actions list
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                children: [
+                  _buildActionTile(
+                    icon: Icons.visibility,
+                    title: 'Preview File',
+                    subtitle: 'View in app',
+                    onTap: () {
+                      Navigator.pop(context);
+                      EnhancedFilePreviewService.previewFile(context, file, _showSnackBar);
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.open_in_new,
+                    title: 'Preview in New Tab',
+                    subtitle: 'Full screen view',
+                    onTap: () {
+                      Navigator.pop(context);
+                      EnhancedFilePreviewService.previewFileInNewTab(context, file, _showSnackBar);
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.download,
+                    title: 'Download File',
+                    subtitle: 'Save to device',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // Keep your existing download functionality
+                      FileDecryptionService.downloadAndDecryptFile(context, file, _showSnackBar);
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.info_outline,
+                    title: 'File Details',
+                    subtitle: 'View metadata',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showFileDetails(file);
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.share,
+                    title: 'Share File',
+                    subtitle: 'Share with others',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _shareFile(file);
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.remove_circle_outline,
+                    title: 'Remove Share',
+                    subtitle: 'Revoke patient access',
+                    color: Colors.red,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _removeFileShare(file);
+                    },
+                  ),
+                  // Add some bottom padding for better UX
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
 }
 
-// Add this helper method to your PatientsTab class:
+/// Add this new helper method for action tiles
 Widget _buildActionTile({
   required IconData icon,
   required String title,
+  String? subtitle,
   required VoidCallback onTap,
   Color? color,
 }) {
   return ListTile(
-    leading: Icon(icon, color: color),
+    leading: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: (color ?? Colors.grey).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, color: color ?? Colors.grey[700], size: 20),
+    ),
     title: Text(
       title,
-      style: TextStyle(color: color),
+      style: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w500,
+      ),
     ),
+    subtitle: subtitle != null 
+        ? Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          )
+        : null,
     onTap: onTap,
-    contentPadding: EdgeInsets.zero,
+    contentPadding: const EdgeInsets.symmetric(vertical: 4),
   );
 }
+
+/// Add this new method to show file details
+void _showFileDetails(Map<String, dynamic> file) {
+  final uploader = file['uploader'];
+  final uploaderName = uploader != null
+      ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+      : 'Unknown';
+  final uploadDate = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Icon(
+            _getFileTypeIcon(file['file_type'] ?? ''),
+            color: _getFileTypeColor(file['file_type'] ?? ''),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('File Details')),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDetailRow('Name', file['filename'] ?? 'Unknown'),
+            _buildDetailRow('Type', (file['file_type'] ?? 'unknown').toUpperCase()),
+            _buildDetailRow('Category', (file['category'] ?? 'other').replaceAll('_', ' ').toUpperCase()),
+            _buildDetailRow('Size', _formatFileSize(file['file_size'] ?? 0)),
+            _buildDetailRow('Uploaded by', uploaderName),
+            _buildDetailRow('Upload date', _formatDateTime(uploadDate)),
+            if (file['ipfs_cid'] != null)
+              _buildDetailRow('IPFS CID', file['ipfs_cid']),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.pop(context);
+            EnhancedFilePreviewService.previewFile(context, file, _showSnackBar);
+          },
+          icon: const Icon(Icons.visibility),
+          label: const Text('Preview'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryBlue,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Helper method to build detail rows
+Widget _buildDetailRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            '$label:',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Helper method to format file size - add if you don't already have it
+String _formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}
+
+/// Helper method to format date time
+String _formatDateTime(DateTime dateTime) {
+  return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+}
+
+/// Enhanced file card with preview on tap - replace your _buildFileCard method
+Widget _buildFileCard(Map<String, dynamic> file) {
+  final fileType = file['file_type'] ?? 'unknown';
+  final category = file['category'] ?? 'other';
+  final fileName = file['filename'] ?? 'Unknown File';
+  final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+  final uploader = file['uploader'];
+  final uploaderName = uploader != null
+      ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+      : 'Unknown';
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: InkWell(
+      onTap: () => EnhancedFilePreviewService.previewFile(context, file, _showSnackBar),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _getFileTypeColor(fileType),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getFileTypeIcon(fileType),
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fileName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _getCategoryColor(category).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          category.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            color: _getCategoryColor(category),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_formatDate(createdAt)} • $uploaderName',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Preview button
+            Container(
+              decoration: BoxDecoration(
+                color: primaryBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: IconButton(
+                onPressed: () => EnhancedFilePreviewService.previewFile(context, file, _showSnackBar),
+                icon: const Icon(Icons.visibility, color: primaryBlue, size: 20),
+                tooltip: 'Preview file',
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () => _showFileActions(file),
+              icon: const Icon(Icons.more_vert, color: darkGray),
+              tooltip: 'More actions',
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 
   void _shareFile(Map<String, dynamic> file) {
     _showSnackBar('Share functionality coming soon!');
