@@ -8,7 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:health_share_org/services/crypto_utilstest.dart';
+import 'package:health_share_org/services/crypto_utils.dart';
 import 'package:health_share_org/services/aes_helper.dart';
 
 class EnhancedFilePreviewService {
@@ -133,7 +133,7 @@ class EnhancedFilePreviewService {
       }
 
       // Parse RSA private key
-      final rsaPrivateKey = MyCryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
 
       // Get File_Keys for this file
       final allFileKeys = await Supabase.instance.client
@@ -159,7 +159,7 @@ class EnhancedFilePreviewService {
 
       // Decrypt the AES key
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = MyCryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
+      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
       
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
       final aesKeyHex = keyData['key'] as String?;

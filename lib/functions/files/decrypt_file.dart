@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:health_share_org/services/crypto_utilstest.dart'; // Your CryptoUtils file
+import 'package:health_share_org/services/crypto_utils.dart'; // Your CryptoUtils file
 import 'package:health_share_org/services/aes_helper.dart';    // Your AESHelper file
 import 'dart:async';
 
@@ -35,17 +35,17 @@ class FileDecryptionService {
       }
 
       // Parse keys
-      final privateKey = MyCryptoUtils.rsaPrivateKeyFromPem(privateKeyPem);
-      final publicKey = MyCryptoUtils.rsaPublicKeyFromPem(publicKeyPem);
+      final privateKey = CryptoUtils.rsaPrivateKeyFromPem(privateKeyPem);
+      final publicKey = CryptoUtils.rsaPublicKeyFromPem(publicKeyPem);
       print('Keys parsed successfully');
 
       // Test encryption/decryption
       const testData = '{"key":"test123","nonce":"abc456"}';
       
-      final encrypted = MyCryptoUtils.rsaEncrypt(testData, publicKey);
+      final encrypted = CryptoUtils.rsaEncrypt(testData, publicKey);
       print('Test encryption successful: ${encrypted.length} chars');
 
-      final decrypted = MyCryptoUtils.rsaDecrypt(encrypted, privateKey);
+      final decrypted = CryptoUtils.rsaDecrypt(encrypted, privateKey);
       print('Test decryption successful');
 
       if (decrypted == testData) {
@@ -107,7 +107,7 @@ class FileDecryptionService {
       await debugKeyIntegrity(actualUserId);
       
       // Parse RSA private key
-      final rsaPrivateKey = MyCryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
 
       // Get all File_Keys for analysis
       final allFileKeys = await Supabase.instance.client
@@ -168,7 +168,7 @@ class FileDecryptionService {
 
       // Now attempt the actual RSA decryption
       try {
-        final decryptedKeyDataJson = MyCryptoUtils.rsaDecrypt(
+        final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(
           encryptedKeyData, 
           rsaPrivateKey
         );
@@ -291,10 +291,10 @@ class FileDecryptionService {
         return;
       }
 
-      final ownerPrivateKey = MyCryptoUtils.rsaPrivateKeyFromPem(ownerPrivateKeyPem);
+      final ownerPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(ownerPrivateKeyPem);
       
       try {
-        final decryptedJson = MyCryptoUtils.rsaDecrypt(encryptedKeyData, ownerPrivateKey);
+        final decryptedJson = CryptoUtils.rsaDecrypt(encryptedKeyData, ownerPrivateKey);
         print('SUCCESS: Owner can decrypt this key!');
         print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
         print('This means the sharing process used the wrong public key during encryption');
@@ -352,7 +352,7 @@ class FileDecryptionService {
       }
 
       // Parse RSA private key
-      final rsaPrivateKey = MyCryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
 
       // Get File_Keys for this file
       final allFileKeys = await Supabase.instance.client
@@ -378,7 +378,7 @@ class FileDecryptionService {
 
       // Decrypt the AES key
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = MyCryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
+      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
       
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
       final aesKeyHex = keyData['key'] as String?;
@@ -720,7 +720,7 @@ class FileDecryptionService {
         return;
       }
 
-      final rsaPrivateKey = MyCryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
 
       final allFileKeys = await Supabase.instance.client
           .from('File_Keys')
@@ -741,7 +741,7 @@ class FileDecryptionService {
       }
 
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = MyCryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
+      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
       
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
       final aesKeyHex = keyData['key'] as String?;

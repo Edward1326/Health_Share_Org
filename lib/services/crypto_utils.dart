@@ -190,6 +190,30 @@ class CryptoUtils {
     }
   }
 
+  /// Enhanced RSA encryption with fallback support - MERGED FROM MyCryptoUtils
+  static String rsaEncryptWithFallback(String plaintext, pc.RSAPublicKey publicKey) {
+    try {
+      // Use OAEP padding for RSA encryption
+      final encryptor = pc.OAEPEncoding(pc.RSAEngine())
+        ..init(true, pc.PublicKeyParameter<pc.RSAPublicKey>(publicKey));
+
+      final input = Uint8List.fromList(utf8.encode(plaintext));
+      final encrypted = _processInBlocks(encryptor, input);
+
+      return base64Encode(encrypted);
+    } catch (e) {
+      print('Error in rsaEncrypt: $e');
+      // Try with basic RSA if OAEP fails
+      final engine =
+          pc.RSAEngine()..init(true, pc.PublicKeyParameter<pc.RSAPublicKey>(publicKey));
+
+      final input = Uint8List.fromList(utf8.encode(plaintext));
+      final encrypted = _processInBlocks(engine, input);
+
+      return base64Encode(encrypted);
+    }
+  }
+
   /// Decrypt string with RSA private key using OAEP padding
   static String rsaDecrypt(String encryptedText, pc.RSAPrivateKey privateKey) {
     try {
@@ -202,6 +226,55 @@ class CryptoUtils {
       return utf8.decode(decryptedBytes);
     } catch (e) {
       throw Exception('RSA decryption failed: $e');
+    }
+  }
+
+  /// Enhanced RSA decryption with multiple fallback strategies - MERGED FROM MyCryptoUtils
+  static String rsaDecryptWithFallback(String base64Ciphertext, pc.RSAPrivateKey privateKey) {
+    try {
+      // First, try to decode the base64
+      final encrypted = base64Decode(base64Ciphertext);
+
+      // Try OAEP padding first
+      try {
+        final decryptor = pc.OAEPEncoding(pc.RSAEngine())
+          ..init(false, pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey));
+
+        final decrypted = _processInBlocks(decryptor, encrypted);
+        return utf8.decode(decrypted, allowMalformed: true);
+      } catch (e) {
+        print('OAEP decryption failed, trying PKCS1: $e');
+      }
+
+      // Try PKCS1 padding
+      try {
+        final decryptor = pc.PKCS1Encoding(pc.RSAEngine())
+          ..init(false, pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey));
+
+        final decrypted = _processInBlocks(decryptor, encrypted);
+        return utf8.decode(decrypted, allowMalformed: true);
+      } catch (e) {
+        print('PKCS1 decryption failed, trying raw RSA: $e');
+      }
+
+      // Fallback to raw RSA
+      final engine =
+          pc.RSAEngine()
+            ..init(false, pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey));
+
+      final decrypted = _processInBlocks(engine, encrypted);
+
+      // Try to decode as UTF-8, with fallback
+      try {
+        return utf8.decode(decrypted);
+      } catch (e) {
+        // If UTF-8 decode fails, try to clean the data
+        return _cleanDecryptedData(decrypted);
+      }
+    } catch (e) {
+      print('Fatal error in rsaDecrypt: $e');
+      print('Input length: ${base64Ciphertext.length}');
+      rethrow;
     }
   }
 
@@ -267,6 +340,139 @@ class CryptoUtils {
       print('ERROR: RSA decryption failed at some step: $e');
       throw Exception('RSA decryption failed: $e');
     }
+  }
+
+  /// Helper to handle RSA encryption/decryption in chunks - MERGED FROM MyCryptoUtils
+  static Uint8List _processInBlocks(dynamic engine, Uint8List input) {
+    // Determine block size based on engine type
+    int inputBlockSize;
+    int outputBlockSize;
+
+    if (engine is pc.RSAEngine) {
+      inputBlockSize = engine.inputBlockSize;
+      outputBlockSize = engine.outputBlockSize;
+    } else if (engine is pc.PKCS1Encoding) {
+      inputBlockSize = engine.inputBlockSize;
+      outputBlockSize = engine.outputBlockSize;
+    } else if (engine is pc.OAEPEncoding) {
+      inputBlockSize = engine.inputBlockSize;
+      outputBlockSize = engine.outputBlockSize;
+    } else {
+      throw ArgumentError('Unsupported engine type');
+    }
+
+    if (input.isEmpty) {
+      return Uint8List(0);
+    }
+
+    final output = <int>[];
+
+    for (var offset = 0; offset < input.length; offset += inputBlockSize) {
+      final chunkSize =
+          (offset + inputBlockSize < input.length)
+              ? inputBlockSize
+              : input.length - offset;
+
+      final chunk = input.sublist(offset, offset + chunkSize);
+
+      try {
+        final processed = engine.process(chunk);
+        output.addAll(processed);
+      } catch (e) {
+        print('Error processing block at offset $offset: $e');
+        // Try to continue with other blocks
+        if (offset + inputBlockSize < input.length) {
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    return Uint8List.fromList(output);
+  }
+
+  /// Clean decrypted data by removing padding and non-printable characters - MERGED FROM MyCryptoUtils
+  static String _cleanDecryptedData(Uint8List data) {
+    // Remove PKCS padding if present
+    if (data.isNotEmpty) {
+      // Check for PKCS padding pattern
+      final lastByte = data.last;
+      if (lastByte > 0 && lastByte <= 16) {
+        bool isPadding = true;
+        for (int i = data.length - lastByte; i < data.length; i++) {
+          if (data[i] != lastByte) {
+            isPadding = false;
+            break;
+          }
+        }
+        if (isPadding) {
+          data = data.sublist(0, data.length - lastByte);
+        }
+      }
+    }
+
+    // Remove null bytes and other non-printable characters from the beginning
+    int start = 0;
+    while (start < data.length && (data[start] == 0 || data[start] < 32)) {
+      start++;
+    }
+
+    if (start >= data.length) {
+      throw FormatException('No valid data after cleaning');
+    }
+
+    // Remove from the end as well
+    int end = data.length - 1;
+    while (end > start && (data[end] == 0 || data[end] < 32)) {
+      end--;
+    }
+
+    final cleaned = data.sublist(start, end + 1);
+    return utf8.decode(cleaned, allowMalformed: true);
+  }
+
+  /// Alternative decryption method that's more lenient with format - MERGED FROM MyCryptoUtils
+  static String? tryDecryptWithFallback(
+    String encryptedData,
+    pc.RSAPrivateKey privateKey,
+  ) {
+    // Try different base64 decodings
+    Uint8List? encrypted;
+
+    // Standard base64
+    try {
+      encrypted = base64Decode(encryptedData);
+    } catch (e) {
+      print('Standard base64 decode failed: $e');
+    }
+
+    // Try base64url
+    if (encrypted == null) {
+      try {
+        encrypted = base64Url.decode(encryptedData);
+      } catch (e) {
+        print('Base64url decode failed: $e');
+      }
+    }
+
+    // Try with padding fixes
+    if (encrypted == null) {
+      try {
+        String padded = encryptedData;
+        while (padded.length % 4 != 0) {
+          padded += '=';
+        }
+        encrypted = base64Decode(padded);
+      } catch (e) {
+        print('Padded base64 decode failed: $e');
+        return null;
+      }
+    }
+
+    if (encrypted == null) return null;
+
+    // Now try to decrypt
+    return rsaDecryptWithFallback(base64Encode(encrypted), privateKey);
   }
 
   /// Test RSA key compatibility with a known encrypted value

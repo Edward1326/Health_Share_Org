@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:health_share_org/functions/login_function.dart'; // Import your login service
+import 'package:health_share_org/functions/login_function.dart'; // Import your enhanced signup service
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -25,6 +25,7 @@ class _SignupPageState extends State<SignupPage> {
   List<Map<String, dynamic>> _organizations = [];
   bool _isLoading = false;
   bool _isLoadingOrgs = true;
+  String _loadingStatus = '';
 
   @override
   void initState() {
@@ -63,69 +64,92 @@ class _SignupPageState extends State<SignupPage> {
   }
 
   Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedOrganizationId == null) {
-      _showErrorSnackBar('Please select an organization');
-      return;
-    }
+  if (!_formKey.currentState!.validate()) return;
+  if (_selectedOrganizationId == null) {
+    _showErrorSnackBar('Please select an organization');
+    return;
+  }
 
-    // Check if signup is rate limited
-    if (!SignupService.canAttemptSignup()) {
-      final remainingTime = SignupService.getRemainingSignupCooldownTime();
-      _showErrorSnackBar(
-          'Please wait $remainingTime seconds before trying again.');
-      return;
-    }
+  // Check if signup is rate limited
+  if (!SignupService.canAttemptSignup()) {
+    final remainingTime = SignupService.getRemainingSignupCooldownTime();
+    _showErrorSnackBar(
+        'Please wait $remainingTime seconds before trying again.');
+    return;
+  }
 
+  setState(() {
+    _isLoading = true;
+    _loadingStatus = 'Generating encryption keys...';
+  });
+
+  try {
+    // Add a small delay to show the key generation status
+    await Future.delayed(const Duration(milliseconds: 500));
+    
     setState(() {
-      _isLoading = true;
+      _loadingStatus = 'Creating secure account...';
     });
 
-    try {
-      final result = await SignupService.signup(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        middleName: _middleNameController.text.trim().isEmpty
-            ? null
-            : _middleNameController.text.trim(),
-        address: _addressController.text.trim(),
-        contactNumber: _contactNumberController.text.trim(),
-        position: _positionController.text.trim(),
-        department: _departmentController.text.trim(),
-        organizationId: _selectedOrganizationId!,
-      );
+    final result = await SignupService.signup(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+      firstName: _firstNameController.text.trim(),
+      lastName: _lastNameController.text.trim(),
+      middleName: _middleNameController.text.trim().isEmpty
+          ? null
+          : _middleNameController.text.trim(),
+      address: _addressController.text.trim(),
+      contactNumber: _contactNumberController.text.trim(),
+      position: _positionController.text.trim(),
+      department: _departmentController.text.trim(),
+      organizationId: _selectedOrganizationId!,
+    );
 
-      if (result.success) {
-        _showSuccessSnackBar(result.message!);
+    if (result.success) {
+      setState(() {
+        _loadingStatus = 'Account created successfully...';
+      });
 
-        // Navigate back to login page
-        if (mounted) {
-          Navigator.pop(context);
-        }
-      } else {
-        _showErrorSnackBar(result.errorMessage!);
-      }
-    } catch (e) {
-      print('❌ Signup error in UI: $e');
-      _showErrorSnackBar('An unexpected error occurred. Please try again.');
-    } finally {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _showSuccessSnackBar('${result.message!} 🔐 End-to-end encryption enabled!');
+
+      // Navigate back to login page after a brief delay
+      await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        Navigator.pop(context);
       }
+    } else {
+      _showErrorSnackBar(result.errorMessage!);
+    }
+  } catch (e) {
+    print('❌ Signup error in UI: $e');
+    _showErrorSnackBar('An unexpected error occurred. Please try again.');
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        _loadingStatus = '';
+      });
     }
   }
+}
 
   void _showErrorSnackBar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red[600],
           duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -135,9 +159,17 @@ class _SignupPageState extends State<SignupPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.green[600],
           duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -149,7 +181,21 @@ class _SignupPageState extends State<SignupPage> {
       backgroundColor: const Color(0xFFF8FAFC),
       body: _isLoadingOrgs
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF0891B2)))
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Color(0xFF0891B2)),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading organizations...',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
@@ -159,9 +205,9 @@ class _SignupPageState extends State<SignupPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Header with illustration
+                      // Header with enhanced security illustration
                       Container(
-                        height: 200,
+                        height: 220,
                         margin: const EdgeInsets.only(bottom: 24),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -176,7 +222,7 @@ class _SignupPageState extends State<SignupPage> {
                         ),
                         child: Stack(
                           children: [
-                            // Background pattern
+                            // Enhanced background pattern
                             Positioned(
                               top: -20,
                               right: -20,
@@ -199,6 +245,20 @@ class _SignupPageState extends State<SignupPage> {
                                 decoration: BoxDecoration(
                                   color:
                                       const Color(0xFF0891B2).withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            // Additional security elements
+                            Positioned(
+                              top: 20,
+                              left: 20,
+                              child: Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  color:
+                                      const Color(0xFF0891B2).withOpacity(0.08),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -232,12 +292,30 @@ class _SignupPageState extends State<SignupPage> {
                                   ),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    'Join your organization with end-to-end encryption',
+                                    'Join your organization with RSA-2048 encryption',
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Color(0xFF64748B),
                                     ),
                                     textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0891B2)
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: const Text(
+                                      'Keys generated locally',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF0891B2),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -265,7 +343,7 @@ class _SignupPageState extends State<SignupPage> {
                           },
                           items: _organizations.map((org) {
                             return DropdownMenuItem<String>(
-                              value: org['id'], // UUIDs are already strings
+                              value: org['id'],
                               child: Text(org['name']),
                             );
                           }).toList(),
@@ -280,9 +358,7 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.business,
                       ),
 
-                      // Full
-
-                      // Full Name
+                      // Name fields
                       _buildInputField(
                         child: TextFormField(
                           controller: _firstNameController,
@@ -331,7 +407,7 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.person,
                       ),
 
-                      // Phone Number
+                      // Contact and professional info
                       _buildInputField(
                         child: TextFormField(
                           controller: _contactNumberController,
@@ -359,7 +435,6 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.phone,
                       ),
 
-                      // Address
                       _buildInputField(
                         child: TextFormField(
                           controller: _addressController,
@@ -378,7 +453,6 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.location_on,
                       ),
 
-                      // Position
                       _buildInputField(
                         child: TextFormField(
                           controller: _positionController,
@@ -396,7 +470,6 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.work,
                       ),
 
-                      // Department
                       _buildInputField(
                         child: TextFormField(
                           controller: _departmentController,
@@ -414,7 +487,7 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.group_work,
                       ),
 
-                      // Email
+                      // Authentication fields
                       _buildInputField(
                         child: TextFormField(
                           controller: _emailController,
@@ -440,7 +513,6 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.alternate_email,
                       ),
 
-                      // Password
                       _buildInputField(
                         child: TextFormField(
                           controller: _passwordController,
@@ -456,8 +528,12 @@ class _SignupPageState extends State<SignupPage> {
                             if (value?.isEmpty ?? true) {
                               return 'Please enter a password';
                             }
-                            if (value!.length < 6) {
-                              return 'Password must be at least 6 characters long';
+                            if (value!.length < 8) {
+                              return 'Password must be at least 8 characters long';
+                            }
+                            // Enhanced password validation
+                            if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(value)) {
+                              return 'Password must contain uppercase, lowercase, and numbers';
                             }
                             return null;
                           },
@@ -465,7 +541,6 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.lock,
                       ),
 
-                      // Confirm Password
                       _buildInputField(
                         child: TextFormField(
                           controller: _confirmPasswordController,
@@ -492,7 +567,7 @@ class _SignupPageState extends State<SignupPage> {
 
                       const SizedBox(height: 32),
 
-                      // Sign Up Button
+                      // Enhanced Sign Up Button
                       Container(
                         width: double.infinity,
                         height: 56,
