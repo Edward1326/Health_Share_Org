@@ -153,28 +153,31 @@ class SimpleFilePreviewService {
     return _parsePKCS1PrivateKey(privateKeyBytes);
   }
 
-  /// RSA-OAEP decryption using PointyCastle - FIXED VERSION
-  static String _decryptWithRSAOAEP(String encryptedData, String privateKeyPem) {
+  // Replace the _decryptWithRSAOAEP method in SimpleFilePreviewService
+
+/// RSA-OAEP decryption with SHA-1 first (fast_rsa default), then SHA-256 fallback
+static String _decryptWithRSAOAEP(String encryptedData, String privateKeyPem) {
+  try {
+    print('Starting RSA-OAEP decryption...');
+    print('Encrypted data length: ${encryptedData.length}');
+    
+    final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+    print('Private key modulus bits: ${privateKey.n!.bitLength}');
+    
+    // Try SHA-1 first (fast_rsa default)
     try {
-      print('Starting RSA-OAEP decryption...');
-      print('Encrypted data length: ${encryptedData.length}');
+      print('Attempting RSA-OAEP with SHA-1 (fast_rsa default)...');
       
-      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
-      print('Private key modulus bits: ${privateKey.n!.bitLength}');
-      
-      // Create OAEP cipher with SHA-256 (to match fast_rsa)
       final cipher = OAEPEncoding.withCustomDigest(
-        () => SHA256Digest(), // Use SHA-256 to match fast_rsa
+        () => SHA1Digest(), // SHA-1 to match fast_rsa default
         RSAEngine(),
       );
       
-      // Initialize for decryption
       cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
       
       final encryptedBytes = base64Decode(encryptedData);
       print('Encrypted bytes length: ${encryptedBytes.length}');
       
-      // Validate encrypted data size
       final maxInputSize = cipher.inputBlockSize;
       print('Max input size for cipher: $maxInputSize');
       
@@ -185,41 +188,69 @@ class SimpleFilePreviewService {
       final decryptedBytes = cipher.process(encryptedBytes);
       final decryptedString = utf8.decode(decryptedBytes);
       
-      print('RSA-OAEP decryption completed successfully');
+      print('RSA-OAEP SHA-1 decryption completed successfully');
       print('Decrypted data length: ${decryptedString.length}');
       return decryptedString;
-    } catch (e) {
-      print('RSA-OAEP decryption error: $e');
       
-      // Try fallback with different padding
+    } catch (sha1Error) {
+      print('SHA-1 OAEP failed: $sha1Error');
+      
+      // Fallback to SHA-256 (for doctor-uploaded files)
       try {
-        print('Trying PKCS1v15 as fallback...');
+        print('Trying SHA-256 OAEP fallback...');
+        
+        final cipher = OAEPEncoding.withCustomDigest(
+          () => SHA256Digest(), // SHA-256 for doctor uploads
+          RSAEngine(),
+        );
+        
+        cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+        
+        final encryptedBytes = base64Decode(encryptedData);
+        final decryptedBytes = cipher.process(encryptedBytes);
+        final decryptedString = utf8.decode(decryptedBytes);
+        
+        print('RSA-OAEP SHA-256 fallback successful');
+        return decryptedString;
+        
+      } catch (sha256Error) {
+        print('SHA-256 OAEP also failed: $sha256Error');
+        
+        // Final fallback to PKCS#1 v1.5
+        print('Trying PKCS#1 v1.5 as final fallback...');
         return _decryptWithRSAPKCS1v15(encryptedData, privateKeyPem);
-      } catch (fallbackError) {
-        print('Fallback also failed: $fallbackError');
-        rethrow;
       }
     }
+  } catch (e) {
+    print('All RSA decryption methods failed: $e');
+    rethrow;
   }
+}
 
-  /// Fallback RSA-PKCS1v15 decryption
-  static String _decryptWithRSAPKCS1v15(String encryptedData, String privateKeyPem) {
-    try {
-      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
-      final cipher = PKCS1Encoding(RSAEngine());
-      cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
-      
-      final encryptedBytes = base64Decode(encryptedData);
-      final decryptedBytes = cipher.process(encryptedBytes);
-      final decryptedString = utf8.decode(decryptedBytes);
-      
-      print('PKCS1v15 fallback decryption successful');
-      return decryptedString;
-    } catch (e) {
-      print('PKCS1v15 fallback decryption error: $e');
-      rethrow;
+/// Fallback RSA-PKCS1v15 decryption - IMPROVED ERROR HANDLING
+static String _decryptWithRSAPKCS1v15(String encryptedData, String privateKeyPem) {
+  try {
+    final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+    final cipher = PKCS1Encoding(RSAEngine());
+    cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+    
+    final encryptedBytes = base64Decode(encryptedData);
+    
+    // Additional validation
+    if (encryptedBytes.length != (privateKey.n!.bitLength / 8).round()) {
+      throw Exception('Encrypted data length (${encryptedBytes.length}) does not match key size (${privateKey.n!.bitLength / 8})');
     }
+    
+    final decryptedBytes = cipher.process(encryptedBytes);
+    final decryptedString = utf8.decode(decryptedBytes);
+    
+    print('PKCS1v15 fallback decryption successful');
+    return decryptedString;
+  } catch (e) {
+    print('PKCS1v15 fallback decryption error: $e');
+    rethrow;
   }
+}
 
   /// AES-256-GCM decryption - IMPROVED ERROR HANDLING
   static Future<Uint8List> _decryptWithAES256GCM(
