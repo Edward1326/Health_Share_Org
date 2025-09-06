@@ -1,12 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:fast_rsa/fast_rsa.dart';
+import 'package:crypto/crypto.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
-import 'package:crypto/crypto.dart';
 import 'package:asn1lib/asn1lib.dart';
 
 class SignupResult {
@@ -45,32 +44,19 @@ class SignupService {
     return remaining > 0 ? remaining : 0;
   }
 
-  // Platform-specific RSA key generation
+  // RSA key generation using PointyCastle (works on all platforms)
   static Future<Map<String, String>> _generateRSAKeyPair() async {
     try {
-      if (kIsWeb) {
-        print('Generating RSA-2048 keys for web using PointyCastle...');
-        // Use proven PointyCastle implementation for web
-        return await compute(_generateRSAKeyPairSync, null);
-      } else {
-        print('Generating RSA-2048 keys for mobile using fast_rsa...');
-        // Use fast_rsa for mobile platforms
-        final keyPair = await RSA.generate(2048);
-        final fingerprint = _generateKeyFingerprint(keyPair.publicKey);
-        
-        return {
-          'publicKey': keyPair.publicKey,
-          'privateKey': keyPair.privateKey,
-          'fingerprint': fingerprint,
-        };
-      }
+      print('Generating RSA-2048 keys using PointyCastle...');
+      // Use compute for heavy cryptographic operations
+      return await compute(_generateRSAKeyPairSync, null);
     } catch (e) {
       print('Error generating RSA keys: $e');
       rethrow;
     }
   }
 
-  /// Custom RSA generation for web using PointyCastle (proven to work)
+  /// RSA generation using PointyCastle (cross-platform)
   static Map<String, String> _generateRSAKeyPairSync(void _) {
     final keyGen = RSAKeyGenerator();
     final secureRandom = FortunaRandom();
@@ -78,12 +64,12 @@ class SignupService {
     // Enhanced random seeding
     _seedSecureRandom(secureRandom);
 
-    // Generate 2048-bit RSA keys with reduced certainty for web performance
+    // Generate 2048-bit RSA keys
     keyGen.init(ParametersWithRandom(
       RSAKeyGeneratorParameters(
           BigInt.parse('65537'), // Standard F4 exponent
-          2048, // 2048-bit keys
-          6 // Reduced certainty for faster web generation
+          2048, // 2048-bit keys - SAME AS AuthService
+          12 // Standard certainty for production
           ),
       secureRandom,
     ));
@@ -255,7 +241,7 @@ class SignupService {
         throw Exception('Invalid organization selected');
       }
 
-      // Generate RSA keys (platform-specific)
+      // Generate RSA keys using PointyCastle
       final keyPair = await _generateRSAKeyPair();
       final publicPem = keyPair['publicKey']!;
       final privatePem = keyPair['privateKey']!;
@@ -306,7 +292,7 @@ class SignupService {
         personId = personInsertResponse['id'];
         print('Person record created: $personId');
 
-        // Insert User record
+        // Insert User record - CONSISTENT WITH AuthService FORMAT
         print('Inserting User record...');
         await _supabase.from('User').insert({
           'id': authUserId,
@@ -368,11 +354,7 @@ class SignupService {
         // Clean up auth user with proper admin access
         try {
           print('Cleaning up auth user...');
-          // First try to sign out the user
           await _supabase.auth.signOut();
-          
-          // Note: admin.deleteUser requires service role key, not available in client
-          // The user will need to be cleaned up manually or through a server function
           print('Auth user cleanup attempted');
         } catch (cleanupError) {
           print('Note: Auth user may need manual cleanup: $cleanupError');
@@ -453,7 +435,6 @@ class SignupService {
       return 'Permission denied - please contact support';
     }
     
-    // If we have more details, include them
     if (fullDetails.isNotEmpty && fullDetails != '{}') {
       return 'Database error: $fullDetails';
     } else if (fullMessage.isNotEmpty && fullMessage != '{}') {
@@ -507,7 +488,7 @@ class SignupService {
     _cachedUserId = null;
   }
 
-  // Encryption - try fast_rsa first, fallback available if needed
+  // RSA-OAEP Encryption using PointyCastle - CONSISTENT WITH AuthService
   static Future<String?> encryptData(String data) async {
     try {
       final keys = await getUserRSAKeys();
@@ -515,21 +496,18 @@ class SignupService {
         print('No RSA keys available for encryption');
         return null;
       }
-
-      if (kIsWeb) {
-        // For web, you might need custom encryption implementation
-        print('Web encryption - consider implementing custom RSA encryption if fast_rsa fails');
-      }
       
-      final encrypted = await RSA.encryptPKCS1v15(data, keys['publicKey']!);
-      return encrypted;
+      return await compute(_encryptWithPointyCastle, {
+        'data': data,
+        'publicKeyPem': keys['publicKey']!,
+      });
     } catch (e) {
       print('Encryption error: $e');
       return null;
     }
   }
 
-  // Decryption - try fast_rsa first, fallback available if needed
+  // RSA-OAEP Decryption using PointyCastle - CONSISTENT WITH AuthService  
   static Future<String?> decryptData(String encryptedData) async {
     try {
       final keys = await getUserRSAKeys();
@@ -538,20 +516,82 @@ class SignupService {
         return null;
       }
 
-      if (kIsWeb) {
-        // For web, you might need custom decryption implementation
-        print('Web decryption - consider implementing custom RSA decryption if fast_rsa fails');
-      }
-
-      final decrypted = await RSA.decryptPKCS1v15(
-        encryptedData,
-        keys['privateKey']!,
-      );
-      return decrypted;
+      return await compute(_decryptWithPointyCastle, {
+        'encryptedData': encryptedData,
+        'privateKeyPem': keys['privateKey']!,
+      });
     } catch (e) {
       print('Decryption error: $e');
       return null;
     }
+  }
+
+  // PointyCastle OAEP encryption (same as AuthService format)
+  static String? _encryptWithPointyCastle(Map<String, String> params) {
+    try {
+      final data = params['data']!;
+      final publicKeyPem = params['publicKeyPem']!;
+      
+      final publicKey = _parsePublicKeyFromPem(publicKeyPem);
+      final encryptor = OAEPEncoding(RSAEngine())
+        ..init(true, PublicKeyParameter<RSAPublicKey>(publicKey));
+      
+      final dataBytes = utf8.encode(data);
+      final encryptedBytes = encryptor.process(Uint8List.fromList(dataBytes));
+      return base64Encode(encryptedBytes);
+    } catch (e) {
+      print('PointyCastle encryption error: $e');
+      return null;
+    }
+  }
+
+  // PointyCastle OAEP decryption (same as AuthService format)
+  static String? _decryptWithPointyCastle(Map<String, String> params) {
+    try {
+      final encryptedData = params['encryptedData']!;
+      final privateKeyPem = params['privateKeyPem']!;
+      
+      final privateKey = _parsePrivateKeyFromPem(privateKeyPem);
+      final decryptor = OAEPEncoding(RSAEngine())
+        ..init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+      
+      final encryptedBytes = base64Decode(encryptedData);
+      final decryptedBytes = decryptor.process(encryptedBytes);
+      return utf8.decode(decryptedBytes);
+    } catch (e) {
+      print('PointyCastle decryption error: $e');
+      return null;
+    }
+  }
+
+  // Parse public key from PEM
+  static RSAPublicKey _parsePublicKeyFromPem(String pem) {
+    final lines = pem.split('\n').where((line) => !line.startsWith('-----')).join('');
+    final keyBytes = base64Decode(lines);
+    final asn1Parser = ASN1Parser(keyBytes);
+    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    final publicKeyBitString = topLevelSeq.elements[1] as ASN1BitString;
+    final publicKeyAsn = ASN1Parser(publicKeyBitString.contentBytes());
+    final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
+    final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
+    final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+    return RSAPublicKey(modulus, exponent);
+  }
+
+  // Parse private key from PEM
+  static RSAPrivateKey _parsePrivateKeyFromPem(String pem) {
+    final lines = pem.split('\n').where((line) => !line.startsWith('-----')).join('');
+    final keyBytes = base64Decode(lines);
+    final asn1Parser = ASN1Parser(keyBytes);
+    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    final privateKeyOctetString = topLevelSeq.elements[2] as ASN1OctetString;
+    final privateKeyAsn = ASN1Parser(privateKeyOctetString.contentBytes());
+    final privateKeySeq = privateKeyAsn.nextObject() as ASN1Sequence;
+    final modulus = (privateKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+    final privateExponent = (privateKeySeq.elements[3] as ASN1Integer).valueAsBigInteger;
+    final p = (privateKeySeq.elements[4] as ASN1Integer).valueAsBigInteger;
+    final q = (privateKeySeq.elements[5] as ASN1Integer).valueAsBigInteger;
+    return RSAPrivateKey(modulus, privateExponent, p, q);
   }
 
   // Validation helpers

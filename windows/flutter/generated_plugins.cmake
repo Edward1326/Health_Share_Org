@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
-  fast_rsa
   file_selector_windows
   permission_handler_windows
   url_launcher_windows

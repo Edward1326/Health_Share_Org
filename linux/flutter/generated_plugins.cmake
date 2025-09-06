@@ -3,7 +3,6 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  fast_rsa
   file_selector_linux
   gtk
   open_file_linux
