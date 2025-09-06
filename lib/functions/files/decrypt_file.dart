@@ -4,13 +4,12 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:health_share_org/services/crypto_utils.dart'; // Your CryptoUtils file
-import 'package:health_share_org/services/aes_helper.dart';    // Your AESHelper file
+import 'package:fast_rsa/fast_rsa.dart'; // Use fast_rsa instead of CryptoUtils
+import 'package:health_share_org/services/aes_helper.dart';
 import 'dart:async';
 
-
 class FileDecryptionService {
-  // Original debugging method
+  // Original debugging method - updated to use fast_rsa
   static Future<void> debugKeyIntegrity(String userId) async {
     try {
       print('\n=== TESTING KEY PAIR INTEGRITY ===');
@@ -34,24 +33,25 @@ class FileDecryptionService {
         return;
       }
 
-      // Parse keys
-      final privateKey = CryptoUtils.rsaPrivateKeyFromPem(privateKeyPem);
-      final publicKey = CryptoUtils.rsaPublicKeyFromPem(publicKeyPem);
-      print('Keys parsed successfully');
+      print('Keys found successfully');
 
-      // Test encryption/decryption
+      // Test encryption/decryption with fast_rsa
       const testData = '{"key":"test123","nonce":"abc456"}';
       
-      final encrypted = CryptoUtils.rsaEncrypt(testData, publicKey);
-      print('Test encryption successful: ${encrypted.length} chars');
+      try {
+        final encrypted = await RSA.encryptOAEP(testData, "", Hash.SHA256, publicKeyPem);
+        print('Test encryption successful: ${encrypted.length} chars');
 
-      final decrypted = CryptoUtils.rsaDecrypt(encrypted, privateKey);
-      print('Test decryption successful');
+        final decrypted = await RSA.decryptOAEP(encrypted, "", Hash.SHA256, privateKeyPem);
+        print('Test decryption successful');
 
-      if (decrypted == testData) {
-        print('SUCCESS: Key pair is working correctly');
-      } else {
-        print('ERROR: Decrypted data doesn\'t match original');
+        if (decrypted == testData) {
+          print('SUCCESS: Key pair is working correctly');
+        } else {
+          print('ERROR: Decrypted data doesn\'t match original');
+        }
+      } catch (e) {
+        print('ERROR: RSA test failed: $e');
       }
 
     } catch (e) {
@@ -59,7 +59,7 @@ class FileDecryptionService {
     }
   }
 
-  // Original download and decrypt method with debugging
+  // Updated download and decrypt method with fast_rsa
   static Future<void> downloadAndDecryptFile(
     BuildContext context,
     Map<String, dynamic> file,
@@ -100,14 +100,9 @@ class FileDecryptionService {
         return;
       }
 
-      // ADD THIS DEBUGGING SECTION HERE:
-      print('\n=== STARTING ENHANCED DEBUGGING ===');
-      
       // Test the user's key pair integrity first
+      print('\n=== STARTING ENHANCED DEBUGGING ===');
       await debugKeyIntegrity(actualUserId);
-      
-      // Parse RSA private key
-      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
 
       // Get all File_Keys for analysis
       final allFileKeys = await Supabase.instance.client
@@ -138,8 +133,8 @@ class FileDecryptionService {
         return;
       }
 
-      // ENHANCED RSA DECRYPTION WITH DEBUGGING:
-      print('\n--- ATTEMPTING RSA DECRYPTION ---');
+      // ENHANCED RSA DECRYPTION WITH DEBUGGING USING FAST_RSA:
+      print('\n--- ATTEMPTING RSA DECRYPTION WITH FAST_RSA ---');
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
       
       // Debug the encrypted data
@@ -166,24 +161,56 @@ class FileDecryptionService {
         return;
       }
 
-      // Now attempt the actual RSA decryption
+      // Now attempt the actual RSA decryption using fast_rsa
       try {
-        final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(
-          encryptedKeyData, 
-          rsaPrivateKey
-        );
-
-        print('RSA decryption successful!');
+        String decryptedKeyDataJson;
         
-        final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-        final aesKeyHex = keyData['key'] as String?;
-        final aesNonceHex = keyData['nonce'] as String? ?? usableKey['nonce_hex'] as String?;
-
-        if (aesKeyHex == null || aesNonceHex == null) {
-          throw Exception('Missing AES key or nonce in decrypted data');
+        // Try RSA-OAEP first (matches your upload encryption)
+        try {
+          print('Attempting RSA-OAEP decryption...');
+          decryptedKeyDataJson = await RSA.decryptOAEP(
+            encryptedKeyData, 
+            "",
+            Hash.SHA256,
+            rsaPrivateKeyPem
+          );
+          print('RSA-OAEP decryption successful!');
+        } catch (oaepError) {
+          print('RSA-OAEP decryption failed, trying PKCS1v15: $oaepError');
+          // Fallback to PKCS1v15 for older encryptions
+          decryptedKeyDataJson = await RSA.decryptPKCS1v15(
+            encryptedKeyData,
+            rsaPrivateKeyPem
+          );
+          print('RSA-PKCS1v15 decryption successful!');
         }
 
-        print('AES key extracted successfully');
+        final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+        final aesKeyBase64 = keyData['key'] as String?;
+        final aesNonceBase64 = keyData['nonce'] as String?;
+
+        if (aesKeyBase64 == null) {
+          throw Exception('Missing AES key in decrypted data');
+        }
+
+        // Convert base64 to hex for AESHelper
+        final aesKeyBytes = base64Decode(aesKeyBase64);
+        final aesKeyHex = aesKeyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        
+        String aesNonceHex;
+        if (aesNonceBase64 != null) {
+          final aesNonceBytes = base64Decode(aesNonceBase64);
+          aesNonceHex = aesNonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        } else {
+          // Use nonce_hex from database if available
+          aesNonceHex = usableKey['nonce_hex'] as String? ?? '';
+        }
+
+        if (aesNonceHex.isEmpty) {
+          throw Exception('Missing AES nonce');
+        }
+
+        print('AES key and nonce extracted successfully');
 
         // Continue with file download and decryption...
         final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
@@ -218,7 +245,8 @@ class FileDecryptionService {
         print('RSA decryption failed: $rsaError');
         
         // ADDITIONAL DEBUGGING: Check if wrong key was used
-        if (rsaError.toString().contains('decoding error')) {
+        if (rsaError.toString().contains('decoding error') || 
+            rsaError.toString().contains('decrypt')) {
           print('\n--- INVESTIGATING WRONG KEY USAGE ---');
           await _investigateWrongKeyUsage(fileId, actualUserId, encryptedKeyData);
         }
@@ -234,7 +262,7 @@ class FileDecryptionService {
     }
   }
 
-  // Helper method to investigate wrong key usage
+  // Helper method to investigate wrong key usage - updated to use fast_rsa
   static Future<void> _investigateWrongKeyUsage(String fileId, String userId, String encryptedKeyData) async {
     try {
       // Get file owner to check if they can decrypt their own key
@@ -274,7 +302,7 @@ class FileDecryptionService {
     }
   }
 
-  // Helper method to test decryption with owner key
+  // Helper method to test decryption with owner key - updated to use fast_rsa
   static Future<void> _testDecryptionWithOwnerKey(String ownerId, String encryptedKeyData) async {
     try {
       print('Testing if owner\'s key can decrypt this data...');
@@ -291,16 +319,30 @@ class FileDecryptionService {
         return;
       }
 
-      final ownerPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(ownerPrivateKeyPem);
-      
       try {
-        final decryptedJson = CryptoUtils.rsaDecrypt(encryptedKeyData, ownerPrivateKey);
-        print('SUCCESS: Owner can decrypt this key!');
+        // Try RSA-OAEP first
+        final decryptedJson = await RSA.decryptOAEP(
+          encryptedKeyData, 
+          "",
+          Hash.SHA256,
+          ownerPrivateKeyPem
+        );
+        print('SUCCESS: Owner can decrypt this key with RSA-OAEP!');
         print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
         print('This means the sharing process used the wrong public key during encryption');
-      } catch (e) {
-        print('Owner cannot decrypt this key either: $e');
-        print('DIAGNOSIS: Key may be corrupted or encrypted with unknown key');
+      } catch (oaepError) {
+        try {
+          // Try PKCS1v15 fallback
+          final decryptedJson = await RSA.decryptPKCS1v15(
+            encryptedKeyData,
+            ownerPrivateKeyPem
+          );
+          print('SUCCESS: Owner can decrypt this key with RSA-PKCS1v15!');
+          print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
+        } catch (pkcsError) {
+          print('Owner cannot decrypt this key either: $pkcsError');
+          print('DIAGNOSIS: Key may be corrupted or encrypted with unknown key');
+        }
       }
 
     } catch (e) {
@@ -308,7 +350,7 @@ class FileDecryptionService {
     }
   }
 
-  // NEW: Preview file in modal dialog
+  // Updated preview methods would also need similar fast_rsa changes...
   static Future<void> previewFile(
     BuildContext context,
     Map<String, dynamic> file,
@@ -351,9 +393,6 @@ class FileDecryptionService {
         return;
       }
 
-      // Parse RSA private key
-      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
-
       // Get File_Keys for this file
       final allFileKeys = await Supabase.instance.client
           .from('File_Keys')
@@ -376,16 +415,48 @@ class FileDecryptionService {
         return;
       }
 
-      // Decrypt the AES key
+      // Decrypt the AES key using fast_rsa
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
+      
+      String decryptedKeyDataJson;
+      try {
+        // Try RSA-OAEP first
+        decryptedKeyDataJson = await RSA.decryptOAEP(
+          encryptedKeyData, 
+          "",
+          Hash.SHA256,
+          rsaPrivateKeyPem
+        );
+      } catch (oaepError) {
+        // Fallback to PKCS1v15
+        decryptedKeyDataJson = await RSA.decryptPKCS1v15(
+          encryptedKeyData,
+          rsaPrivateKeyPem
+        );
+      }
       
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-      final aesKeyHex = keyData['key'] as String?;
-      final aesNonceHex = keyData['nonce'] as String? ?? usableKey['nonce_hex'] as String?;
+      final aesKeyBase64 = keyData['key'] as String?;
+      final aesNonceBase64 = keyData['nonce'] as String?;
 
-      if (aesKeyHex == null || aesNonceHex == null) {
-        throw Exception('Missing AES key or nonce in decrypted data');
+      if (aesKeyBase64 == null) {
+        throw Exception('Missing AES key in decrypted data');
+      }
+
+      // Convert base64 to hex for AESHelper
+      final aesKeyBytes = base64Decode(aesKeyBase64);
+      final aesKeyHex = aesKeyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      
+      String aesNonceHex;
+      if (aesNonceBase64 != null) {
+        final aesNonceBytes = base64Decode(aesNonceBase64);
+        aesNonceHex = aesNonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      } else {
+        aesNonceHex = usableKey['nonce_hex'] as String? ?? '';
+      }
+
+      if (aesNonceHex.isEmpty) {
+        throw Exception('Missing AES nonce');
       }
 
       // Download file from IPFS
@@ -414,7 +485,7 @@ class FileDecryptionService {
     }
   }
 
-  // Helper method to show the file preview in a modal
+  // Rest of the helper methods remain the same...
   static Future<void> _showFilePreview(
     BuildContext context,
     String filename,
@@ -477,34 +548,28 @@ class FileDecryptionService {
     );
   }
 
-  // Helper method to build preview content based on file type
+  // All the remaining helper methods stay the same...
   static Widget _buildPreviewContent(String mimeType, Uint8List bytes, String filename) {
-    // Determine file type
     final extension = filename.toLowerCase().split('.').last;
     
-    // Image files
     if (mimeType.startsWith('image/') || 
         ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension)) {
       return _buildImagePreview(bytes);
     }
     
-    // Text files
     if (mimeType.startsWith('text/') || 
         ['txt', 'md', 'json', 'xml', 'csv', 'log'].contains(extension)) {
       return _buildTextPreview(bytes);
     }
     
-    // PDF files
     if (mimeType == 'application/pdf' || extension == 'pdf') {
       return _buildPdfPreview(bytes);
     }
     
-    // Code files
     if (['dart', 'js', 'html', 'css', 'py', 'java', 'cpp', 'c', 'h'].contains(extension)) {
       return _buildCodePreview(bytes, extension);
     }
     
-    // Default: show file info and hex preview
     return _buildDefaultPreview(bytes, mimeType, filename);
   }
 
@@ -629,7 +694,6 @@ class FileDecryptionService {
           style: TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 24),
-        // Show hex preview for binary files
         if (bytes.length < 1000) ...[
           const Text(
             'Hex Preview (first 512 bytes):',
@@ -680,108 +744,6 @@ class FileDecryptionService {
     );
   }
 
-  // NEW: Alternative preview function that opens in new tab
-  static Future<void> previewFileInNewTab(
-    BuildContext context,
-    Map<String, dynamic> file,
-    Function(String) showSnackBar,
-  ) async {
-    try {
-      showSnackBar('Preparing file preview...');
-
-      final fileId = file['id'];
-      final ipfsCid = file['ipfs_cid'];
-      final filename = file['filename'] ?? 'Unknown file';
-      final mimeType = file['mime_type'] ?? '';
-
-      if (ipfsCid == null) {
-        showSnackBar('IPFS CID not found');
-        return;
-      }
-
-      // Get current user and decrypt file (same process as above)
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      if (currentUser == null) {
-        showSnackBar('Authentication error');
-        return;
-      }
-
-      final userResponse = await Supabase.instance.client
-          .from('User')
-          .select('id, rsa_private_key, email')
-          .eq('email', currentUser.email!)
-          .single();
-
-      final actualUserId = userResponse['id'] as String?;
-      final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
-
-      if (actualUserId == null || rsaPrivateKeyPem == null) {
-        showSnackBar('User authentication error');
-        return;
-      }
-
-      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
-
-      final allFileKeys = await Supabase.instance.client
-          .from('File_Keys')
-          .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted, nonce_hex')
-          .eq('file_id', fileId);
-
-      Map<String, dynamic>? usableKey;
-      for (var key in allFileKeys) {
-        if (key['recipient_type'] == 'user' && key['recipient_id'] == actualUserId) {
-          usableKey = key;
-          break;
-        }
-      }
-
-      if (usableKey == null) {
-        showSnackBar('No decryption key found for this file');
-        return;
-      }
-
-      final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
-      
-      final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-      final aesKeyHex = keyData['key'] as String?;
-      final aesNonceHex = keyData['nonce'] as String? ?? usableKey['nonce_hex'] as String?;
-
-      if (aesKeyHex == null || aesNonceHex == null) {
-        throw Exception('Missing AES key or nonce in decrypted data');
-      }
-
-      final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
-      final response = await http.get(Uri.parse(ipfsUrl));
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download from IPFS: ${response.statusCode}');
-      }
-
-      final encryptedFileBytes = response.bodyBytes;
-      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-      final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
-
-      // Create blob and open in new tab
-      final blob = html.Blob([decryptedBytes], mimeType);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      
-      html.window.open(url, '_blank');
-      
-      // Clean up URL after a delay
-      Timer(const Duration(seconds: 30), () {
-        html.Url.revokeObjectUrl(url);
-      });
-
-      showSnackBar('File opened in new tab for preview');
-
-    } catch (e, stackTrace) {
-      print('ERROR in previewFileInNewTab: $e');
-      print('Stack trace: $stackTrace');
-      showSnackBar('Error previewing file: $e');
-    }
-  }
-
   // Helper method to download the already decrypted file
   static void _downloadDecryptedFile(String filename, Uint8List bytes) {
     final blob = html.Blob([bytes]);
@@ -794,7 +756,6 @@ class FileDecryptionService {
     html.Url.revokeObjectUrl(url);
   }
 
-  // Helper method to format file size
   static String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -802,14 +763,11 @@ class FileDecryptionService {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
-  // Helper method to convert bytes to hex string
   static String _bytesToHex(List<int> bytes) {
     final buffer = StringBuffer();
     for (int i = 0; i < bytes.length; i += 16) {
-      // Address
       buffer.write('${i.toRadixString(16).padLeft(8, '0')}: ');
       
-      // Hex bytes
       for (int j = 0; j < 16; j++) {
         if (i + j < bytes.length) {
           buffer.write('${bytes[i + j].toRadixString(16).padLeft(2, '0')} ');
@@ -818,7 +776,6 @@ class FileDecryptionService {
         }
       }
       
-      // ASCII representation
       buffer.write(' |');
       for (int j = 0; j < 16 && i + j < bytes.length; j++) {
         final byte = bytes[i + j];
@@ -832,4 +789,115 @@ class FileDecryptionService {
     }
     return buffer.toString();
   }
+
+  // Add this diagnostic method to test your current RSA setup
+static Future<void> testCurrentRSASetup(String userId) async {
+  try {
+    print('\n=== TESTING CURRENT RSA SETUP ===');
+    
+    // Get user keys
+    final userResponse = await Supabase.instance.client
+        .from('User')
+        .select('rsa_private_key, rsa_public_key, email')
+        .eq('id', userId)
+        .single();
+
+    final privateKeyPem = userResponse['rsa_private_key'] as String;
+    final publicKeyPem = userResponse['rsa_public_key'] as String;
+    final email = userResponse['email'] as String;
+
+    print('Testing user: $email');
+
+    // Test data that matches your upload service format
+    final testKeyData = {
+      'key': base64Encode(List.generate(32, (i) => i)), // 32 byte AES key
+      'nonce': base64Encode(List.generate(12, (i) => i + 32)), // 12 byte nonce
+    };
+    final testJson = jsonEncode(testKeyData);
+    
+    print('Test data: $testJson');
+
+    // Test RSA-OAEP (matches your upload)
+    try {
+      final encrypted = await RSA.encryptOAEP(testJson, "", Hash.SHA256, publicKeyPem);
+      print('RSA-OAEP encryption successful: ${encrypted.length} chars');
+      
+      final decrypted = await RSA.decryptOAEP(encrypted, "", Hash.SHA256, privateKeyPem);
+      print('RSA-OAEP decryption successful');
+      
+      if (decrypted == testJson) {
+        print('✅ RSA-OAEP round-trip successful - your setup should work!');
+        
+        // Now test if you can decrypt existing problematic data
+        await _testProblematicFileKey(userId);
+        
+      } else {
+        print('❌ RSA-OAEP data mismatch');
+      }
+      
+    } catch (e) {
+      print('❌ RSA-OAEP failed: $e');
+      
+      // Your current setup is broken - check key format
+      print('\n--- Checking Key Formats ---');
+      print('Private key starts with: ${privateKeyPem.substring(0, 50)}...');
+      print('Public key starts with: ${publicKeyPem.substring(0, 50)}...');
+    }
+    
+  } catch (e) {
+    print('❌ Setup test failed: $e');
+  }
+}
+
+static Future<void> _testProblematicFileKey(String userId) async {
+  try {
+    print('\n--- Testing Problematic File Key ---');
+    
+    // Get a problematic file key
+    final problemKey = await Supabase.instance.client
+        .from('File_Keys')
+        .select('aes_key_encrypted, file_id')
+        .eq('recipient_type', 'user')
+        .eq('recipient_id', userId)
+        .limit(1)
+        .single();
+        
+    final encryptedData = problemKey['aes_key_encrypted'] as String;
+    final fileId = problemKey['file_id'] as String;
+    
+    print('Testing file key for file: $fileId');
+    print('Encrypted data length: ${encryptedData.length}');
+    
+    // Get user's private key
+    final userResponse = await Supabase.instance.client
+        .from('User')
+        .select('rsa_private_key')
+        .eq('id', userId)
+        .single();
+        
+    final privateKeyPem = userResponse['rsa_private_key'] as String;
+    
+    // Try decrypting with current method
+    try {
+      final decrypted = await RSA.decryptOAEP(encryptedData, "", Hash.SHA256, privateKeyPem);
+      print('✅ Existing key DOES work with RSA-OAEP!');
+      print('Decrypted: ${decrypted.substring(0, 100)}...');
+    } catch (e) {
+      print('❌ Existing key does NOT work with RSA-OAEP: $e');
+      
+      // Try PKCS1v15
+      try {
+        final decrypted = await RSA.decryptPKCS1v15(encryptedData, privateKeyPem);
+        print('✅ Existing key works with RSA-PKCS1v15!');
+        print('🔧 SOLUTION: Your old files use PKCS1v15, new files use OAEP');
+      } catch (e2) {
+        print('❌ Existing key does NOT work with PKCS1v15 either: $e2');
+        print('🔍 This key was encrypted with a different library/method');
+      }
+    }
+    
+  } catch (e) {
+    print('Error testing problematic key: $e');
+  }
+}
 }

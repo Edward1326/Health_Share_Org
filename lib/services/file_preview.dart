@@ -1,18 +1,17 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:health_share_org/services/crypto_utils.dart';
-import 'package:health_share_org/services/aes_helper.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:pointycastle/export.dart' hide Mac;
+import 'package:asn1lib/asn1lib.dart';
 
-class EnhancedFilePreviewService {
-  /// Enhanced file preview with better error handling and file type detection
+class SimpleFilePreviewService {
+  // Cryptography instances - same as upload service
+  static final _aesGcm = AesGcm.with256bits();
+
+  /// Simple file preview - just show the content, no save/download
   static Future<void> previewFile(
     BuildContext context,
     Map<String, dynamic> file,
@@ -35,8 +34,8 @@ class EnhancedFilePreviewService {
         ),
       );
 
-      // Use the working decryption logic from FileDecryptionService
-      final decryptedBytes = await _decryptFileUsingWorkingMethod(file);
+      // Decrypt the file
+      final decryptedBytes = await _decryptFile(file);
       
       // Close loading dialog
       Navigator.of(context).pop();
@@ -49,26 +48,16 @@ class EnhancedFilePreviewService {
       final fileName = file['filename'] ?? 'Unknown File';
       final extension = fileName.toLowerCase().split('.').last;
       
-      // For images, show in-app preview
+      // Show appropriate preview based on file type
       if (_isImageFile(extension)) {
-        _showImagePreview(context, fileName, decryptedBytes, showSnackBar);
-        return;
+        _showImagePreview(context, fileName, decryptedBytes);
+      } else if (_isTextFile(extension)) {
+        _showTextPreview(context, fileName, decryptedBytes);
+      } else if (extension == 'pdf') {
+        _showPDFPreview(context, fileName, decryptedBytes);
+      } else {
+        _showGenericPreview(context, fileName, decryptedBytes, extension);
       }
-      
-      // For text files, show in-app preview
-      if (_isTextFile(extension)) {
-        _showTextPreview(context, fileName, decryptedBytes, showSnackBar);
-        return;
-      }
-
-      // For PDF files, show enhanced PDF preview
-      if (extension == 'pdf') {
-        _showPDFPreview(context, fileName, decryptedBytes, showSnackBar);
-        return;
-      }
-      
-      // For other files, save to external storage and open with system app
-      await _openWithSystemApp(context, fileName, decryptedBytes, showSnackBar);
       
     } catch (e) {
       // Close loading dialog if still open
@@ -81,26 +70,205 @@ class EnhancedFilePreviewService {
     }
   }
 
-  /// Preview file in new tab/window (web-like experience)
-  static Future<void> previewFileInNewTab(
-    BuildContext context,
-    Map<String, dynamic> file,
-    Function(String) showSnackBar,
-  ) async {
-    // For mobile, this opens in full screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FullScreenFilePreview(
-          file: file,
-          showSnackBar: showSnackBar,
-        ),
-      ),
-    );
+  /// Parse RSA private key from PEM format - FIXED VERSION
+  static RSAPrivateKey _parseRSAPrivateKeyFromPem(String pem) {
+    try {
+      print('Parsing RSA private key from PEM...');
+      
+      final cleanPem = pem.trim();
+      
+      bool isPkcs1 = cleanPem.contains('-----BEGIN RSA PRIVATE KEY-----');
+      bool isPkcs8 = cleanPem.contains('-----BEGIN PRIVATE KEY-----');
+      
+      if (!isPkcs1 && !isPkcs8) {
+        throw FormatException('Invalid PEM format - missing proper headers');
+      }
+      
+      String lines;
+      if (isPkcs1) {
+        print('Detected PKCS#1 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN RSA PRIVATE KEY-----', '')
+            .replaceAll('-----END RSA PRIVATE KEY-----', '')
+            .replaceAll(RegExp(r'\s+'), '') // Remove all whitespace including newlines
+            .trim();
+      } else {
+        print('Detected PKCS#8 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN PRIVATE KEY-----', '')
+            .replaceAll('-----END PRIVATE KEY-----', '')
+            .replaceAll(RegExp(r'\s+'), '') // Remove all whitespace including newlines
+            .trim();
+      }
+      
+      final keyBytes = base64Decode(lines);
+      
+      if (isPkcs1) {
+        return _parsePKCS1PrivateKey(keyBytes);
+      } else {
+        return _parsePKCS8PrivateKey(keyBytes);
+      }
+    } catch (e) {
+      print('Error parsing RSA private key from PEM: $e');
+      rethrow;
+    }
   }
 
-  /// Use the working decryption method from FileDecryptionService
-  static Future<Uint8List?> _decryptFileUsingWorkingMethod(Map<String, dynamic> file) async {
+  /// Parse PKCS#1 RSA private key
+  static RSAPrivateKey _parsePKCS1PrivateKey(Uint8List keyBytes) {
+    final privateKeyParser = ASN1Parser(keyBytes);
+    final privateKeySeq = privateKeyParser.nextObject() as ASN1Sequence;
+    
+    // PKCS#1 RSAPrivateKey structure:
+    // version, n, e, d, p, q, dP, dQ, qInv
+    if (privateKeySeq.elements.length < 6) {
+      throw FormatException('Invalid PKCS#1 private key structure');
+    }
+    
+    final modulus = (privateKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+    final privateExponent = (privateKeySeq.elements[3] as ASN1Integer).valueAsBigInteger;
+    final p = (privateKeySeq.elements[4] as ASN1Integer).valueAsBigInteger;
+    final q = (privateKeySeq.elements[5] as ASN1Integer).valueAsBigInteger;
+    
+    if (modulus == null || privateExponent == null || p == null || q == null) {
+      throw FormatException('Failed to extract RSA key components');
+    }
+    
+    print('PKCS#1 RSA private key parsed - Modulus bits: ${modulus.bitLength}');
+    return RSAPrivateKey(modulus, privateExponent, p, q);
+  }
+
+  /// Parse PKCS#8 RSA private key
+  static RSAPrivateKey _parsePKCS8PrivateKey(Uint8List keyBytes) {
+    final asn1Parser = ASN1Parser(keyBytes);
+    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    
+    if (topLevelSeq.elements.length < 3) {
+      throw FormatException('Invalid PKCS#8 structure');
+    }
+    
+    final privateKeyBitString = topLevelSeq.elements[2] as ASN1OctetString;
+    final privateKeyBytes = privateKeyBitString.contentBytes();
+    
+    return _parsePKCS1PrivateKey(privateKeyBytes);
+  }
+
+  /// RSA-OAEP decryption using PointyCastle - FIXED VERSION
+  static String _decryptWithRSAOAEP(String encryptedData, String privateKeyPem) {
+    try {
+      print('Starting RSA-OAEP decryption...');
+      print('Encrypted data length: ${encryptedData.length}');
+      
+      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+      print('Private key modulus bits: ${privateKey.n!.bitLength}');
+      
+      // Create OAEP cipher with SHA-256 (to match fast_rsa)
+      final cipher = OAEPEncoding.withCustomDigest(
+        () => SHA256Digest(), // Use SHA-256 to match fast_rsa
+        RSAEngine(),
+      );
+      
+      // Initialize for decryption
+      cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+      
+      final encryptedBytes = base64Decode(encryptedData);
+      print('Encrypted bytes length: ${encryptedBytes.length}');
+      
+      // Validate encrypted data size
+      final maxInputSize = cipher.inputBlockSize;
+      print('Max input size for cipher: $maxInputSize');
+      
+      if (encryptedBytes.length > maxInputSize) {
+        throw Exception('Encrypted data too large for RSA key size');
+      }
+      
+      final decryptedBytes = cipher.process(encryptedBytes);
+      final decryptedString = utf8.decode(decryptedBytes);
+      
+      print('RSA-OAEP decryption completed successfully');
+      print('Decrypted data length: ${decryptedString.length}');
+      return decryptedString;
+    } catch (e) {
+      print('RSA-OAEP decryption error: $e');
+      
+      // Try fallback with different padding
+      try {
+        print('Trying PKCS1v15 as fallback...');
+        return _decryptWithRSAPKCS1v15(encryptedData, privateKeyPem);
+      } catch (fallbackError) {
+        print('Fallback also failed: $fallbackError');
+        rethrow;
+      }
+    }
+  }
+
+  /// Fallback RSA-PKCS1v15 decryption
+  static String _decryptWithRSAPKCS1v15(String encryptedData, String privateKeyPem) {
+    try {
+      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+      final cipher = PKCS1Encoding(RSAEngine());
+      cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+      
+      final encryptedBytes = base64Decode(encryptedData);
+      final decryptedBytes = cipher.process(encryptedBytes);
+      final decryptedString = utf8.decode(decryptedBytes);
+      
+      print('PKCS1v15 fallback decryption successful');
+      return decryptedString;
+    } catch (e) {
+      print('PKCS1v15 fallback decryption error: $e');
+      rethrow;
+    }
+  }
+
+  /// AES-256-GCM decryption - IMPROVED ERROR HANDLING
+  static Future<Uint8List> _decryptWithAES256GCM(
+      Uint8List encryptedData, Uint8List key, Uint8List nonce) async {
+    try {
+      print('Starting AES-256-GCM decryption...');
+      print('Encrypted data length: ${encryptedData.length}');
+      print('Key length: ${key.length}');
+      print('Nonce length: ${nonce.length}');
+      
+      if (encryptedData.length < 16) {
+        throw Exception('Encrypted data too short - missing MAC (${encryptedData.length} bytes)');
+      }
+      
+      if (key.length != 32) {
+        throw Exception('Invalid AES-256 key length: ${key.length} (expected 32)');
+      }
+      
+      if (nonce.length != 12) {
+        throw Exception('Invalid GCM nonce length: ${nonce.length} (expected 12)');
+      }
+      
+      final cipherTextLength = encryptedData.length - 16;
+      final cipherText = encryptedData.sublist(0, cipherTextLength);
+      final macBytes = encryptedData.sublist(cipherTextLength);
+      
+      print('Cipher text length: ${cipherText.length}');
+      print('MAC length: ${macBytes.length}');
+      
+      final secretKey = SecretKey(key);
+      final mac = Mac(macBytes);
+      
+      final secretBox = SecretBox(cipherText, nonce: nonce, mac: mac);
+      
+      final decryptedBytes = await _aesGcm.decrypt(
+        secretBox,
+        secretKey: secretKey,
+      );
+      
+      print('AES-256-GCM decryption completed successfully: ${decryptedBytes.length} bytes');
+      return Uint8List.fromList(decryptedBytes);
+    } catch (e) {
+      print('AES-256-GCM decryption error: $e');
+      rethrow;
+    }
+  }
+
+  /// Decrypt file using the cryptography package - IMPROVED VERSION
+  static Future<Uint8List?> _decryptFile(Map<String, dynamic> file) async {
     try {
       final fileId = file['id'];
       final ipfsCid = file['ipfs_cid'];
@@ -110,14 +278,17 @@ class EnhancedFilePreviewService {
         return null;
       }
 
-      // Get current user from auth
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         print('Authentication error');
         return null;
       }
 
-      // Get the User record by email
+      print('Current user: ${currentUser.email}');
+      print('File ID: $fileId');
+      print('IPFS CID: $ipfsCid');
+
+      // Get current user's data
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('id, rsa_private_key, email')
@@ -132,45 +303,59 @@ class EnhancedFilePreviewService {
         return null;
       }
 
-      // Parse RSA private key
-      final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(rsaPrivateKeyPem);
+      print('User ID: $actualUserId');
+      print('RSA private key length: ${rsaPrivateKeyPem.length}');
 
-      // Get File_Keys for this file
+      // Get all file keys for this file
       final allFileKeys = await Supabase.instance.client
           .from('File_Keys')
-          .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted, nonce_hex')
+          .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted')
           .eq('file_id', fileId);
 
-      // Find usable key
+      print('Found ${allFileKeys.length} file keys');
+
       Map<String, dynamic>? usableKey;
       
-      // Try direct user key first
+      // Look for a key we can use
       for (var key in allFileKeys) {
+        print('Checking key: ${key['recipient_type']} - ${key['recipient_id']}');
         if (key['recipient_type'] == 'user' && key['recipient_id'] == actualUserId) {
           usableKey = key;
+          print('Found usable key for current user');
           break;
         }
       }
 
       if (usableKey == null) {
-        print('No usable key found');
+        print('No usable key found for user $actualUserId');
         return null;
       }
 
-      // Decrypt the AES key
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      final decryptedKeyDataJson = CryptoUtils.rsaDecrypt(encryptedKeyData, rsaPrivateKey);
+      print('Encrypted key data length: ${encryptedKeyData.length}');
+
+      // Decrypt the AES key package
+      final decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
+      print('Successfully decrypted RSA key package');
       
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-      final aesKeyHex = keyData['key'] as String?;
-      final aesNonceHex = keyData['nonce'] as String? ?? usableKey['nonce_hex'] as String?;
+      final aesKeyBase64 = keyData['key'] as String?;
+      final aesNonceBase64 = keyData['nonce'] as String?;
 
-      if (aesKeyHex == null || aesNonceHex == null) {
+      if (aesKeyBase64 == null || aesNonceBase64 == null) {
         throw Exception('Missing AES key or nonce in decrypted data');
       }
 
+      final aesKey = base64Decode(aesKeyBase64);
+      final aesNonce = base64Decode(aesNonceBase64);
+
+      print('AES key length: ${aesKey.length}');
+      print('AES nonce length: ${aesNonce.length}');
+
       // Download file from IPFS
       final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
+      print('Downloading from: $ipfsUrl');
+      
       final response = await http.get(Uri.parse(ipfsUrl));
 
       if (response.statusCode != 200) {
@@ -178,39 +363,23 @@ class EnhancedFilePreviewService {
       }
 
       final encryptedFileBytes = response.bodyBytes;
+      print('Downloaded encrypted file: ${encryptedFileBytes.length} bytes');
 
       // Decrypt the file
-      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-      final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
+      final decryptedBytes = await _decryptWithAES256GCM(encryptedFileBytes, aesKey, aesNonce);
 
       print('File decrypted successfully: ${decryptedBytes.length} bytes');
       return decryptedBytes;
       
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error decrypting file: $e');
+      print('Stack trace: $stackTrace');
       return null;
     }
   }
   
-  /// Check if file is an image
-  static bool _isImageFile(String extension) {
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
-    return imageExtensions.contains(extension);
-  }
-  
-  /// Check if file is a text file
-  static bool _isTextFile(String extension) {
-    const textExtensions = ['txt', 'json', 'xml', 'csv', 'log', 'md', 'html', 'css', 'js'];
-    return textExtensions.contains(extension);
-  }
-  
-  /// Show enhanced image preview with zoom and pan
-  static void _showImagePreview(
-    BuildContext context,
-    String fileName,
-    Uint8List imageBytes,
-    Function(String) showSnackBar,
-  ) {
+  /// Simple image preview
+  static void _showImagePreview(BuildContext context, String fileName, Uint8List imageBytes) {
     showDialog(
       context: context,
       builder: (context) => Dialog.fullscreen(
@@ -220,16 +389,6 @@ class EnhancedFilePreviewService {
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: Text(fileName),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.download),
-                onPressed: () => _saveToDownloads(context, fileName, imageBytes, showSnackBar),
-              ),
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () => _shareFile(context, fileName, imageBytes, showSnackBar),
-              ),
-            ],
           ),
           body: Center(
             child: InteractiveViewer(
@@ -249,11 +408,6 @@ class EnhancedFilePreviewService {
                         const Text('Failed to load image', style: TextStyle(color: Colors.white)),
                         const SizedBox(height: 8),
                         Text('Error: $error', style: const TextStyle(color: Colors.grey)),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => _saveToDownloads(context, fileName, imageBytes, showSnackBar),
-                          child: const Text('Save to Downloads'),
-                        ),
                       ],
                     ),
                   );
@@ -266,13 +420,8 @@ class EnhancedFilePreviewService {
     );
   }
   
-  /// Show enhanced text preview with syntax highlighting for code
-  static void _showTextPreview(
-    BuildContext context,
-    String fileName,
-    Uint8List textBytes,
-    Function(String) showSnackBar,
-  ) {
+  /// Simple text preview
+  static void _showTextPreview(BuildContext context, String fileName, Uint8List textBytes) {
     try {
       final textContent = String.fromCharCodes(textBytes);
       final extension = fileName.toLowerCase().split('.').last;
@@ -283,23 +432,9 @@ class EnhancedFilePreviewService {
           child: Scaffold(
             appBar: AppBar(
               title: Text(fileName),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.copy),
-                  onPressed: () {
-                    // Copy to clipboard functionality
-                    showSnackBar('Copy to clipboard feature coming soon!');
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: () => _saveToDownloads(context, fileName, textBytes, showSnackBar),
-                ),
-              ],
             ),
             body: Column(
               children: [
-                // File info bar
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
@@ -319,11 +454,10 @@ class EnhancedFilePreviewService {
                     padding: const EdgeInsets.all(16),
                     child: SelectableText(
                       textContent,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 14,
                         height: 1.4,
-                        color: _isCodeFile(extension) ? Colors.blue[900] : Colors.black87,
                       ),
                     ),
                   ),
@@ -335,224 +469,128 @@ class EnhancedFilePreviewService {
       );
     } catch (e) {
       print('Error showing text preview: $e');
-      showSnackBar('Error displaying text: $e');
     }
   }
 
-  /// Show PDF preview with page navigation
-  static void _showPDFPreview(
-    BuildContext context,
-    String fileName,
-    Uint8List pdfBytes,
-    Function(String) showSnackBar,
-  ) {
+  /// Simple PDF preview placeholder
+  static void _showPDFPreview(BuildContext context, String fileName, Uint8List pdfBytes) {
     showDialog(
       context: context,
-      builder: (context) => Dialog.fullscreen(
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(fileName),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.download),
-                onPressed: () => _saveToDownloads(context, fileName, pdfBytes, showSnackBar),
+      builder: (context) => Dialog(
+        child: Container(
+          width: 400,
+          height: 300,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text('PDF Preview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(fileName, textAlign: TextAlign.center),
+              Text('${_formatFileSize(pdfBytes.length)}'),
+              const SizedBox(height: 16),
+              const Text('PDF viewer not implemented in preview mode', 
+                style: TextStyle(color: Colors.grey), 
+                textAlign: TextAlign.center
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
               ),
             ],
           ),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                const Text('PDF Preview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(fileName),
-                Text('${_formatFileSize(pdfBytes.length)}'),
-                const SizedBox(height: 24),
-                const Text('PDF viewer integration needed', style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => _openWithSystemApp(context, fileName, pdfBytes, showSnackBar),
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('Open Externally'),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: () => _saveToDownloads(context, fileName, pdfBytes, showSnackBar),
-                      icon: const Icon(Icons.download),
-                      label: const Text('Download'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
-  
-  /// Save file and open with system app
-  static Future<void> _openWithSystemApp(
-    BuildContext context,
-    String fileName,
-    Uint8List fileBytes,
-    Function(String) showSnackBar,
-  ) async {
-    try {
-      // Save to temporary directory with proper filename
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/$fileName');
-      
-      // Ensure the file is written completely
-      await tempFile.writeAsBytes(fileBytes, flush: true);
-      
-      // Verify file was written correctly
-      if (!await tempFile.exists()) {
-        throw Exception('Failed to save temporary file');
-      }
-      
-      // Try to open with system app
-      final result = await OpenFile.open(tempFile.path);
-      
-      if (result.type == ResultType.done) {
-        print('File opened successfully');
-        showSnackBar('File opened successfully');
-      } else {
-        print('OpenFile result: ${result.type} - ${result.message}');
-        _showFileOptionsDialog(context, fileName, fileBytes, tempFile.path, showSnackBar);
-      }
-      
-    } catch (e) {
-      print('Error opening file with system app: $e');
-      _showFileOptionsDialog(context, fileName, fileBytes, null, showSnackBar);
-    }
-  }
-  
-  /// Show options dialog when system app fails
-  static void _showFileOptionsDialog(
-    BuildContext context,
-    String fileName,
-    Uint8List fileBytes,
-    String? tempFilePath,
-    Function(String) showSnackBar,
+
+  /// Generic preview for unsupported file types
+  static void _showGenericPreview(
+    BuildContext context, 
+    String fileName, 
+    Uint8List fileBytes, 
+    String extension
   ) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('File Preview'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('File: $fileName'),
-            Text('Size: ${_formatFileSize(fileBytes.length)}'),
-            const SizedBox(height: 16),
-            const Text('Unable to preview this file type in the app.'),
-          ],
+      builder: (context) => Dialog(
+        child: Container(
+          width: 400,
+          height: 400,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Icon(_getFileIcon(extension), size: 64, color: Colors.grey[600]),
+              const SizedBox(height: 16),
+              Text(
+                extension.toUpperCase(),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                fileName,
+                style: const TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text('Size: ${_formatFileSize(fileBytes.length)}'),
+              const SizedBox(height: 16),
+              const Text(
+                'Preview not available for this file type.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              if (fileBytes.length < 2000) ...[
+                const Text(
+                  'Hex Preview (first 500 bytes):',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: SelectableText(
+                        _bytesToHex(fileBytes.take(500).toList()),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          if (tempFilePath != null)
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                final result = await OpenFile.open(tempFilePath);
-                if (result.type != ResultType.done) {
-                  showSnackBar('Could not open: ${result.message}');
-                }
-              },
-              child: const Text('Try Again'),
-            ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _saveToDownloads(context, fileName, fileBytes, showSnackBar);
-            },
-            child: const Text('Save to Downloads'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
-  
-  /// Save file to Downloads folder
-  static Future<void> _saveToDownloads(
-    BuildContext context,
-    String fileName,
-    Uint8List fileBytes,
-    Function(String) showSnackBar,
-  ) async {
-    try {
-      // Request storage permission
-      if (Platform.isAndroid) {
-        final status = await Permission.storage.request();
-        if (!status.isGranted) {
-          showSnackBar('Storage permission required');
-          return;
-        }
-      }
-      
-      // Get Downloads directory
-      Directory? downloadsDir;
-      if (Platform.isAndroid) {
-        downloadsDir = Directory('/storage/emulated/0/Download');
-      } else if (Platform.isIOS) {
-        downloadsDir = await getApplicationDocumentsDirectory();
-      }
-      
-      if (downloadsDir == null || !await downloadsDir.exists()) {
-        downloadsDir = await getApplicationDocumentsDirectory();
-      }
-      
-      // Ensure unique filename
-      String uniqueFileName = fileName;
-      int counter = 1;
-      while (await File('${downloadsDir.path}/$uniqueFileName').exists()) {
-        final nameParts = fileName.split('.');
-        if (nameParts.length > 1) {
-          final name = nameParts.sublist(0, nameParts.length - 1).join('.');
-          final extension = nameParts.last;
-          uniqueFileName = '${name}_$counter.$extension';
-        } else {
-          uniqueFileName = '${fileName}_$counter';
-        }
-        counter++;
-      }
-      
-      final file = File('${downloadsDir.path}/$uniqueFileName');
-      await file.writeAsBytes(fileBytes);
-      
-      showSnackBar('File saved: ${file.path}');
-      
-    } catch (e) {
-      print('Error saving file: $e');
-      showSnackBar('Error saving file: $e');
-    }
-  }
-
-  /// Share file (placeholder for future implementation)
-  static Future<void> _shareFile(
-    BuildContext context,
-    String fileName,
-    Uint8List fileBytes,
-    Function(String) showSnackBar,
-  ) async {
-    // Placeholder for sharing functionality
-    showSnackBar('Share functionality coming soon!');
-  }
 
   /// Helper methods
-  static bool _isCodeFile(String extension) {
-    const codeExtensions = ['js', 'ts', 'dart', 'java', 'python', 'cpp', 'c', 'css', 'html', 'xml'];
-    return codeExtensions.contains(extension);
+  static bool _isImageFile(String extension) {
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+    return imageExtensions.contains(extension);
+  }
+  
+  static bool _isTextFile(String extension) {
+    const textExtensions = ['txt', 'json', 'xml', 'csv', 'log', 'md', 'html', 'css', 'js'];
+    return textExtensions.contains(extension);
   }
 
   static IconData _getFileIcon(String extension) {
@@ -594,7 +632,6 @@ class EnhancedFilePreviewService {
     }
   }
   
-  /// Format file size in human readable format
   static String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -603,159 +640,31 @@ class EnhancedFilePreviewService {
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
-}
 
-/// Full screen file preview widget for "new tab" experience
-class FullScreenFilePreview extends StatefulWidget {
-  final Map<String, dynamic> file;
-  final Function(String) showSnackBar;
-
-  const FullScreenFilePreview({
-    Key? key,
-    required this.file,
-    required this.showSnackBar,
-  }) : super(key: key);
-
-  @override
-  State<FullScreenFilePreview> createState() => _FullScreenFilePreviewState();
-}
-
-class _FullScreenFilePreviewState extends State<FullScreenFilePreview> {
-  bool _isLoading = true;
-  Uint8List? _fileBytes;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFile();
-  }
-
-  Future<void> _loadFile() async {
-    try {
-      final bytes = await EnhancedFilePreviewService._decryptFileUsingWorkingMethod(widget.file);
-      setState(() {
-        _fileBytes = bytes;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
+  static String _bytesToHex(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (int i = 0; i < bytes.length; i += 16) {
+      buffer.write('${i.toRadixString(16).padLeft(8, '0')}: ');
+      
+      for (int j = 0; j < 16; j++) {
+        if (i + j < bytes.length) {
+          buffer.write('${bytes[i + j].toRadixString(16).padLeft(2, '0')} ');
+        } else {
+          buffer.write('   ');
+        }
+      }
+      
+      buffer.write(' |');
+      for (int j = 0; j < 16 && i + j < bytes.length; j++) {
+        final byte = bytes[i + j];
+        if (byte >= 32 && byte <= 126) {
+          buffer.write(String.fromCharCode(byte));
+        } else {
+          buffer.write('.');
+        }
+      }
+      buffer.write('|\n');
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fileName = widget.file['filename'] ?? 'Unknown File';
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(fileName),
-        actions: [
-          if (_fileBytes != null) ...[
-            IconButton(
-              icon: const Icon(Icons.download),
-              onPressed: () => EnhancedFilePreviewService._saveToDownloads(
-                context, 
-                fileName, 
-                _fileBytes!, 
-                widget.showSnackBar
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: () => EnhancedFilePreviewService._shareFile(
-                context, 
-                fileName, 
-                _fileBytes!, 
-                widget.showSnackBar
-              ),
-            ),
-          ],
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error, size: 64, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text('Error loading file: $_error'),
-                    ],
-                  ),
-                )
-              : _buildFileContent(),
-    );
-  }
-
-  Widget _buildFileContent() {
-    if (_fileBytes == null) return const Center(child: Text('No file data'));
-
-    final fileName = widget.file['filename'] ?? 'Unknown File';
-    final extension = fileName.toLowerCase().split('.').last;
-
-    if (EnhancedFilePreviewService._isImageFile(extension)) {
-      return Center(
-        child: InteractiveViewer(
-          child: Image.memory(_fileBytes!, fit: BoxFit.contain),
-        ),
-      );
-    }
-
-    if (EnhancedFilePreviewService._isTextFile(extension)) {
-      final textContent = String.fromCharCodes(_fileBytes!);
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: SelectableText(
-          textContent,
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 14,
-            height: 1.4,
-          ),
-        ),
-      );
-    }
-
-    // For other file types, show info and options
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            EnhancedFilePreviewService._getFileIcon(extension),
-            size: 64,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            fileName,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            EnhancedFilePreviewService._formatFileSize(_fileBytes!.length),
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 24),
-          const Text('This file type cannot be previewed in the app'),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () => EnhancedFilePreviewService._openWithSystemApp(
-              context, 
-              fileName, 
-              _fileBytes!, 
-              widget.showSnackBar
-            ),
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Open with System App'),
-          ),
-        ],
-      ),
-    );
+    return buffer.toString();
   }
 }

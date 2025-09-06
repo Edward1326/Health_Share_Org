@@ -4,18 +4,22 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:health_share_org/services/aes_helper.dart';
-import 'package:health_share_org/services/crypto_utils.dart';
 import 'dart:html' as html;
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'dart:async';
+import 'package:cryptography/cryptography.dart';
+import 'package:pointycastle/export.dart';
+import 'package:asn1lib/asn1lib.dart';
 
 class FileUploadService {
   // Define app theme colors
   static const Color primaryBlue = Color(0xFF4A90E2);
   static const Color lightBlue = Color(0xFFE3F2FD);
   static const Color darkGray = Color(0xFF757575);
+
+  // Cryptography instances
+  static final _aesGcm = AesGcm.with256bits();
 
   // Helper method to generate secure random bytes
   static Uint8List _generateRandomBytes(int length) {
@@ -24,34 +28,148 @@ class FileUploadService {
         List.generate(length, (i) => random.nextInt(256)));
   }
 
-  // Helper method to convert bytes to hex string
-  static String _bytesToHex(Uint8List bytes) {
-    return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join('');
-  }
-
   // Helper method to calculate SHA256 hash
   static String _calculateSHA256(Uint8List data) {
     final digest = sha256.convert(data);
     return digest.toString();
   }
 
-  // Add this helper method to validate JWT token format
-  static bool _isValidJWT(String token) {
-    if (token.isEmpty) return false;
-
-    final parts = token.split('.');
-    if (parts.length != 3) return false;
-
-    // Check if each part is valid base64
-    for (final part in parts) {
-      try {
-        base64Url.decode(part + '=' * (4 - part.length % 4));
-      } catch (e) {
-        return false;
-      }
+  // AES-256-GCM encryption using cryptography package - consistent format with mobile
+  static Future<Uint8List> _encryptWithAES256GCM(
+      Uint8List data, Uint8List key, Uint8List nonce) async {
+    try {
+      print('Starting AES-256-GCM encryption...');
+      print('Data size: ${data.length} bytes');
+      print('Key size: ${key.length} bytes');
+      print('Nonce size: ${nonce.length} bytes');
+      
+      final secretKey = SecretKey(key);
+      
+      final secretBox = await _aesGcm.encrypt(
+        data,
+        secretKey: secretKey,
+        nonce: nonce,
+      );
+      
+      print('AES encryption completed successfully');
+      
+      // Format: [ciphertext][16-byte MAC] (consistent with mobile services)
+      final result = Uint8List(secretBox.cipherText.length + secretBox.mac.bytes.length);
+      result.setRange(0, secretBox.cipherText.length, secretBox.cipherText);
+      result.setRange(secretBox.cipherText.length, result.length, secretBox.mac.bytes);
+      
+      print('Combined encrypted data: ${result.length} bytes (${secretBox.cipherText.length} ciphertext + ${secretBox.mac.bytes.length} MAC)');
+      
+      return result;
+    } catch (e) {
+      print('AES-256-GCM encryption error: $e');
+      rethrow;
     }
+  }
 
-    return true;
+  // Parse RSA public key from PEM format using PointyCastle - handles both PKCS#1 and PKCS#8
+  static RSAPublicKey _parseRSAPublicKeyFromPem(String pem) {
+    try {
+      print('Parsing RSA public key from PEM...');
+      
+      // Clean the PEM string
+      final cleanPem = pem.trim();
+      
+      // Determine the format
+      bool isPkcs1 = cleanPem.contains('-----BEGIN RSA PUBLIC KEY-----');
+      bool isPkcs8 = cleanPem.contains('-----BEGIN PUBLIC KEY-----');
+      
+      if (!isPkcs1 && !isPkcs8) {
+        throw FormatException('Invalid PEM format - missing proper headers');
+      }
+      
+      String lines;
+      if (isPkcs1) {
+        print('Detected PKCS#1 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN RSA PUBLIC KEY-----', '')
+            .replaceAll('-----END RSA PUBLIC KEY-----', '')
+            .replaceAll('\n', '')
+            .replaceAll('\r', '')
+            .replaceAll(' ', '')
+            .trim();
+      } else {
+        print('Detected PKCS#8 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN PUBLIC KEY-----', '')
+            .replaceAll('-----END PUBLIC KEY-----', '')
+            .replaceAll('\n', '')
+            .replaceAll('\r', '')
+            .replaceAll(' ', '')
+            .trim();
+      }
+      
+      if (lines.isEmpty) {
+        throw FormatException('Empty key data after cleaning');
+      }
+      
+      final keyBytes = base64Decode(lines);
+      
+      if (isPkcs1) {
+        // PKCS#1 format - direct RSA key structure
+        final publicKeyParser = ASN1Parser(keyBytes);
+        final publicKeySeq = publicKeyParser.nextObject() as ASN1Sequence;
+        
+        final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
+        final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+        
+        print('PKCS#1 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
+        return RSAPublicKey(modulus, exponent!);
+      } else {
+        // PKCS#8 format - wrapped in algorithm identifier
+        final asn1Parser = ASN1Parser(keyBytes);
+        final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+        
+        // Extract the public key bit string
+        final publicKeyBitString = topLevelSeq.elements[1] as ASN1BitString;
+        final publicKeyBytes = publicKeyBitString.contentBytes();
+        
+        // Parse the RSA public key structure
+        final publicKeyParser = ASN1Parser(publicKeyBytes);
+        final publicKeySeq = publicKeyParser.nextObject() as ASN1Sequence;
+        
+        final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
+        final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+        
+        print('PKCS#8 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
+        return RSAPublicKey(modulus, exponent!);
+      }
+    } catch (e) {
+      print('Error parsing RSA public key from PEM: $e');
+      print('PEM content (first 100 chars): ${pem.substring(0, pem.length > 100 ? 100 : pem.length)}');
+      rethrow;
+    }
+  }
+
+  // RSA-OAEP encryption using PointyCastle
+  static String _encryptWithRSAOAEP(String data, String publicKeyPem) {
+    try {
+      print('Starting RSA-OAEP encryption...');
+      print('Data to encrypt length: ${data.length} characters');
+      
+      final publicKey = _parseRSAPublicKeyFromPem(publicKeyPem);
+      
+      // Create OAEP encryptor with SHA-256
+      final encryptor = OAEPEncoding(RSAEngine())
+        ..init(true, PublicKeyParameter<RSAPublicKey>(publicKey));
+      
+      final dataBytes = utf8.encode(data);
+      final encryptedBytes = encryptor.process(Uint8List.fromList(dataBytes));
+      final encryptedBase64 = base64Encode(encryptedBytes);
+      
+      print('RSA-OAEP encryption completed successfully');
+      print('Encrypted data length: ${encryptedBase64.length} characters');
+      
+      return encryptedBase64;
+    } catch (e) {
+      print('RSA-OAEP encryption error: $e');
+      rethrow;
+    }
   }
 
   static Future<void> uploadFileForPatient(
@@ -62,17 +180,12 @@ class FileUploadService {
   ) async {
     if (selectedPatient == null) return;
 
-    // DEBUG: Print selected patient structure
-    print('DEBUG: selectedPatient structure: $selectedPatient');
-    print('DEBUG: selectedPatient keys: ${selectedPatient.keys}');
-    if (selectedPatient.containsKey('patient_id')) {
-      print('DEBUG: patient_id value: ${selectedPatient['patient_id']}');
-      print(
-          'DEBUG: patient_id type: ${selectedPatient['patient_id'].runtimeType}');
-    }
-
     try {
+      print('=== STARTING FILE UPLOAD PROCESS ===');
+      print('Using PointyCastle RSA-OAEP + cryptography AES-256-GCM (consistent format)');
+      
       // Step 1: Create HTML file input for web compatibility
+      print('Step 1: Creating file input dialog...');
       final html.InputElement uploadInput = html.InputElement(type: 'file');
       uploadInput.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.txt';
       uploadInput.click();
@@ -90,25 +203,31 @@ class FileUploadService {
       final fileSize = file.size;
       final fileExtension = fileName.split('.').last.toLowerCase();
 
+      print('File selected: $fileName (${fileSize} bytes)');
+
       // Step 2: Read file as bytes
+      print('Step 2: Reading file as bytes...');
       final reader = html.FileReader();
       reader.readAsArrayBuffer(file);
       await reader.onLoad.first;
 
       final Uint8List fileBytes = reader.result as Uint8List;
+      print('File read successfully: ${fileBytes.length} bytes');
 
       // Step 3: Show file details dialog and get description
-      final fileDetails =
-          await _showFileDetailsDialog(context, fileName, fileSize);
-      if (fileDetails == null) return;
+      print('Step 3: Getting file details from user...');
+      final fileDetails = await _showFileDetailsDialog(context, fileName, fileSize);
+      if (fileDetails == null) {
+        print('User cancelled file upload');
+        return;
+      }
 
       // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: const Row(
             children: [
               CircularProgressIndicator(color: primaryBlue),
@@ -119,7 +238,8 @@ class FileUploadService {
         ),
       );
 
-      // Step 4: Get current user info for uploaded_by field - FIXED
+      // Step 4: Get current user info
+      print('Step 4: Getting current user info...');
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         Navigator.pop(context);
@@ -127,11 +247,7 @@ class FileUploadService {
         return;
       }
 
-      // Debug: Print current user info
-      print('DEBUG: Current user email: ${currentUser.email}');
-      print('DEBUG: Current user ID: ${currentUser.id}');
-
-      // Try to find user by email first
+      // Get or create user in database
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('id')
@@ -140,33 +256,28 @@ class FileUploadService {
       String? uploaderId;
 
       if (userResponse.isEmpty) {
-        // User doesn't exist in User table, create them
-        print('DEBUG: User not found in User table, creating new user record');
-
+        // Create new user record
         try {
           final newUserResponse = await Supabase.instance.client
               .from('User')
               .insert({
-                'id': currentUser.id, // Use auth user ID
+                'id': currentUser.id,
                 'email': currentUser.email!,
                 'created_at': DateTime.now().toIso8601String(),
-                // Add other required fields here if needed
               })
               .select('id')
               .single();
 
           uploaderId = newUserResponse['id'];
-          print('DEBUG: Created new user with ID: $uploaderId');
+          print('Created new user with ID: $uploaderId');
         } catch (createError) {
           Navigator.pop(context);
           showSnackBar('Error creating user record: $createError');
-          print('ERROR: Failed to create user: $createError');
           return;
         }
       } else {
-        // User exists, get their ID
         uploaderId = userResponse.first['id'];
-        print('DEBUG: Found existing user with ID: $uploaderId');
+        print('Found existing user with ID: $uploaderId');
       }
 
       if (uploaderId == null) {
@@ -175,51 +286,39 @@ class FileUploadService {
         return;
       }
 
-      // Step 5: Generate AES key and nonce for GCM mode, then encrypt file
-      final aesKeyBytes = _generateRandomBytes(32); // 32 bytes for AES-256
-      final aesNonceBytes = _generateRandomBytes(12); // 12 bytes for GCM nonce
+      // Step 5: Generate AES key and nonce for GCM mode
+      print('Step 5: Generating AES-256 key and nonce...');
+      final aesKey = _generateRandomBytes(32); // 32 bytes for AES-256
+      final aesNonce = _generateRandomBytes(12); // 12 bytes for GCM nonce
 
-      // Convert to hex strings for AESHelper
-      final aesKeyHex = _bytesToHex(aesKeyBytes);
-      final aesNonceHex = _bytesToHex(aesNonceBytes);
+      print('Generated AES-256 key (base64): ${base64Encode(aesKey)}');
+      print('Generated GCM nonce (base64): ${base64Encode(aesNonce)}');
 
-      print('DEBUG: Generated AES Key (hex): $aesKeyHex');
-      print('DEBUG: Generated AES Nonce (hex): $aesNonceHex');
+      // Step 6: Encrypt file with AES-256-GCM (using consistent format)
+      print('Step 6: Encrypting file with AES-256-GCM...');
+      final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
-      // Create AESHelper and encrypt the file
-      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-      final encryptedBytes = aesHelper.encryptData(fileBytes);
+      print('Original file size: ${fileBytes.length} bytes');
+      print('Encrypted file size: ${encryptedBytes.length} bytes');
 
-      print('DEBUG: Original file size: ${fileBytes.length} bytes');
-      print('DEBUG: Encrypted file size: ${encryptedBytes.length} bytes');
-
-      // Step 6: Get patient's RSA public key - UPDATED for Patient table
+      // Step 7: Get patient's RSA public key
+      print('Step 7: Getting patient RSA public key...');
       final patientId = selectedPatient['patient_id'];
-      print('DEBUG: Looking for patient with ID: $patientId');
-      print('DEBUG: Selected patient data: $selectedPatient');
-
-      // First, get the patient record from Patient table
+      
       final patientResponse = await Supabase.instance.client
           .from('Patient')
-          .select('id, user_id') // Assuming Patient table has a user_id field
+          .select('id, user_id')
           .eq('id', patientId);
-
-      print('DEBUG: Patient query response: $patientResponse');
 
       if (patientResponse.isEmpty) {
         Navigator.pop(context);
-        showSnackBar(
-            'Patient not found in Patient table. Patient ID: $patientId');
-        print('DEBUG: Patient lookup failed');
+        showSnackBar('Patient not found in Patient table. Patient ID: $patientId');
         return;
       }
 
       final patientData = patientResponse.first;
       final patientUserId = patientData['user_id'];
 
-      print('DEBUG: Patient found, associated user_id: $patientUserId');
-
-      // Now get the RSA public key from the User table using the patient's user_id
       final patientUserResponse = await Supabase.instance.client
           .from('User')
           .select('id, rsa_public_key, email')
@@ -232,8 +331,7 @@ class FileUploadService {
       }
 
       final patientUserData = patientUserResponse.first;
-      final patientRsaPublicKeyPem =
-          patientUserData['rsa_public_key'] as String?;
+      final patientRsaPublicKeyPem = patientUserData['rsa_public_key'] as String?;
 
       if (patientRsaPublicKeyPem == null || patientRsaPublicKeyPem.isEmpty) {
         Navigator.pop(context);
@@ -241,13 +339,10 @@ class FileUploadService {
         return;
       }
 
-      print(
-          'DEBUG: Patient RSA Public Key: ${patientRsaPublicKeyPem.substring(0, 100)}...');
+      print('Patient RSA public key retrieved');
 
-      final patientRsaPublicKey =
-          CryptoUtils.rsaPublicKeyFromPem(patientRsaPublicKeyPem);
-
-      // Step 7: Also get doctor's (your) RSA public key - ADD ERROR HANDLING
+      // Step 8: Get doctor's RSA public key
+      print('Step 8: Getting doctor RSA public key...');
       final doctorResponse = await Supabase.instance.client
           .from('User')
           .select('rsa_public_key')
@@ -264,45 +359,35 @@ class FileUploadService {
 
       if (doctorRsaPublicKeyPem == null || doctorRsaPublicKeyPem.isEmpty) {
         Navigator.pop(context);
-        showSnackBar(
-            'Doctor does not have an RSA public key. Please generate keys first.');
+        showSnackBar('Doctor does not have an RSA public key. Please generate keys first.');
         return;
       }
 
-      final doctorRsaPublicKey =
-          CryptoUtils.rsaPublicKeyFromPem(doctorRsaPublicKeyPem);
+      print('Doctor RSA public key retrieved');
 
-      // Step 8: Encrypt AES key with both patient's and doctor's RSA public keys
+      // Step 9: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
+      print('Step 9: Encrypting AES key with RSA-OAEP...');
       final keyData = {
-        'key': aesKeyHex,
-        'nonce': aesNonceHex,
+        'key': base64Encode(aesKey),      // BASE64 format (consistent with mobile)
+        'nonce': base64Encode(aesNonce),  // BASE64 format (consistent with mobile)
       };
       final keyDataJson = jsonEncode(keyData);
 
-      print('DEBUG: Key data to encrypt: $keyDataJson');
+      print('Key data JSON: $keyDataJson');
 
-      final patientRsaEncryptedString =
-          CryptoUtils.rsaEncrypt(keyDataJson, patientRsaPublicKey);
-      final doctorRsaEncryptedString =
-          CryptoUtils.rsaEncrypt(keyDataJson, doctorRsaPublicKey);
+      final patientRsaEncryptedString = _encryptWithRSAOAEP(keyDataJson, patientRsaPublicKeyPem);
+      final doctorRsaEncryptedString = _encryptWithRSAOAEP(keyDataJson, doctorRsaPublicKeyPem);
 
-      print(
-          'DEBUG: Patient RSA encrypted key data length: ${patientRsaEncryptedString.length}');
-      print(
-          'DEBUG: Doctor RSA encrypted key data length: ${doctorRsaEncryptedString.length}');
+      print('RSA-OAEP encryption completed for both patient and doctor');
 
-      // Step 9: Calculate SHA256 hash of original file
+      // Step 10: Calculate SHA256 hash of original file
       final sha256Hash = _calculateSHA256(fileBytes);
-      print('DEBUG: File SHA256 hash: $sha256Hash');
+      print('File SHA256 hash: $sha256Hash');
 
-      // Step 10: Upload encrypted file to IPFS with enhanced error handling
-      print('DEBUG: Starting IPFS upload...');
-      print(
-          'DEBUG: Encrypted file size for upload: ${encryptedBytes.length} bytes');
+      // Step 11: Upload encrypted file to IPFS
+      print('Step 11: Uploading encrypted file to IPFS...');
 
       final url = Uri.parse('https://api.pinata.cloud/pinning/pinFileToIPFS');
-
-      // Your actual Pinata credentials
       final String jwt = dotenv.env['PINATA_JWT'] ?? '';
 
       if (jwt.isEmpty) {
@@ -311,14 +396,9 @@ class FileUploadService {
         return;
       }
 
-      print('DEBUG: Creating multipart request...');
-
       final request = http.MultipartRequest('POST', url);
-
-      // Using JWT
       request.headers['Authorization'] = 'Bearer $jwt';
 
-      // Add the encrypted file
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',
@@ -327,7 +407,6 @@ class FileUploadService {
         ),
       );
 
-      // Optional: Add metadata
       final metadata = {
         'name': 'Medical File - ${fileDetails['fileName']}',
         'keyvalues': {
@@ -336,13 +415,13 @@ class FileUploadService {
           'uploadedBy': uploaderId,
           'patientId': selectedPatient['patient_id'],
           'encrypted': 'true',
+          'algorithm': 'AES-256-GCM (cryptography) + RSA-OAEP (pointycastle)',
           'uploadDate': DateTime.now().toIso8601String(),
         }
       };
 
       request.fields['pinataMetadata'] = jsonEncode(metadata);
 
-      // Optional: Add pinning options
       final options = {
         'cidVersion': 1,
         'wrapWithDirectory': false,
@@ -350,27 +429,19 @@ class FileUploadService {
 
       request.fields['pinataOptions'] = jsonEncode(options);
 
-      print('DEBUG: Sending request to Pinata...');
-      print('DEBUG: Request URL: ${request.url}');
-      print('DEBUG: Request headers: ${request.headers}');
-
       final streamedResponse = await request.send().timeout(
-            const Duration(minutes: 5), // 5 minute timeout
-          );
-
-      print(
-          'DEBUG: Received response with status: ${streamedResponse.statusCode}');
+        const Duration(minutes: 5),
+      );
 
       final response = await http.Response.fromStream(streamedResponse);
-
-      print('DEBUG: Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final ipfsJson = jsonDecode(response.body);
         final ipfsCid = ipfsJson['IpfsHash'] as String;
-        print('DEBUG: Upload successful. CID: $ipfsCid');
+        print('IPFS upload successful. CID: $ipfsCid');
 
-        // Step 11: Create file record in Files table
+        // Step 12: Create file record in Files table
+        print('Step 12: Creating file record in database...');
         final fileResponse = await Supabase.instance.client
             .from('Files')
             .insert({
@@ -378,7 +449,7 @@ class FileUploadService {
               'category': fileDetails['category'],
               'file_type': fileExtension.toUpperCase(),
               'uploaded_at': DateTime.now().toIso8601String(),
-              'file_size': fileBytes.length, // Store original file size
+              'file_size': fileBytes.length,
               'ipfs_cid': ipfsCid,
               'sha256_hash': sha256Hash,
               'uploaded_by': uploaderId,
@@ -387,93 +458,47 @@ class FileUploadService {
             .single();
 
         final fileId = fileResponse['id'];
-        print('DEBUG: File inserted with ID: $fileId');
+        print('File record created with ID: $fileId');
 
-        // Step 12: Insert encrypted AES keys for BOTH patient and doctor
-        try {
-          // Debug: Print all the values we're about to insert
-          print('DEBUG: About to insert File_Keys with values:');
-          print('  - fileId: $fileId (type: ${fileId.runtimeType})');
-          print(
-              '  - patientUserId: $patientUserId (type: ${patientUserId.runtimeType})');
-          print(
-              '  - uploaderId: $uploaderId (type: ${uploaderId.runtimeType})');
-          print(
-              '  - patientRsaEncryptedString length: ${patientRsaEncryptedString.length}');
-          print(
-              '  - doctorRsaEncryptedString length: ${doctorRsaEncryptedString.length}');
-          print('  - aesNonceHex: $aesNonceHex');
-
-          // Insert key for patient (using their user_id, not patient_id)
-          final patientKeyInsert = {
-            'file_id': fileId,
-            'recipient_type': 'user',
-            'recipient_id': patientUserId.toString(), // Ensure it's a string
-            'aes_key_encrypted': patientRsaEncryptedString,
-            'nonce_hex': aesNonceHex,
-          };
-
-          print('DEBUG: Patient key insert data: $patientKeyInsert');
-
-          await Supabase.instance.client
-              .from('File_Keys')
-              .insert(patientKeyInsert);
-          print('DEBUG: Patient key inserted successfully');
-
-          // Insert key for doctor (yourself)
-          final doctorKeyInsert = {
-            'file_id': fileId,
-            'recipient_type': 'user',
-            'recipient_id': uploaderId.toString(), // Ensure it's a string
-            'aes_key_encrypted': doctorRsaEncryptedString,
-            'nonce_hex': aesNonceHex,
-          };
-
-          print('DEBUG: Doctor key insert data: $doctorKeyInsert');
-
-          await Supabase.instance.client
-              .from('File_Keys')
-              .insert(doctorKeyInsert);
-          print('DEBUG: Doctor key inserted successfully');
-
-          print(
-              'DEBUG: File keys inserted successfully for both patient and doctor');
-        } catch (fileKeyError) {
-          print('ERROR: inserting file key: $fileKeyError');
-          Navigator.pop(context);
-          showSnackBar('File uploaded but key storage failed: $fileKeyError');
-          return;
-        }
-
-        // Step 13: Create File_Shares record to share with patient
-        final fileSharesInsert = {
+        // Step 13: Insert encrypted AES keys for both patient and doctor
+        print('Step 13: Storing encrypted keys in database...');
+        await Supabase.instance.client.from('File_Keys').insert({
           'file_id': fileId,
-          'shared_with_user_id':
-              patientUserId.toString(), // Use patient's user_id
+          'recipient_type': 'user',
+          'recipient_id': patientUserId.toString(),
+          'aes_key_encrypted': patientRsaEncryptedString,
+          // Note: nonce_hex not used in consistent format - nonce is stored in key JSON
+        });
+
+        await Supabase.instance.client.from('File_Keys').insert({
+          'file_id': fileId,
+          'recipient_type': 'user',
+          'recipient_id': uploaderId.toString(),
+          'aes_key_encrypted': doctorRsaEncryptedString,
+          // Note: nonce_hex not used in consistent format - nonce is stored in key JSON
+        });
+
+        print('Encrypted keys stored successfully');
+
+        // Step 14: Create File_Shares record
+        print('Step 14: Creating file sharing record...');
+        await Supabase.instance.client.from('File_Shares').insert({
+          'file_id': fileId,
+          'shared_with_user_id': patientUserId.toString(),
           'shared_by_user_id': uploaderId.toString(),
           'shared_at': DateTime.now().toIso8601String(),
-        };
+        });
 
-        print('DEBUG: File_Shares insert data: $fileSharesInsert');
+        print('File sharing record created successfully');
 
-        await Supabase.instance.client
-            .from('File_Shares')
-            .insert(fileSharesInsert);
-        print('DEBUG: File_Shares record created successfully');
-
-        // Close loading dialog
         Navigator.pop(context);
-
-        // Step 14: Call the completion callback
         onUploadComplete();
-        showSnackBar(
-            'File encrypted, uploaded to IPFS and shared successfully!');
+        showSnackBar('File encrypted with consistent format and uploaded successfully!');
 
-        print('DEBUG: File upload process completed successfully');
+        print('=== FILE UPLOAD PROCESS COMPLETED SUCCESSFULLY ===');
+
       } else {
-        // Handle different error codes
         String errorMessage;
-
         switch (response.statusCode) {
           case 400:
             errorMessage = 'Bad request - Check file format and size';
@@ -482,8 +507,7 @@ class FileUploadService {
             errorMessage = 'Unauthorized - Check your Pinata API credentials';
             break;
           case 402:
-            errorMessage =
-                'Payment required - Check your Pinata account limits';
+            errorMessage = 'Payment required - Check your Pinata account limits';
             break;
           case 403:
             errorMessage = 'Forbidden - Check your Pinata API permissions';
@@ -503,14 +527,12 @@ class FileUploadService {
 
         Navigator.pop(context);
         showSnackBar('$errorMessage: ${response.body}');
-        print(
-            'ERROR: IPFS upload failed - Status: ${response.statusCode}, Body: ${response.body}');
+        print('IPFS upload failed - Status: ${response.statusCode}, Body: ${response.body}');
       }
     } on TimeoutException {
       Navigator.pop(context);
-      showSnackBar(
-          'Upload timeout - Please check your connection and try again');
-      print('ERROR: IPFS upload timeout');
+      showSnackBar('Upload timeout - Please check your connection and try again');
+      print('IPFS upload timeout');
     } catch (e, stackTrace) {
       Navigator.pop(context);
       print('ERROR uploading file: $e');
@@ -571,8 +593,7 @@ class FileUploadService {
                           const SizedBox(height: 4),
                           Text(
                             'Size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB',
-                            style:
-                                const TextStyle(color: darkGray, fontSize: 13),
+                            style: const TextStyle(color: darkGray, fontSize: 13),
                           ),
                         ],
                       ),
@@ -636,8 +657,7 @@ class FileUploadService {
                     child: Text(category
                         .replaceAll('_', ' ')
                         .split(' ')
-                        .map(
-                            (word) => word[0].toUpperCase() + word.substring(1))
+                        .map((word) => word[0].toUpperCase() + word.substring(1))
                         .join(' ')),
                   );
                 }).toList(),
@@ -660,8 +680,7 @@ class FileUploadService {
               if (nameController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content:
-                          Text('Please enter a display name for the file')),
+                      content: Text('Please enter a display name for the file')),
                 );
                 return;
               }

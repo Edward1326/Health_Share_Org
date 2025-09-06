@@ -853,18 +853,10 @@ class _PatientsTabState extends State<PatientsTab> {
                     subtitle: 'View in app',
                     onTap: () {
                       Navigator.pop(context);
-                      EnhancedFilePreviewService.previewFile(context, file, _showSnackBar);
+                      SimpleFilePreviewService.previewFile(context, file, _showSnackBar);
                     },
                   ),
-                  _buildActionTile(
-                    icon: Icons.open_in_new,
-                    title: 'Preview in New Tab',
-                    subtitle: 'Full screen view',
-                    onTap: () {
-                      Navigator.pop(context);
-                      EnhancedFilePreviewService.previewFileInNewTab(context, file, _showSnackBar);
-                    },
-                  ),
+                
                   _buildActionTile(
                     icon: Icons.download,
                     title: 'Download File',
@@ -999,7 +991,7 @@ void _showFileDetails(Map<String, dynamic> file) {
         ElevatedButton.icon(
           onPressed: () {
             Navigator.pop(context);
-            EnhancedFilePreviewService.previewFile(context, file, _showSnackBar);
+            SimpleFilePreviewService.previewFile(context, file, _showSnackBar);
           },
           icon: const Icon(Icons.visibility),
           label: const Text('Preview'),
@@ -1083,7 +1075,7 @@ Widget _buildFileCard(Map<String, dynamic> file) {
       ],
     ),
     child: InkWell(
-      onTap: () => EnhancedFilePreviewService.previewFile(context, file, _showSnackBar),
+      onTap: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1153,7 +1145,7 @@ Widget _buildFileCard(Map<String, dynamic> file) {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: IconButton(
-                onPressed: () => EnhancedFilePreviewService.previewFile(context, file, _showSnackBar),
+                onPressed: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
                 icon: const Icon(Icons.visibility, color: primaryBlue, size: 20),
                 tooltip: 'Preview file',
               ),

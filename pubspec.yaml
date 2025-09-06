@@ -49,6 +49,7 @@ dependencies:
   permission_handler: ^11.0.1
   cryptography: ^2.7.0
   worker_manager: ^5.0.0
+  fast_rsa: ^3.8.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
