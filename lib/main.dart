@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'pages/admin/admin_dashboard.dart';
-import 'pages/signup.dart';
+import 'services/signup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/login.dart';
 import 'pages/admin/admin_dashboard.dart';

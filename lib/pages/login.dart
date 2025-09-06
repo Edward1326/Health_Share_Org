@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'signup.dart';
+import '../services/signup.dart';
 import 'admin/admin_dashboard.dart';
 import 'staff/staff_dashboard.dart';
 import 'reset_password.dart';

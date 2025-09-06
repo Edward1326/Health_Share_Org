@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:health_share_org/functions/login_function.dart'; // Import your enhanced signup service
-
+import 'package:health_share_org/functions/login_function.dart' as login_functions; // Aliased to avoid conflict
+import 'package:health_share_org/services/signup_service.dart'; 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
 

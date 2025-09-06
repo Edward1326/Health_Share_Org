@@ -1013,6 +1013,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.13.0"
+  worker_manager:
+    dependency: "direct main"
+    description:
+      name: worker_manager
+      sha256: "42501e49ee0acad9eeda562984e3dcfe6fe3d26f2d8dc410bd76308a86447eb5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.3"
   xdg_directories:
     dependency: transitive
     description:
