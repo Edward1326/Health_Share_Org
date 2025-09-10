@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'patients_tab.dart'; // Import your PatientTab page
 import '/main.dart'; // Import your Main page
-
+import 'staff_profile.dart';
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({Key? key}) : super(key: key);
 
@@ -150,18 +150,16 @@ class _StaffDashboardState extends State<StaffDashboard> {
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             onSelected: (value) {
-              switch (value) {
-                case 'profile':
-                  _showProfileDialog();
-                  break;
-                case 'settings':
-                  Navigator.pushNamed(context, '/staff_settings');
-                  break;
-                case 'signout':
-                  _signOut();
-                  break;
-              }
-            },
+  switch (value) {
+    case 'profile':
+      // Navigate to doctor profile page instead of showing dialog
+      Navigator.pushNamed(context, '/staff_profile');
+      break;
+    case 'signout':
+      _signOut();
+      break;
+  }
+},
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: 'profile',

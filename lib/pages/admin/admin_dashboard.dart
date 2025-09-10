@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'employeelist.dart';
 import 'patientslist.dart';
 import 'allfiles.dart';
-import 'profile.dart';
+import 'hospital_profile.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
