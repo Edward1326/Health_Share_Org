@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
         '/staff_settings': (context) => const StaffSettingsScreen(),
         '/staff_dashboard': (context) => const StaffDashboard(),
         '/reset_password': (context) => const ResetPasswordPage(),
-        '/profile': (context) => const AdminProfilePage(),
+        '/profile': (context) => const HospitalProfileContentWidget(),
         '/staff_profile': (context) => const DoctorProfilePage(),
       },
       // Handle unknown routes

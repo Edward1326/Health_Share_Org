@@ -35,46 +35,8 @@ class MainDashboardLayout extends StatefulWidget {
   State<MainDashboardLayout> createState() => _MainDashboardLayoutState();
 }
 
-class _MainDashboardLayoutState extends State<MainDashboardLayout>
-    with SingleTickerProviderStateMixin {
-  bool _isSidebarExpanded = true;
-  late AnimationController _animationController;
-  late Animation<double> _sidebarAnimation;
+class _MainDashboardLayoutState extends State<MainDashboardLayout> {
   
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _sidebarAnimation = Tween<double>(
-      begin: 250.0, // Expanded width
-      end: 60.0,    // Collapsed width
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _toggleSidebar() {
-    setState(() {
-      _isSidebarExpanded = !_isSidebarExpanded;
-    });
-    
-    if (_isSidebarExpanded) {
-      _animationController.reverse();
-    } else {
-      _animationController.forward();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -93,22 +55,17 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout>
   Widget _buildDesktopLayout() {
     return Row(
       children: [
-        // Left Sidebar Navigation - Animated
-        AnimatedBuilder(
-          animation: _sidebarAnimation,
-          builder: (context, child) {
-            return Container(
-              width: _sidebarAnimation.value,
-              child: _buildSidebar(),
-            );
-          },
+        // Left Sidebar Navigation - Fixed width
+        Container(
+          width: 250.0,
+          child: _buildSidebar(),
         ),
         
         // Main Content Area
         Expanded(
           child: Column(
             children: [
-              // Top Header Bar (Green) with Hamburger Menu
+              // Top Header Bar (Green) - No hamburger menu
               _buildTopHeader(),
               
               // Main Content
@@ -133,27 +90,21 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout>
           // Dashboard Title
           Container(
             padding: const EdgeInsets.all(24),
-            child: _isSidebarExpanded
-                ? const Text(
-                    'Dashboard',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: DashboardTheme.darkGray,
-                    ),
-                  )
-                : const Icon(
-                    Icons.dashboard,
-                    color: DashboardTheme.darkGray,
-                    size: 24,
-                  ),
+            child: const Text(
+              'Dashboard',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: DashboardTheme.darkGray,
+              ),
+            ),
           ),
           
           // Navigation Items
           _buildNavItem(Icons.home, 'Dashboard', 0, widget.selectedNavIndex == 0),
           _buildNavItem(Icons.people, 'Employees', 1, widget.selectedNavIndex == 1),
           _buildNavItem(Icons.local_hospital, 'Patients', 2, widget.selectedNavIndex == 2),
-          _buildNavItem(Icons.folder, 'All Files', 3, widget.selectedNavIndex == 3),
+          _buildNavItem(Icons.business, 'Hospital Profile', 3, widget.selectedNavIndex == 3),
           _buildNavItem(Icons.settings, 'Settings', 4, widget.selectedNavIndex == 4),
           
           const Spacer(),
@@ -165,25 +116,19 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout>
               onTap: () {
                 Navigator.pushReplacementNamed(context, '/login');
               },
-              child: _isSidebarExpanded
-                  ? const Row(
-                      children: [
-                        Icon(Icons.logout, color: DashboardTheme.textGray, size: 20),
-                        SizedBox(width: 12),
-                        Text(
-                          'Log out',
-                          style: TextStyle(
-                            color: DashboardTheme.textGray,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Icon(
-                      Icons.logout,
+              child: const Row(
+                children: [
+                  Icon(Icons.logout, color: DashboardTheme.textGray, size: 20),
+                  SizedBox(width: 12),
+                  Text(
+                    'Log out',
+                    style: TextStyle(
                       color: DashboardTheme.textGray,
-                      size: 20,
+                      fontSize: 14,
                     ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -191,77 +136,88 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout>
     );
   }
 
-  Widget _buildNavItem(IconData icon, String title, int index, bool isSelected) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? DashboardTheme.primaryGreen : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: InkWell(
-        onTap: () {
-          switch (index) {
-            case 0: // Dashboard
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const Dashboard()),
-              );
-              break;
-            case 1: // Employees
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MainDashboardLayout(
-                    title: 'Employee Management',
-                    selectedNavIndex: 1,
-                    content: EmployeeContentWidget(),
-                  ),
+  // Fixed navigation section in _buildNavItem method of MainDashboardLayout
+
+// Fixed navigation section in _buildNavItem method of MainDashboardLayout
+
+// Fixed navigation section in _buildNavItem method of MainDashboardLayout
+
+Widget _buildNavItem(IconData icon, String title, int index, bool isSelected) {
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    decoration: BoxDecoration(
+      color: isSelected ? DashboardTheme.primaryGreen : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: InkWell(
+      onTap: () {
+        switch (index) {
+          case 0: // Dashboard
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const Dashboard()),
+            );
+            break;
+          case 1: // Employees
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const MainDashboardLayout(
+                  title: 'Employee Management',
+                  selectedNavIndex: 1,
+                  content: EmployeeContentWidget(),
                 ),
-              );
-              break;
-            case 2: // Patients
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const AdminPatientsListPage()),
-              );
-              break;
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: _isSidebarExpanded
-              ? Row(
-                  children: [
-                    Icon(
-                      icon,
-                      color: isSelected ? Colors.white : DashboardTheme.textGray,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : DashboardTheme.textGray,
-                          fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : Tooltip(
-                  message: title,
-                  child: Icon(
-                    icon,
-                    color: isSelected ? Colors.white : DashboardTheme.textGray,
-                    size: 20,
-                  ),
+              ),
+            );
+            break;
+          case 2: // Patients
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const MainDashboardLayout(
+                  title: 'Patient Management',
+                  selectedNavIndex: 2,
+                  content: PatientContentWidget(),
                 ),
+              ),
+            );
+            break;
+          case 3: // Hospital Profile
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const HospitalProfileContentWidget(),
+              ),
+            );
+            break;
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : DashboardTheme.textGray,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : DashboardTheme.textGray,
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildTopHeader() {
     return Container(
@@ -270,20 +226,7 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout>
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
-          // Hamburger Menu Button
-          InkWell(
-            onTap: _toggleSidebar,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              child: Icon(
-                _isSidebarExpanded ? Icons.menu_open : Icons.menu,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
+          // Removed hamburger menu button
           const Icon(Icons.show_chart, color: Colors.white),
           const SizedBox(width: 16),
           const Icon(Icons.people, color: Colors.white),
@@ -681,7 +624,7 @@ class Dashboard extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const AdminProfilePage(),
+                                builder: (context) => const HospitalProfileContentWidget(),
                               ),
                             );
                             break;
