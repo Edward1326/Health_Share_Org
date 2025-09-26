@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'employeelist.dart';
 import 'patientslist.dart';
-import 'allfiles.dart';
 import 'hospital_profile.dart';
 
 // Theme colors - shared across all dashboard components
@@ -17,7 +16,7 @@ class DashboardTheme {
   static const Color pendingOrange = Color(0xFFFF9500);
 }
 
-// Main Dashboard Layout Widget
+// Main Dashboard Layout Widget with Collapsible Sidebar
 class MainDashboardLayout extends StatefulWidget {
   final Widget content;
   final String title;
@@ -36,7 +35,46 @@ class MainDashboardLayout extends StatefulWidget {
   State<MainDashboardLayout> createState() => _MainDashboardLayoutState();
 }
 
-class _MainDashboardLayoutState extends State<MainDashboardLayout> {
+class _MainDashboardLayoutState extends State<MainDashboardLayout>
+    with SingleTickerProviderStateMixin {
+  bool _isSidebarExpanded = true;
+  late AnimationController _animationController;
+  late Animation<double> _sidebarAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _sidebarAnimation = Tween<double>(
+      begin: 250.0, // Expanded width
+      end: 60.0,    // Collapsed width
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _toggleSidebar() {
+    setState(() {
+      _isSidebarExpanded = !_isSidebarExpanded;
+    });
+    
+    if (_isSidebarExpanded) {
+      _animationController.reverse();
+    } else {
+      _animationController.forward();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -55,14 +93,22 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
   Widget _buildDesktopLayout() {
     return Row(
       children: [
-        // Left Sidebar Navigation
-        _buildSidebar(),
+        // Left Sidebar Navigation - Animated
+        AnimatedBuilder(
+          animation: _sidebarAnimation,
+          builder: (context, child) {
+            return Container(
+              width: _sidebarAnimation.value,
+              child: _buildSidebar(),
+            );
+          },
+        ),
         
         // Main Content Area
         Expanded(
           child: Column(
             children: [
-              // Top Header Bar (Green)
+              // Top Header Bar (Green) with Hamburger Menu
               _buildTopHeader(),
               
               // Main Content
@@ -81,21 +127,26 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
 
   Widget _buildSidebar() {
     return Container(
-      width: 250,
       color: DashboardTheme.sidebarGray,
       child: Column(
         children: [
           // Dashboard Title
           Container(
             padding: const EdgeInsets.all(24),
-            child: const Text(
-              'Dashboard',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: DashboardTheme.darkGray,
-              ),
-            ),
+            child: _isSidebarExpanded
+                ? const Text(
+                    'Dashboard',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: DashboardTheme.darkGray,
+                    ),
+                  )
+                : const Icon(
+                    Icons.dashboard,
+                    color: DashboardTheme.darkGray,
+                    size: 24,
+                  ),
           ),
           
           // Navigation Items
@@ -114,19 +165,25 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
               onTap: () {
                 Navigator.pushReplacementNamed(context, '/login');
               },
-              child: const Row(
-                children: [
-                  Icon(Icons.logout, color: DashboardTheme.textGray, size: 20),
-                  SizedBox(width: 12),
-                  Text(
-                    'Log out',
-                    style: TextStyle(
+              child: _isSidebarExpanded
+                  ? const Row(
+                      children: [
+                        Icon(Icons.logout, color: DashboardTheme.textGray, size: 20),
+                        SizedBox(width: 12),
+                        Text(
+                          'Log out',
+                          style: TextStyle(
+                            color: DashboardTheme.textGray,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const Icon(
+                      Icons.logout,
                       color: DashboardTheme.textGray,
-                      fontSize: 14,
+                      size: 20,
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -153,7 +210,13 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
             case 1: // Employees
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const EmployeeListPage()),
+                MaterialPageRoute(
+                  builder: (_) => const MainDashboardLayout(
+                    title: 'Employee Management',
+                    selectedNavIndex: 1,
+                    content: EmployeeContentWidget(),
+                  ),
+                ),
               );
               break;
             case 2: // Patients
@@ -162,34 +225,39 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                 MaterialPageRoute(builder: (_) => const AdminPatientsListPage()),
               );
               break;
-            case 3: // All Files
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const AllFilesPage()),
-              );
-              break;
           }
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? Colors.white : DashboardTheme.textGray,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : DashboardTheme.textGray,
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+          child: _isSidebarExpanded
+              ? Row(
+                  children: [
+                    Icon(
+                      icon,
+                      color: isSelected ? Colors.white : DashboardTheme.textGray,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : DashboardTheme.textGray,
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Tooltip(
+                  message: title,
+                  child: Icon(
+                    icon,
+                    color: isSelected ? Colors.white : DashboardTheme.textGray,
+                    size: 20,
+                  ),
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -202,7 +270,19 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
-          const Icon(Icons.menu, color: Colors.white),
+          // Hamburger Menu Button
+          InkWell(
+            onTap: _toggleSidebar,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                _isSidebarExpanded ? Icons.menu_open : Icons.menu,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
           const SizedBox(width: 16),
           const Icon(Icons.show_chart, color: Colors.white),
           const SizedBox(width: 16),
@@ -247,7 +327,7 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
   }
 }
 
-// Dashboard Content Widget
+// Dashboard Content Widget (unchanged)
 class DashboardContentWidget extends StatelessWidget {
   const DashboardContentWidget({Key? key}) : super(key: key);
 
@@ -274,7 +354,13 @@ class DashboardContentWidget extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const EmployeeListPage()),
+                    MaterialPageRoute(
+                      builder: (_) => const MainDashboardLayout(
+                        title: 'Employee Management',
+                        selectedNavIndex: 1,
+                        content: EmployeeContentWidget(),
+                      ),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -660,7 +746,12 @@ class Dashboard extends StatelessWidget {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const EmployeeListPage()),
+                          builder: (_) => const MainDashboardLayout(
+                            title: 'Employee Management',
+                            selectedNavIndex: 1,
+                            content: EmployeeContentWidget(),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -678,26 +769,6 @@ class Dashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionCard(
-                      context,
-                      'All Files',
-                      Icons.folder_rounded,
-                      const Color(0xFFD69E2E),
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AllFilesPage()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
                 ],
               ),
 
