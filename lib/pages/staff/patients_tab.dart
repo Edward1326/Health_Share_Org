@@ -2,31 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
-import 'dart:async';
 import 'package:health_share_org/services/file_preview.dart';
 
-class PatientsTab extends StatefulWidget {
-  const PatientsTab({Key? key}) : super(key: key);
-
-  @override
-  State<PatientsTab> createState() => _PatientsTabState();
+// Theme colors matching the staff dashboard
+class PatientsTheme {
+  static const Color primaryGreen = Color(0xFF4A8B3A);
+  static const Color lightGreen = Color(0xFF6BA85A);
+  static const Color lightGray = Color(0xFFF5F5F5);
+  static const Color textGray = Color(0xFF6C757D);
+  static const Color darkGray = Color(0xFF495057);
+  static const Color cardBackground = Color(0xFFFFFFFF);
+  static const Color coral = Color(0xFFFF6B6B);
+  static const Color orange = Color(0xFFFF9500);
 }
 
-class _PatientsTabState extends State<PatientsTab> {
+class ModernPatientsContentWidget extends StatefulWidget {
+  const ModernPatientsContentWidget({Key? key}) : super(key: key);
+
+  @override
+  State<ModernPatientsContentWidget> createState() => _ModernPatientsContentWidgetState();
+}
+
+class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidget> {
   List<Map<String, dynamic>> _patients = [];
   List<Map<String, dynamic>> _selectedPatientFiles = [];
   Map<String, dynamic>? _selectedPatient;
   bool _loadingPatients = false;
   bool _loadingFiles = false;
-
-  // Define app theme colors
-  static const Color primaryBlue = Color(0xFF4A90E2);
-  static const Color lightBlue = Color(0xFFE3F2FD);
-  static const Color coral = Color(0xFFFF6B6B);
-  static const Color orange = Color(0xFFFF9500);
-  static const Color lightGray = Color(0xFFF5F5F5);
-  static const Color darkGray = Color(0xFF757575);
-  static const Color cardBackground = Color(0xFFFFFFFF);
 
   @override
   void initState() {
@@ -74,7 +76,6 @@ class _PatientsTabState extends State<PatientsTab> {
           doctorLookupResponse.map((doctor) => doctor['id']).toList();
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
-      // Fixed query - now joins through Patient table instead of User table
       final response = await Supabase.instance.client
           .from('Doctor_User_Assignment')
           .select('''
@@ -117,9 +118,8 @@ class _PatientsTabState extends State<PatientsTab> {
           'doctor_id': assignmentMap['doctor_id'],
           'status': assignmentMap['status'],
           'assigned_at': assignmentMap['assigned_at'],
-          // Transform the nested structure to match your expected format
           'User': patientData['User'],
-          'Patient': patientData, // Include patient data if needed
+          'Patient': patientData,
         };
       }).toList();
 
@@ -136,15 +136,12 @@ class _PatientsTabState extends State<PatientsTab> {
     }
   }
 
-// Add this function to your _PatientsTabState class - loads ALL files for the patient
-  // Add this function to your _PatientsTabState class - loads ALL files for the patient
   Future<void> _loadAllFilesForPatient(String patientId) async {
     setState(() {
       _loadingFiles = true;
     });
 
     try {
-      // First, get the user_id from the Patient table
       final patientResponse = await Supabase.instance.client
           .from('Patient')
           .select('user_id')
@@ -154,7 +151,6 @@ class _PatientsTabState extends State<PatientsTab> {
       final userId = patientResponse['user_id'];
       print('DEBUG: Patient ID: $patientId, User ID: $userId');
 
-      // Load files shared with the patient (using user_id)
       final sharedFilesResponse = await Supabase.instance.client
           .from('File_Shares')
           .select('''
@@ -178,10 +174,9 @@ class _PatientsTabState extends State<PatientsTab> {
             )
           )
         ''')
-          .eq('shared_with_user_id', userId) // Use userId instead of patientId
+          .eq('shared_with_user_id', userId)
           .order('shared_at', ascending: false);
 
-      // Load files uploaded by the patient (using user_id)
       final patientFilesResponse = await Supabase.instance.client
           .from('Files')
           .select('''
@@ -201,28 +196,24 @@ class _PatientsTabState extends State<PatientsTab> {
             )
           )
         ''')
-          .eq('uploaded_by', userId) // Use userId instead of patientId
+          .eq('uploaded_by', userId)
           .order('uploaded_at', ascending: false);
 
-      // Combine both lists
       List<Map<String, dynamic>> allFiles = [];
 
-      // Add shared files - cast each item properly
       for (var share in sharedFilesResponse) {
         allFiles.add(Map<String, dynamic>.from(share as Map));
       }
 
-      // Add patient's own files - transform to match structure
       for (var file in patientFilesResponse) {
         allFiles.add(<String, dynamic>{
-          'id': null, // No File_Shares id
+          'id': null,
           'shared_at': null,
           'Files': Map<String, dynamic>.from(file as Map),
-          'is_patient_file': true, // Flag to identify patient's own files
+          'is_patient_file': true,
         });
       }
 
-      // Sort all files by date (most recent first)
       allFiles.sort((a, b) {
         final aDate = DateTime.tryParse(
                 a['shared_at'] ?? a['Files']['uploaded_at'] ?? '') ??
@@ -240,58 +231,9 @@ class _PatientsTabState extends State<PatientsTab> {
 
       final sharedCount = sharedFilesResponse.length;
       final patientCount = patientFilesResponse.length;
-      print(
-          'Loaded $sharedCount shared files and $patientCount patient files for patient $patientId (user: $userId)');
+      print('Loaded $sharedCount shared files and $patientCount patient files');
     } catch (e) {
       print('Error loading all patient files: $e');
-      setState(() {
-        _loadingFiles = false;
-      });
-      _showSnackBar('Error loading files: $e');
-    }
-  }
-
-  Future<void> _loadPatientFiles(String patientId) async {
-    setState(() {
-      _loadingFiles = true;
-    });
-
-    try {
-      final response = await Supabase.instance.client
-          .from('File_Shares')
-          .select('''
-          id,
-          shared_at,
-          Files!inner(
-            id,
-            filename,
-            category,
-            file_type,
-            uploaded_at,
-            file_size,
-            ipfs_cid,
-            sha256_hash,
-            uploaded_by,
-            uploader:User!uploaded_by(
-              Person!person_id(
-                first_name,
-                last_name
-              )
-            )
-          )
-        ''')
-          .eq('shared_with_user_id', patientId)
-          .order('shared_at', ascending: false);
-
-      setState(() {
-        _selectedPatientFiles = List<Map<String, dynamic>>.from(response);
-        _loadingFiles = false;
-      });
-
-      print(
-          'Loaded ${_selectedPatientFiles.length} files for patient $patientId');
-    } catch (e) {
-      print('Error loading patient files: $e');
       setState(() {
         _loadingFiles = false;
       });
@@ -303,7 +245,7 @@ class _PatientsTabState extends State<PatientsTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: primaryBlue,
+        backgroundColor: PatientsTheme.primaryGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -312,199 +254,193 @@ class _PatientsTabState extends State<PatientsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          // Header with Add Patient button
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            color: Colors.white,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'My Patients',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () =>
-                      _showSnackBar('Add patient feature coming soon!'),
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('Add'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryBlue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Content
-          Expanded(
-            child: _loadingPatients
-                ? const Center(
-                    child: CircularProgressIndicator(color: primaryBlue))
-                : _patients.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.people_outline,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Patients Assigned',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Patients will appear here once assigned to you',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _selectedPatient == null
-                        ? _buildPatientsList()
-                        : _buildPatientDetails(),
-          ),
-        ],
-      ),
-    );
+    return _selectedPatient == null
+        ? _buildPatientsListView()
+        : _buildPatientDetailsView();
   }
 
-  Widget _buildPatientsList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: _patients.length,
-      itemBuilder: (context, index) {
-        final patient = _patients[index];
-        final person = patient['User']['Person'];
-        final fullName = _buildFullName(person);
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+  Widget _buildPatientsListView() {
+    return Column(
+      children: [
+        // Header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          color: Colors.white,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'My Patients',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showSnackBar('Add patient feature coming soon!'),
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text('Add Patient'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: PatientsTheme.primaryGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
               ),
             ],
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: _getPatientAvatarColor(index),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  _getPatientInitials(fullName),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
-            ),
-            title: Text(
-              fullName,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(
-                  patient['User']['email'] ?? '',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Patient ID: ${patient['patient_id']}',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                patient['status'] ?? 'active',
-                style: const TextStyle(
-                  color: Colors.green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            onTap: () {
-              setState(() {
-                _selectedPatient = patient;
-              });
-              final patientId = patient['patient_id'].toString();
-              _loadAllFilesForPatient(patientId);
-            },
-          ),
-        );
-      },
+        ),
+
+        // Content
+        Expanded(
+          child: _loadingPatients
+              ? const Center(
+                  child: CircularProgressIndicator(color: PatientsTheme.primaryGreen))
+              : _patients.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.people_outline,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No Patients Assigned',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Patients will appear here once assigned to you',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(24),
+                      itemCount: _patients.length,
+                      itemBuilder: (context, index) {
+                        final patient = _patients[index];
+                        final person = patient['User']['Person'];
+                        final fullName = _buildFullName(person);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: _getPatientAvatarColor(index),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _getPatientInitials(fullName),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              fullName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(
+                                  patient['User']['email'] ?? '',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Patient ID: ${patient['patient_id']}',
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                patient['status'] ?? 'active',
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _selectedPatient = patient;
+                              });
+                              final patientId = patient['patient_id'].toString();
+                              _loadAllFilesForPatient(patientId);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPatientDetails() {
+  Widget _buildPatientDetailsView() {
     final patient = _selectedPatient!;
     final person = patient['User']['Person'];
-    final fullName =
-        '${person['first_name']} ${person['middle_name'] ?? ''} ${person['last_name']}'
-            .trim();
+    final fullName = _buildFullName(person);
 
     return Column(
       children: [
         // Patient Header
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           color: Colors.white,
           child: Row(
             children: [
@@ -521,8 +457,8 @@ class _PatientsTabState extends State<PatientsTab> {
               Container(
                 width: 50,
                 height: 50,
-                decoration: BoxDecoration(
-                  color: primaryBlue,
+                decoration: const BoxDecoration(
+                  color: PatientsTheme.primaryGreen,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -563,19 +499,18 @@ class _PatientsTabState extends State<PatientsTab> {
                   context,
                   _selectedPatient!,
                   _showSnackBar,
-                  () => _loadPatientFiles(
+                  () => _loadAllFilesForPatient(
                       _selectedPatient!['patient_id'].toString()),
                 ),
                 icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('Upload'),
+                label: const Text('Upload File'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryBlue,
+                  backgroundColor: PatientsTheme.primaryGreen,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
             ],
@@ -586,7 +521,7 @@ class _PatientsTabState extends State<PatientsTab> {
         Expanded(
           child: _loadingFiles
               ? const Center(
-                  child: CircularProgressIndicator(color: primaryBlue))
+                  child: CircularProgressIndicator(color: PatientsTheme.primaryGreen))
               : _selectedPatientFiles.isEmpty
                   ? Center(
                       child: Column(
@@ -618,7 +553,7 @@ class _PatientsTabState extends State<PatientsTab> {
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(24),
                       itemCount: _selectedPatientFiles.length,
                       itemBuilder: (context, index) {
                         final fileShare = _selectedPatientFiles[index];
@@ -633,7 +568,13 @@ class _PatientsTabState extends State<PatientsTab> {
 
   // Helper methods
   Color _getPatientAvatarColor(int index) {
-    final colors = [primaryBlue, coral, orange, Colors.purple, Colors.teal];
+    final colors = [
+      PatientsTheme.primaryGreen,
+      PatientsTheme.coral,
+      PatientsTheme.orange,
+      Colors.purple,
+      Colors.teal
+    ];
     return colors[index % colors.length];
   }
 
@@ -765,334 +706,293 @@ class _PatientsTabState extends State<PatientsTab> {
     }
   }
 
-  void _showFileActions(Map<String, dynamic> file) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true, // Add this to allow custom height
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) => DraggableScrollableSheet(
-      initialChildSize: 0.7, // Start at 70% of screen height
-      minChildSize: 0.5, // Minimum 50% of screen height
-      maxChildSize: 0.9, // Maximum 90% of screen height
-      expand: false,
-      builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Drag handle
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildFileCard(Map<String, dynamic> file) {
+    final fileType = file['file_type'] ?? 'unknown';
+    final category = file['category'] ?? 'other';
+    final fileName = file['filename'] ?? 'Unknown File';
+    final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+    final uploader = file['uploader'];
+    final uploaderName = uploader != null
+        ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+        : 'Unknown';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _getFileTypeColor(fileType),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  _getFileTypeIcon(fileType),
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
-            ),
-            
-            // Fixed header with file info
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fileName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
                     ),
-                    child: Icon(
-                      _getFileTypeIcon(file['file_type'] ?? ''),
-                      color: _getFileTypeColor(file['file_type'] ?? ''),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
-                        Text(
-                          file['filename'] ?? 'Unknown File',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _getCategoryColor(category).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          child: Text(
+                            category.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              color: _getCategoryColor(category),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_formatFileSize(file['file_size'] ?? 0)} • ${(file['file_type'] ?? '').toUpperCase()}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_formatDate(createdAt)} • $uploaderName',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 12,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            
-            // Scrollable actions list
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  _buildActionTile(
-                    icon: Icons.visibility,
-                    title: 'Preview File',
-                    subtitle: 'View in app',
-                    onTap: () {
-                      Navigator.pop(context);
-                      SimpleFilePreviewService.previewFile(context, file, _showSnackBar);
-                    },
-                  ),
-                
-                  _buildActionTile(
-                    icon: Icons.download,
-                    title: 'Download File',
-                    subtitle: 'Save to device',
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Keep your existing download functionality
-                      FileDecryptionService.downloadAndDecryptFile(context, file, _showSnackBar);
-                    },
-                  ),
-                  _buildActionTile(
-                    icon: Icons.info_outline,
-                    title: 'File Details',
-                    subtitle: 'View metadata',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showFileDetails(file);
-                    },
-                  ),
-                  _buildActionTile(
-                    icon: Icons.share,
-                    title: 'Share File',
-                    subtitle: 'Share with others',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _shareFile(file);
-                    },
-                  ),
-                  _buildActionTile(
-                    icon: Icons.remove_circle_outline,
-                    title: 'Remove Share',
-                    subtitle: 'Revoke patient access',
-                    color: Colors.red,
-                    onTap: () {
-                      Navigator.pop(context);
-                      _removeFileShare(file);
-                    },
-                  ),
-                  // Add some bottom padding for better UX
-                  const SizedBox(height: 20),
-                ],
+              Container(
+                decoration: BoxDecoration(
+                  color: PatientsTheme.primaryGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: IconButton(
+                  onPressed: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
+                  icon: const Icon(Icons.visibility, color: PatientsTheme.primaryGreen, size: 20),
+                  tooltip: 'Preview file',
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-/// Add this new helper method for action tiles
-Widget _buildActionTile({
-  required IconData icon,
-  required String title,
-  String? subtitle,
-  required VoidCallback onTap,
-  Color? color,
-}) {
-  return ListTile(
-    leading: Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: (color ?? Colors.grey).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(icon, color: color ?? Colors.grey[700], size: 20),
-    ),
-    title: Text(
-      title,
-      style: TextStyle(
-        color: color,
-        fontWeight: FontWeight.w500,
-      ),
-    ),
-    subtitle: subtitle != null 
-        ? Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          )
-        : null,
-    onTap: onTap,
-    contentPadding: const EdgeInsets.symmetric(vertical: 4),
-  );
-}
-
-/// Add this new method to show file details
-void _showFileDetails(Map<String, dynamic> file) {
-  final uploader = file['uploader'];
-  final uploaderName = uploader != null
-      ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
-      : 'Unknown';
-  final uploadDate = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
-        children: [
-          Icon(
-            _getFileTypeIcon(file['file_type'] ?? ''),
-            color: _getFileTypeColor(file['file_type'] ?? ''),
-          ),
-          const SizedBox(width: 8),
-          const Expanded(child: Text('File Details')),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDetailRow('Name', file['filename'] ?? 'Unknown'),
-            _buildDetailRow('Type', (file['file_type'] ?? 'unknown').toUpperCase()),
-            _buildDetailRow('Category', (file['category'] ?? 'other').replaceAll('_', ' ').toUpperCase()),
-            _buildDetailRow('Size', _formatFileSize(file['file_size'] ?? 0)),
-            _buildDetailRow('Uploaded by', uploaderName),
-            _buildDetailRow('Upload date', _formatDateTime(uploadDate)),
-            if (file['ipfs_cid'] != null)
-              _buildDetailRow('IPFS CID', file['ipfs_cid']),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
-        ),
-        ElevatedButton.icon(
-          onPressed: () {
-            Navigator.pop(context);
-            SimpleFilePreviewService.previewFile(context, file, _showSnackBar);
-          },
-          icon: const Icon(Icons.visibility),
-          label: const Text('Preview'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: primaryBlue,
-            foregroundColor: Colors.white,
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showFileActions(file),
+                icon: const Icon(Icons.more_vert, color: PatientsTheme.textGray),
+                tooltip: 'More actions',
+              ),
+            ],
           ),
         ),
-      ],
-    ),
-  );
-}
-
-/// Helper method to build detail rows
-Widget _buildDetailRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            '$label:',
-            style: TextStyle(
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[700],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              color: Colors.black87,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-/// Helper method to format file size - add if you don't already have it
-String _formatFileSize(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  if (bytes < 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      ),
+    );
   }
-  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-}
 
-/// Helper method to format date time
-String _formatDateTime(DateTime dateTime) {
-  return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-}
-
-/// Enhanced file card with preview on tap - replace your _buildFileCard method
-Widget _buildFileCard(Map<String, dynamic> file) {
-  final fileType = file['file_type'] ?? 'unknown';
-  final category = file['category'] ?? 'other';
-  final fileName = file['filename'] ?? 'Unknown File';
-  final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
-  final uploader = file['uploader'];
-  final uploaderName = uploader != null
-      ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
-      : 'Unknown';
-
-  return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 8,
-          offset: const Offset(0, 2),
+  void _showFileActions(Map<String, dynamic> file) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        _getFileTypeIcon(file['file_type'] ?? ''),
+                        color: _getFileTypeColor(file['file_type'] ?? ''),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            file['filename'] ?? 'Unknown File',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_formatFileSize(file['file_size'] ?? 0)} • ${(file['file_type'] ?? '').toUpperCase()}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    _buildActionTile(
+                      icon: Icons.visibility,
+                      title: 'Preview File',
+                      subtitle: 'View in app',
+                      onTap: () {
+                        Navigator.pop(context);
+                        SimpleFilePreviewService.previewFile(context, file, _showSnackBar);
+                      },
+                    ),
+                    _buildActionTile(
+                      icon: Icons.download,
+                      title: 'Download File',
+                      subtitle: 'Save to device',
+                      onTap: () {
+                        Navigator.pop(context);
+                        FileDecryptionService.downloadAndDecryptFile(context, file, _showSnackBar);
+                      },
+                    ),
+                    _buildActionTile(
+                      icon: Icons.info_outline,
+                      title: 'File Details',
+                      subtitle: 'View metadata',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showFileDetails(file);
+                      },
+                      ),
+                    _buildActionTile(
+                      icon: Icons.share,
+                      title: 'Share File',
+                      subtitle: 'Share with other staff',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showSnackBar('Share feature coming soon!');
+                      },
+                    ),
+                    _buildActionTile(
+                      icon: Icons.delete_outline,
+                      title: 'Delete File',
+                      subtitle: 'Remove from patient records',
+                      color: Colors.red,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _confirmDeleteFile(file);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ],
-    ),
-    child: InkWell(
-      onTap: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final effectiveColor = color ?? PatientsTheme.darkGray;
+    
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+          ),
+        ),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _getFileTypeColor(fileType),
+                color: effectiveColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                _getFileTypeIcon(fileType),
-                color: Colors.white,
-                size: 24,
-              ),
+              child: Icon(icon, color: effectiveColor, size: 20),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -1100,120 +1000,177 @@ Widget _buildFileCard(Map<String, dynamic> file) {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    fileName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: effectiveColor,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _getCategoryColor(category).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          category.replaceAll('_', ' ').toUpperCase(),
-                          style: TextStyle(
-                            color: _getCategoryColor(category),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${_formatDate(createdAt)} • $uploaderName',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ],
               ),
             ),
-            // Preview button
-            Container(
-              decoration: BoxDecoration(
-                color: primaryBlue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: IconButton(
-                onPressed: () => SimpleFilePreviewService.previewFile(context, file, _showSnackBar),
-                icon: const Icon(Icons.visibility, color: primaryBlue, size: 20),
-                tooltip: 'Preview file',
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: () => _showFileActions(file),
-              icon: const Icon(Icons.more_vert, color: darkGray),
-              tooltip: 'More actions',
-            ),
+            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
           ],
         ),
       ),
-    ),
-  );
-}
-
-
-  void _shareFile(Map<String, dynamic> file) {
-    _showSnackBar('Share functionality coming soon!');
+    );
   }
 
-  void _removeFileShare(Map<String, dynamic> file) {
+  void _showFileDetails(Map<String, dynamic> file) {
+    final uploadedAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+    final uploader = file['uploader'];
+    final uploaderName = uploader != null
+        ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+        : 'Unknown';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Remove File Share'),
-        content: const Text(
-            'Are you sure you want to remove this file share? The patient will no longer have access to this file.'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Icon(
+              _getFileTypeIcon(file['file_type'] ?? ''),
+              color: _getFileTypeColor(file['file_type'] ?? ''),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'File Details',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Filename', file['filename'] ?? 'Unknown'),
+              _buildDetailRow('Category', (file['category'] ?? 'other').replaceAll('_', ' ').toUpperCase()),
+              _buildDetailRow('File Type', (file['file_type'] ?? 'unknown').toUpperCase()),
+              _buildDetailRow('File Size', _formatFileSize(file['file_size'] ?? 0)),
+              _buildDetailRow('Uploaded By', uploaderName),
+              _buildDetailRow('Uploaded At', _formatDateTime(uploadedAt)),
+              _buildDetailRow('File ID', file['id'] ?? 'Unknown'),
+              if (file['ipfs_cid'] != null)
+                _buildDetailRow('IPFS CID', file['ipfs_cid'], monospace: true),
+              if (file['sha256_hash'] != null)
+                _buildDetailRow('SHA256 Hash', file['sha256_hash'], monospace: true),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _performRemoveFileShare(file);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: coral,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Remove'),
+            child: const Text('Close', style: TextStyle(color: PatientsTheme.primaryGreen)),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _performRemoveFileShare(Map<String, dynamic> file) async {
+  Widget _buildDetailRow(String label, String value, {bool monospace = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              color: PatientsTheme.darkGray,
+              fontFamily: monospace ? 'monospace' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteFile(Map<String, dynamic> file) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Delete File'),
+        content: Text(
+          'Are you sure you want to delete "${file['filename']}"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: PatientsTheme.textGray)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteFile(file);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteFile(Map<String, dynamic> file) async {
     try {
-      // Find and delete the file share record
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: PatientsTheme.primaryGreen),
+        ),
+      );
+
+      // Delete from Files table
       await Supabase.instance.client
-          .from('File_Shares')
+          .from('Files')
           .delete()
-          .eq('file_id', file['id'])
-          .eq('shared_with_user_id', _selectedPatient!['patient_id']);
+          .eq('id', file['id']);
 
-      // Refresh the patient files
-      final patientId = _selectedPatient!['patient_id'].toString();
-      await _loadPatientFiles(patientId);
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
 
-      _showSnackBar('File share removed successfully');
+      _showSnackBar('File deleted successfully');
+      
+      // Reload files
+      if (_selectedPatient != null) {
+        _loadAllFilesForPatient(_selectedPatient!['patient_id'].toString());
+      }
     } catch (e) {
-      print('Error removing file share: $e');
-      _showSnackBar('Error removing file share: $e');
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+      
+      print('Error deleting file: $e');
+      _showSnackBar('Error deleting file: $e');
     }
   }
 }

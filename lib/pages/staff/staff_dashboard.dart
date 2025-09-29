@@ -782,7 +782,7 @@ class StaffDashboard extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const PatientsTab(),
+                  builder: (_) => const ModernPatientsContentWidget(),
                 ),
               );
             }
@@ -800,21 +800,6 @@ class StaffDashboard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// Modern Patients Content Widget - will be implemented in the next artifact
-class ModernPatientsContentWidget extends StatelessWidget {
-  const ModernPatientsContentWidget({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Modern Patients Content - Coming Next',
-        style: TextStyle(fontSize: 18, color: StaffDashboardTheme.textGray),
       ),
     );
   }
