@@ -11,6 +11,10 @@ import 'dart:async';
 import 'package:cryptography/cryptography.dart';
 import 'package:pointycastle/export.dart';
 import 'package:asn1lib/asn1lib.dart';
+import 'package:health_share_org/services/hive/create_custom_json.dart';
+import 'package:health_share_org/services/hive/create_transaction.dart';
+import 'package:health_share_org/services/hive/sign_transaction.dart';
+import 'package:health_share_org/services/hive/broadcast_transaction.dart';
 
 class FileUploadService {
   // Define app theme colors
@@ -172,6 +176,67 @@ class FileUploadService {
     }
   }
 
+  // 🔗 HIVE BLOCKCHAIN INTEGRATION - Logs file upload to Hive
+  static Future<bool> _logToHiveBlockchain({
+    required String fileName,
+    required String fileHash,
+    required DateTime timestamp,
+    required BuildContext context,
+  }) async {
+    try {
+      // Check if Hive is configured
+      if (!HiveCustomJsonService.isHiveConfigured()) {
+        print('Warning: Hive not configured (HIVE_ACCOUNT_NAME missing)');
+        return false;
+      }
+
+      print('🔗 Starting Hive blockchain logging...');
+
+      // 🔗 STEP 1: Create custom JSON using HiveCustomJsonService
+      final customJsonResult = HiveCustomJsonService.createMedicalLogCustomJson(
+        fileName: fileName,
+        fileHash: fileHash,
+        timestamp: timestamp,
+      );
+      final customJsonOperation = customJsonResult['operation'] as List<dynamic>;
+      print('✓ Custom JSON created');
+
+      // 🔗 STEP 2: Create unsigned transaction using HiveTransactionService
+      final unsignedTransaction =
+          await HiveTransactionService.createCustomJsonTransaction(
+        customJsonOperation: customJsonOperation,
+        expirationMinutes: 30,
+      );
+      print('✓ Unsigned transaction created');
+
+      // 🔗 STEP 3: Sign transaction using HiveTransactionSigner
+      final signedTransaction = await HiveTransactionSignerWeb.signTransaction(
+        unsignedTransaction,
+      );
+      print('✓ Transaction signed');
+
+      // 🔗 STEP 4: Broadcast transaction using HiveTransactionBroadcaster
+      final broadcastResult =
+          await HiveTransactionBroadcasterWeb.broadcastTransaction(
+        signedTransaction,
+      );
+
+      if (broadcastResult.success) {
+        print('✓ Transaction broadcasted successfully!');
+        print('  Transaction ID: ${broadcastResult.getTxId()}');
+        print('  Block Number: ${broadcastResult.getBlockNum()}');
+        return true;
+      } else {
+        print('✗ Failed to broadcast transaction: ${broadcastResult.getError()}');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      print('Error logging to Hive blockchain: $e');
+      print('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
   static Future<void> uploadFileForPatient(
     BuildContext context,
     Map<String, dynamic> selectedPatient,
@@ -181,7 +246,7 @@ class FileUploadService {
     if (selectedPatient == null) return;
 
     try {
-      print('=== STARTING FILE UPLOAD PROCESS ===');
+      print('=== STARTING FILE UPLOAD PROCESS WITH HIVE INTEGRATION ===');
       print('Using PointyCastle RSA-OAEP + cryptography AES-256-GCM (consistent format)');
       
       // Step 1: Create HTML file input for web compatibility
@@ -221,6 +286,8 @@ class FileUploadService {
         print('User cancelled file upload');
         return;
       }
+
+      
 
       // Show loading dialog
       showDialog(
@@ -301,8 +368,12 @@ class FileUploadService {
       print('Original file size: ${fileBytes.length} bytes');
       print('Encrypted file size: ${encryptedBytes.length} bytes');
 
-      // Step 7: Get patient's RSA public key
-      print('Step 7: Getting patient RSA public key...');
+      // Step 7: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
+      final sha256Hash = _calculateSHA256(fileBytes);
+      print('File SHA256 hash: $sha256Hash');
+
+      // Step 8: Get patient's RSA public key
+      print('Step 8: Getting patient RSA public key...');
       final patientId = selectedPatient['patient_id'];
       
       final patientResponse = await Supabase.instance.client
@@ -341,8 +412,8 @@ class FileUploadService {
 
       print('Patient RSA public key retrieved');
 
-      // Step 8: Get doctor's RSA public key
-      print('Step 8: Getting doctor RSA public key...');
+      // Step 9: Get doctor's RSA public key
+      print('Step 9: Getting doctor RSA public key...');
       final doctorResponse = await Supabase.instance.client
           .from('User')
           .select('rsa_public_key')
@@ -365,8 +436,8 @@ class FileUploadService {
 
       print('Doctor RSA public key retrieved');
 
-      // Step 9: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
-      print('Step 9: Encrypting AES key with RSA-OAEP...');
+      // Step 10: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
+      print('Step 10: Encrypting AES key with RSA-OAEP...');
       final keyData = {
         'key': base64Encode(aesKey),      // BASE64 format (consistent with mobile)
         'nonce': base64Encode(aesNonce),  // BASE64 format (consistent with mobile)
@@ -379,10 +450,6 @@ class FileUploadService {
       final doctorRsaEncryptedString = _encryptWithRSAOAEP(keyDataJson, doctorRsaPublicKeyPem);
 
       print('RSA-OAEP encryption completed for both patient and doctor');
-
-      // Step 10: Calculate SHA256 hash of original file
-      final sha256Hash = _calculateSHA256(fileBytes);
-      print('File SHA256 hash: $sha256Hash');
 
       // Step 11: Upload encrypted file to IPFS
       print('Step 11: Uploading encrypted file to IPFS...');
@@ -442,13 +509,14 @@ class FileUploadService {
 
         // Step 12: Create file record in Files table
         print('Step 12: Creating file record in database...');
+        final uploadTimestamp = DateTime.now();
         final fileResponse = await Supabase.instance.client
             .from('Files')
             .insert({
               'filename': fileDetails['fileName'],
               'category': fileDetails['category'],
               'file_type': fileExtension.toUpperCase(),
-              'uploaded_at': DateTime.now().toIso8601String(),
+              'uploaded_at': uploadTimestamp.toIso8601String(),
               'file_size': fileBytes.length,
               'ipfs_cid': ipfsCid,
               'sha256_hash': sha256Hash,
@@ -467,7 +535,6 @@ class FileUploadService {
           'recipient_type': 'user',
           'recipient_id': patientUserId.toString(),
           'aes_key_encrypted': patientRsaEncryptedString,
-          // Note: nonce_hex not used in consistent format - nonce is stored in key JSON
         });
 
         await Supabase.instance.client.from('File_Keys').insert({
@@ -475,7 +542,6 @@ class FileUploadService {
           'recipient_type': 'user',
           'recipient_id': uploaderId.toString(),
           'aes_key_encrypted': doctorRsaEncryptedString,
-          // Note: nonce_hex not used in consistent format - nonce is stored in key JSON
         });
 
         print('Encrypted keys stored successfully');
@@ -486,16 +552,33 @@ class FileUploadService {
           'file_id': fileId,
           'shared_with_user_id': patientUserId.toString(),
           'shared_by_user_id': uploaderId.toString(),
-          'shared_at': DateTime.now().toIso8601String(),
+          'shared_at': uploadTimestamp.toIso8601String(),
         });
 
         print('File sharing record created successfully');
 
+        // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN (NEW INTEGRATION!)
+        print('🔗 Step 15: Logging to Hive blockchain...');
+        final hiveSuccess = await _logToHiveBlockchain(
+          fileName: fileDetails['fileName'],
+          fileHash: sha256Hash,
+          timestamp: uploadTimestamp,
+          context: context,
+        );
+
         Navigator.pop(context);
         onUploadComplete();
-        showSnackBar('File encrypted with consistent format and uploaded successfully!');
 
-        print('=== FILE UPLOAD PROCESS COMPLETED SUCCESSFULLY ===');
+        // Show success message based on Hive result
+        if (hiveSuccess) {
+          showSnackBar('File encrypted, uploaded, and logged to Hive blockchain successfully! 🎉');
+          print('✅ HIVE BLOCKCHAIN LOGGING SUCCESSFUL');
+        } else {
+          showSnackBar('File uploaded successfully! (Hive logging failed - check logs)');
+          print('⚠️ HIVE BLOCKCHAIN LOGGING FAILED');
+        }
+
+        print('=== FILE UPLOAD PROCESS COMPLETED ===');
 
       } else {
         String errorMessage;
@@ -701,5 +784,76 @@ class FileUploadService {
         ],
       ),
     );
+  }
+
+  // 🔍 DIAGNOSTIC METHOD - Test Hive integration without uploading
+  static Future<bool> testHiveWorkflow({
+    required BuildContext context,
+    String testFileName = 'test_file.pdf',
+    String testFileHash = 'abc123def456...',
+  }) async {
+    try {
+      return await _logToHiveBlockchain(
+        fileName: testFileName,
+        fileHash: testFileHash,
+        timestamp: DateTime.now(),
+        context: context,
+      );
+    } catch (e) {
+      print('Hive workflow test failed: $e');
+      return false;
+    }
+  }
+
+  // 🔍 DIAGNOSTIC METHOD - Get status of all services for debugging
+  static Future<Map<String, dynamic>> getServicesStatus() async {
+    final status = <String, dynamic>{};
+
+    try {
+      // Check HiveCustomJsonService
+      status['hive_configured'] = HiveCustomJsonService.isHiveConfigured();
+      status['hive_account'] = HiveCustomJsonService.getHiveAccountName();
+
+      // Check HiveTransactionService connectivity
+      try {
+        final blockchainTime =
+            await HiveTransactionService.getCurrentBlockchainTime();
+        status['blockchain_connectivity'] = blockchainTime != null;
+        status['blockchain_time'] = blockchainTime;
+      } catch (e) {
+        status['blockchain_connectivity'] = false;
+        status['blockchain_error'] = e.toString();
+      }
+
+      // Check HiveTransactionSigner WIF
+      final wif = HiveTransactionSignerWeb.getPostingWif();
+      status['wif_configured'] = wif.isNotEmpty;
+      status['wif_valid'] =
+          wif.isNotEmpty ? HiveTransactionSignerWeb.isValidWif(wif) : false;
+
+      // Check HiveTransactionBroadcaster connectivity
+      try {
+        final nodeConnectivity =
+            await HiveTransactionBroadcasterWeb.testConnection();
+        status['node_connectivity'] = nodeConnectivity;
+        status['node_url'] = HiveTransactionBroadcasterWeb.getHiveNodeUrl();
+
+        if (nodeConnectivity) {
+          final nodeInfo = await HiveTransactionBroadcasterWeb.getNodeInfo();
+          status['node_info'] = nodeInfo;
+        }
+      } catch (e) {
+        status['node_connectivity'] = false;
+        status['node_error'] = e.toString();
+      }
+
+      // Check Pinata
+      final pinataJwt = dotenv.env['PINATA_JWT'] ?? '';
+      status['pinata_configured'] = pinataJwt.isNotEmpty;
+    } catch (e) {
+      status['error'] = e.toString();
+    }
+
+    return status;
   }
 }
