@@ -557,10 +557,10 @@ class FileUploadService {
 
         print('File sharing record created successfully');
 
-        // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN (NEW INTEGRATION!)
+               // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN (NEW INTEGRATION!)
         print('🔗 Step 15: Logging to Hive blockchain...');
         final hiveSuccess = await _logToHiveBlockchain(
-          fileName: fileDetails['fileName'],
+          fileName: fileDetails['fileName']!,
           fileHash: sha256Hash,
           timestamp: uploadTimestamp,
           context: context,
