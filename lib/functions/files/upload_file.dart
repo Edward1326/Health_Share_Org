@@ -176,10 +176,14 @@ class FileUploadService {
     }
   }
 
-  // 🔗 HIVE BLOCKCHAIN INTEGRATION - Logs file upload to Hive
-  static Future<bool> _logToHiveBlockchain({
+  /// 🔗 MAIN INTEGRATION METHOD - Connects all Hive services and logs to database
+  /// This orchestrates: HiveCustomJsonService → HiveTransactionService → 
+  /// HiveTransactionSigner → HiveTransactionBroadcaster → Hive_Logs table
+  static Future<HiveLogResult> _logToHiveBlockchain({
     required String fileName,
     required String fileHash,
+    required String fileId,
+    required String userId,
     required DateTime timestamp,
     required BuildContext context,
   }) async {
@@ -187,7 +191,7 @@ class FileUploadService {
       // Check if Hive is configured
       if (!HiveCustomJsonService.isHiveConfigured()) {
         print('Warning: Hive not configured (HIVE_ACCOUNT_NAME missing)');
-        return false;
+        return HiveLogResult(success: false, error: 'Hive not configured');
       }
 
       print('🔗 Starting Hive blockchain logging...');
@@ -225,13 +229,72 @@ class FileUploadService {
         print('✓ Transaction broadcasted successfully!');
         print('  Transaction ID: ${broadcastResult.getTxId()}');
         print('  Block Number: ${broadcastResult.getBlockNum()}');
-        return true;
+
+        // 🔗 STEP 5: Insert into Hive_Logs table
+        final logSuccess = await _insertHiveLog(
+          transactionId: broadcastResult.getTxId() ?? '',
+          action: 'upload',
+          userId: userId,
+          fileId: fileId,
+          fileName: fileName,
+          fileHash: fileHash,
+          timestamp: timestamp,
+        );
+
+        if (logSuccess) {
+          print('✓ Hive log inserted into database');
+          return HiveLogResult(
+            success: true,
+            transactionId: broadcastResult.getTxId(),
+            blockNum: broadcastResult.getBlockNum(),
+          );
+        } else {
+          print('✗ Failed to insert Hive log into database');
+          return HiveLogResult(
+            success: false,
+            error: 'Transaction broadcast succeeded but database logging failed',
+          );
+        }
       } else {
         print('✗ Failed to broadcast transaction: ${broadcastResult.getError()}');
-        return false;
+        return HiveLogResult(success: false, error: broadcastResult.getError());
       }
     } catch (e, stackTrace) {
       print('Error logging to Hive blockchain: $e');
+      print('Stack trace: $stackTrace');
+      return HiveLogResult(success: false, error: e.toString());
+    }
+  }
+
+  /// Insert a record into the Hive_Logs table
+  static Future<bool> _insertHiveLog({
+    required String transactionId,
+    required String action,
+    required String userId,
+    required String fileId,
+    required String fileName,
+    required String fileHash,
+    required DateTime timestamp,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final insertData = {
+        'trx_id': transactionId,
+        'action': action,
+        'user_id': userId,
+        'file_id': fileId,
+        'timestamp': timestamp.toIso8601String(),
+        'file_name': fileName,
+        'file_hash': fileHash,
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      await supabase.from('Hive_Logs').insert(insertData);
+      print('Hive log inserted successfully');
+      return true;
+    } catch (e, stackTrace) {
+      print('Error inserting Hive log: $e');
       print('Stack trace: $stackTrace');
       return false;
     }
@@ -286,8 +349,6 @@ class FileUploadService {
         print('User cancelled file upload');
         return;
       }
-
-      
 
       // Show loading dialog
       showDialog(
@@ -353,24 +414,25 @@ class FileUploadService {
         return;
       }
 
-      // Step 5: Generate AES key and nonce for GCM mode
-      print('Step 5: Generating AES-256 key and nonce...');
+      // Step 5: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
+      print('Step 5: Calculating SHA256 hash of original file...');
+      final sha256Hash = _calculateSHA256(fileBytes);
+      print('File SHA256 hash: $sha256Hash');
+
+      // Step 6: Generate AES key and nonce for GCM mode
+      print('Step 6: Generating AES-256 key and nonce...');
       final aesKey = _generateRandomBytes(32); // 32 bytes for AES-256
       final aesNonce = _generateRandomBytes(12); // 12 bytes for GCM nonce
 
       print('Generated AES-256 key (base64): ${base64Encode(aesKey)}');
       print('Generated GCM nonce (base64): ${base64Encode(aesNonce)}');
 
-      // Step 6: Encrypt file with AES-256-GCM (using consistent format)
-      print('Step 6: Encrypting file with AES-256-GCM...');
+      // Step 7: Encrypt file with AES-256-GCM (using consistent format)
+      print('Step 7: Encrypting file with AES-256-GCM...');
       final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
       print('Original file size: ${fileBytes.length} bytes');
       print('Encrypted file size: ${encryptedBytes.length} bytes');
-
-      // Step 7: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
-      final sha256Hash = _calculateSHA256(fileBytes);
-      print('File SHA256 hash: $sha256Hash');
 
       // Step 8: Get patient's RSA public key
       print('Step 8: Getting patient RSA public key...');
@@ -519,7 +581,6 @@ class FileUploadService {
               'uploaded_at': uploadTimestamp.toIso8601String(),
               'file_size': fileBytes.length,
               'ipfs_cid': ipfsCid,
-              'sha256_hash': sha256Hash,
               'uploaded_by': uploaderId,
             })
             .select()
@@ -557,11 +618,13 @@ class FileUploadService {
 
         print('File sharing record created successfully');
 
-               // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN (NEW INTEGRATION!)
+        // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN
         print('🔗 Step 15: Logging to Hive blockchain...');
-        final hiveSuccess = await _logToHiveBlockchain(
+        final hiveResult = await _logToHiveBlockchain(
           fileName: fileDetails['fileName']!,
           fileHash: sha256Hash,
+          fileId: fileId.toString(),
+          userId: uploaderId,
           timestamp: uploadTimestamp,
           context: context,
         );
@@ -570,12 +633,14 @@ class FileUploadService {
         onUploadComplete();
 
         // Show success message based on Hive result
-        if (hiveSuccess) {
-          showSnackBar('File encrypted, uploaded, and logged to Hive blockchain successfully! 🎉');
+        if (hiveResult.success) {
+          showSnackBar('File encrypted, uploaded, and logged to Hive blockchain successfully!');
           print('✅ HIVE BLOCKCHAIN LOGGING SUCCESSFUL');
+          print('   Transaction ID: ${hiveResult.transactionId}');
+          print('   Block Number: ${hiveResult.blockNum}');
         } else {
           showSnackBar('File uploaded successfully! (Hive logging failed - check logs)');
-          print('⚠️ HIVE BLOCKCHAIN LOGGING FAILED');
+          print('⚠️ HIVE BLOCKCHAIN LOGGING FAILED: ${hiveResult.error}');
         }
 
         print('=== FILE UPLOAD PROCESS COMPLETED ===');
@@ -786,26 +851,30 @@ class FileUploadService {
     );
   }
 
-  // 🔍 DIAGNOSTIC METHOD - Test Hive integration without uploading
+  /// Test the complete Hive workflow without uploading a file
+  /// Useful for debugging and testing the integration
   static Future<bool> testHiveWorkflow({
     required BuildContext context,
     String testFileName = 'test_file.pdf',
     String testFileHash = 'abc123def456...',
   }) async {
     try {
-      return await _logToHiveBlockchain(
+      final result = await _logToHiveBlockchain(
         fileName: testFileName,
         fileHash: testFileHash,
+        fileId: 'test-file-id',
+        userId: 'test-user-id',
         timestamp: DateTime.now(),
         context: context,
       );
+      return result.success;
     } catch (e) {
       print('Hive workflow test failed: $e');
       return false;
     }
   }
 
-  // 🔍 DIAGNOSTIC METHOD - Get status of all services for debugging
+  /// Get status of all services for debugging
   static Future<Map<String, dynamic>> getServicesStatus() async {
     final status = <String, dynamic>{};
 
@@ -855,5 +924,29 @@ class FileUploadService {
     }
 
     return status;
+  }
+}
+
+/// Result class for Hive logging operations
+class HiveLogResult {
+  final bool success;
+  final String? error;
+  final String? transactionId;
+  final int? blockNum;
+
+  HiveLogResult({
+    required this.success,
+    this.error,
+    this.transactionId,
+    this.blockNum,
+  });
+
+  @override
+  String toString() {
+    if (success) {
+      return 'HiveLogResult(success: true, txId: $transactionId, block: $blockNum)';
+    } else {
+      return 'HiveLogResult(success: false, error: $error)';
+    }
   }
 }

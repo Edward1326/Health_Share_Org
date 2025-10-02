@@ -4,8 +4,9 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:fast_rsa/fast_rsa.dart'; // Use fast_rsa instead of CryptoUtils
+import 'package:fast_rsa/fast_rsa.dart';
 import 'package:health_share_org/services/aes_helper.dart';
+import 'package:health_share_org/services/hive/compare.dart';
 import 'dart:async';
 
 class FileDecryptionService {
@@ -59,17 +60,19 @@ class FileDecryptionService {
     }
   }
 
-  // Updated download and decrypt method with fast_rsa
+  // 🔒 UPDATED: Download and decrypt method with BLOCKCHAIN VERIFICATION
   static Future<void> downloadAndDecryptFile(
     BuildContext context,
     Map<String, dynamic> file,
-    Function(String) showSnackBar,
-  ) async {
+    Function(String) showSnackBar, {
+    bool skipVerification = false,
+  }) async {
     try {
       showSnackBar('Downloading and decrypting file...');
 
       final fileId = file['id'];
       final ipfsCid = file['ipfs_cid'];
+      final fileName = file['filename'] ?? 'decrypted_file';
 
       print('DEBUG: Starting decryption for file ID: $fileId');
 
@@ -94,10 +97,46 @@ class FileDecryptionService {
 
       final actualUserId = userResponse['id'] as String?;
       final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
+      final userEmail = userResponse['email'] as String;
 
       if (actualUserId == null || rsaPrivateKeyPem == null) {
         showSnackBar('User authentication error');
         return;
+      }
+
+      // 🔐 STEP 1: BLOCKCHAIN VERIFICATION (CRITICAL SECURITY STEP)
+      if (!skipVerification) {
+        print('\n🔐 === BLOCKCHAIN VERIFICATION START ===');
+        showSnackBar('Verifying file integrity on blockchain...');
+
+        // Get Hive username from environment or user profile
+        final String hiveUsername = await _getHiveUsername(actualUserId);
+
+        final isVerified = await HiveCompareServiceWeb.verifyBeforeDecryption(
+          fileId: fileId.toString(),
+          username: hiveUsername,
+        );
+
+        if (!isVerified) {
+          print('❌ BLOCKCHAIN VERIFICATION FAILED');
+          print('File hash does not match blockchain record');
+          print('DECRYPTION ABORTED FOR SECURITY');
+          print('=== BLOCKCHAIN VERIFICATION END ===\n');
+          
+          showSnackBar('⚠️ Blockchain verification failed - file may be tampered');
+          
+          // Show detailed warning dialog
+          await _showVerificationFailedDialog(context, fileId.toString());
+          return;
+        }
+
+        print('✅ BLOCKCHAIN VERIFICATION PASSED');
+        print('File integrity confirmed - proceeding with decryption');
+        print('=== BLOCKCHAIN VERIFICATION END ===\n');
+        
+        showSnackBar('✓ Blockchain verification passed');
+      } else {
+        print('⚠️ WARNING: Blockchain verification skipped');
       }
 
       // Test the user's key pair integrity first
@@ -213,6 +252,7 @@ class FileDecryptionService {
         print('AES key and nonce extracted successfully');
 
         // Continue with file download and decryption...
+        showSnackBar('Downloading encrypted file from IPFS...');
         final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
         final response = await http.get(Uri.parse(ipfsUrl));
 
@@ -224,6 +264,7 @@ class FileDecryptionService {
         print('Downloaded ${encryptedFileBytes.length} bytes from IPFS');
 
         // Decrypt the file
+        showSnackBar('Decrypting file...');
         final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
         final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
 
@@ -234,12 +275,12 @@ class FileDecryptionService {
         final url = html.Url.createObjectUrlFromBlob(blob);
 
         final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', file['filename'] ?? 'decrypted_file')
+          ..setAttribute('download', fileName)
           ..click();
 
         html.Url.revokeObjectUrl(url);
 
-        showSnackBar('File decrypted and downloaded successfully!');
+        showSnackBar('✓ File decrypted and downloaded successfully!');
 
       } catch (rsaError) {
         print('RSA decryption failed: $rsaError');
@@ -262,100 +303,13 @@ class FileDecryptionService {
     }
   }
 
-  // Helper method to investigate wrong key usage - updated to use fast_rsa
-  static Future<void> _investigateWrongKeyUsage(String fileId, String userId, String encryptedKeyData) async {
-    try {
-      // Get file owner to check if they can decrypt their own key
-      final fileResponse = await Supabase.instance.client
-          .from('Files')
-          .select('uploaded_by')
-          .eq('id', fileId)
-          .single();
-
-      final ownerId = fileResponse['uploaded_by'] as String;
-      print('File owner ID: $ownerId');
-
-      if (ownerId == userId) {
-        print('User is file owner - this should definitely work');
-      } else {
-        print('File was shared with user - checking sharing process');
-        
-        // Check how this file was shared
-        final shareResponse = await Supabase.instance.client
-            .from('File_Shares')
-            .select('shared_with_doctor, shared_by_user_id')
-            .eq('file_id', fileId)
-            .eq('shared_with_doctor', userId)
-            .maybeSingle();
-
-        if (shareResponse != null) {
-          print('File was shared as doctor share by: ${shareResponse['shared_by_user_id']}');
-          
-          // This means the sharing process should have used the user's public key
-          // Let's check if the owner's private key can decrypt this (wrong key scenario)
-          await _testDecryptionWithOwnerKey(ownerId, encryptedKeyData);
-        }
-      }
-
-    } catch (e) {
-      print('Error investigating wrong key usage: $e');
-    }
-  }
-
-  // Helper method to test decryption with owner key - updated to use fast_rsa
-  static Future<void> _testDecryptionWithOwnerKey(String ownerId, String encryptedKeyData) async {
-    try {
-      print('Testing if owner\'s key can decrypt this data...');
-      
-      final ownerResponse = await Supabase.instance.client
-          .from('User')
-          .select('rsa_private_key, email')
-          .eq('id', ownerId)
-          .single();
-
-      final ownerPrivateKeyPem = ownerResponse['rsa_private_key'] as String?;
-      if (ownerPrivateKeyPem == null) {
-        print('Owner has no private key');
-        return;
-      }
-
-      try {
-        // Try RSA-OAEP first
-        final decryptedJson = await RSA.decryptOAEP(
-          encryptedKeyData, 
-          "",
-          Hash.SHA256,
-          ownerPrivateKeyPem
-        );
-        print('SUCCESS: Owner can decrypt this key with RSA-OAEP!');
-        print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
-        print('This means the sharing process used the wrong public key during encryption');
-      } catch (oaepError) {
-        try {
-          // Try PKCS1v15 fallback
-          final decryptedJson = await RSA.decryptPKCS1v15(
-            encryptedKeyData,
-            ownerPrivateKeyPem
-          );
-          print('SUCCESS: Owner can decrypt this key with RSA-PKCS1v15!');
-          print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
-        } catch (pkcsError) {
-          print('Owner cannot decrypt this key either: $pkcsError');
-          print('DIAGNOSIS: Key may be corrupted or encrypted with unknown key');
-        }
-      }
-
-    } catch (e) {
-      print('Error testing owner key: $e');
-    }
-  }
-
-  // Updated preview methods would also need similar fast_rsa changes...
+  // 🔒 UPDATED: Preview file with BLOCKCHAIN VERIFICATION
   static Future<void> previewFile(
     BuildContext context,
     Map<String, dynamic> file,
-    Function(String) showSnackBar,
-  ) async {
+    Function(String) showSnackBar, {
+    bool skipVerification = false,
+  }) async {
     try {
       showSnackBar('Loading file preview...');
 
@@ -391,6 +345,26 @@ class FileDecryptionService {
       if (actualUserId == null || rsaPrivateKeyPem == null) {
         showSnackBar('User authentication error');
         return;
+      }
+
+      // 🔐 BLOCKCHAIN VERIFICATION BEFORE PREVIEW
+      if (!skipVerification) {
+        print('\n🔐 === BLOCKCHAIN VERIFICATION FOR PREVIEW ===');
+        
+        final String hiveUsername = await _getHiveUsername(actualUserId);
+
+        final isVerified = await HiveCompareServiceWeb.verifyBeforeDecryption(
+          fileId: fileId.toString(),
+          username: hiveUsername,
+        );
+
+        if (!isVerified) {
+          print('❌ BLOCKCHAIN VERIFICATION FAILED - Preview aborted');
+          showSnackBar('⚠️ Cannot preview - blockchain verification failed');
+          return;
+        }
+
+        print('✅ BLOCKCHAIN VERIFICATION PASSED - Proceeding with preview');
       }
 
       // Get File_Keys for this file
@@ -482,6 +456,161 @@ class FileDecryptionService {
       print('ERROR in previewFile: $e');
       print('Stack trace: $stackTrace');
       showSnackBar('Error previewing file: $e');
+    }
+  }
+
+  // 🆕 NEW: Get Hive username for blockchain verification
+  static Future<String> _getHiveUsername(String userId) async {
+    try {
+      // Try to get from User table first
+      final response = await Supabase.instance.client
+          .from('User')
+          .select('hive_username')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response != null && response['hive_username'] != null) {
+        return response['hive_username'] as String;
+      }
+
+      // Fallback to environment variable
+      // You should configure this in your .env file
+      return 'your-hive-username'; // Replace with actual logic
+    } catch (e) {
+      print('Error getting Hive username: $e');
+      return 'your-hive-username'; // Fallback
+    }
+  }
+
+  // 🆕 NEW: Show verification failed dialog
+  static Future<void> _showVerificationFailedDialog(
+    BuildContext context,
+    String fileId,
+  ) async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange, size: 32),
+            SizedBox(width: 12),
+            Text('Verification Failed'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This file failed blockchain verification. This could mean:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text('• File has been tampered with'),
+            const Text('• File was not properly logged to blockchain'),
+            const Text('• Blockchain data is corrupted'),
+            const SizedBox(height: 16),
+            Text(
+              'File ID: $fileId',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to investigate wrong key usage - updated to use fast_rsa
+  static Future<void> _investigateWrongKeyUsage(String fileId, String userId, String encryptedKeyData) async {
+    try {
+      // Get file owner to check if they can decrypt their own key
+      final fileResponse = await Supabase.instance.client
+          .from('Files')
+          .select('uploaded_by')
+          .eq('id', fileId)
+          .single();
+
+      final ownerId = fileResponse['uploaded_by'] as String;
+      print('File owner ID: $ownerId');
+
+      if (ownerId == userId) {
+        print('User is file owner - this should definitely work');
+      } else {
+        print('File was shared with user - checking sharing process');
+        
+        // Check how this file was shared
+        final shareResponse = await Supabase.instance.client
+            .from('File_Shares')
+            .select('shared_with_doctor, shared_by_user_id')
+            .eq('file_id', fileId)
+            .eq('shared_with_doctor', userId)
+            .maybeSingle();
+
+        if (shareResponse != null) {
+          print('File was shared as doctor share by: ${shareResponse['shared_by_user_id']}');
+          
+          // This means the sharing process should have used the user's public key
+          // Let's check if the owner's private key can decrypt this (wrong key scenario)
+          await _testDecryptionWithOwnerKey(ownerId, encryptedKeyData);
+        }
+      }
+
+    } catch (e) {
+      print('Error investigating wrong key usage: $e');
+    }
+  }
+
+  // Helper method to test decryption with owner key - updated to use fast_rsa
+  static Future<void> _testDecryptionWithOwnerKey(String ownerId, String encryptedKeyData) async {
+    try {
+      print('Testing if owner\'s key can decrypt this data...');
+      
+      final ownerResponse = await Supabase.instance.client
+          .from('User')
+          .select('rsa_private_key, email')
+          .eq('id', ownerId)
+          .single();
+
+      final ownerPrivateKeyPem = ownerResponse['rsa_private_key'] as String?;
+      if (ownerPrivateKeyPem == null) {
+        print('Owner has no private key');
+        return;
+      }
+
+      try {
+        // Try RSA-OAEP first
+        final decryptedJson = await RSA.decryptOAEP(
+          encryptedKeyData, 
+          "",
+          Hash.SHA256,
+          ownerPrivateKeyPem
+        );
+        print('SUCCESS: Owner can decrypt this key with RSA-OAEP!');
+        print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
+        print('This means the sharing process used the wrong public key during encryption');
+      } catch (oaepError) {
+        try {
+          // Try PKCS1v15 fallback
+          final decryptedJson = await RSA.decryptPKCS1v15(
+            encryptedKeyData,
+            ownerPrivateKeyPem
+          );
+          print('SUCCESS: Owner can decrypt this key with RSA-PKCS1v15!');
+          print('DIAGNOSIS: Key was encrypted with owner\'s public key instead of recipient\'s public key');
+        } catch (pkcsError) {
+          print('Owner cannot decrypt this key either: $pkcsError');
+          print('DIAGNOSIS: Key may be corrupted or encrypted with unknown key');
+        }
+      }
+
+    } catch (e) {
+      print('Error testing owner key: $e');
     }
   }
 
@@ -791,113 +920,161 @@ class FileDecryptionService {
   }
 
   // Add this diagnostic method to test your current RSA setup
-static Future<void> testCurrentRSASetup(String userId) async {
-  try {
-    print('\n=== TESTING CURRENT RSA SETUP ===');
-    
-    // Get user keys
-    final userResponse = await Supabase.instance.client
-        .from('User')
-        .select('rsa_private_key, rsa_public_key, email')
-        .eq('id', userId)
-        .single();
-
-    final privateKeyPem = userResponse['rsa_private_key'] as String;
-    final publicKeyPem = userResponse['rsa_public_key'] as String;
-    final email = userResponse['email'] as String;
-
-    print('Testing user: $email');
-
-    // Test data that matches your upload service format
-    final testKeyData = {
-      'key': base64Encode(List.generate(32, (i) => i)), // 32 byte AES key
-      'nonce': base64Encode(List.generate(12, (i) => i + 32)), // 12 byte nonce
-    };
-    final testJson = jsonEncode(testKeyData);
-    
-    print('Test data: $testJson');
-
-    // Test RSA-OAEP (matches your upload)
+  static Future<void> testCurrentRSASetup(String userId) async {
     try {
-      final encrypted = await RSA.encryptOAEP(testJson, "", Hash.SHA256, publicKeyPem);
-      print('RSA-OAEP encryption successful: ${encrypted.length} chars');
+      print('\n=== TESTING CURRENT RSA SETUP ===');
       
-      final decrypted = await RSA.decryptOAEP(encrypted, "", Hash.SHA256, privateKeyPem);
-      print('RSA-OAEP decryption successful');
-      
-      if (decrypted == testJson) {
-        print('✅ RSA-OAEP round-trip successful - your setup should work!');
-        
-        // Now test if you can decrypt existing problematic data
-        await _testProblematicFileKey(userId);
-        
-      } else {
-        print('❌ RSA-OAEP data mismatch');
-      }
-      
-    } catch (e) {
-      print('❌ RSA-OAEP failed: $e');
-      
-      // Your current setup is broken - check key format
-      print('\n--- Checking Key Formats ---');
-      print('Private key starts with: ${privateKeyPem.substring(0, 50)}...');
-      print('Public key starts with: ${publicKeyPem.substring(0, 50)}...');
-    }
-    
-  } catch (e) {
-    print('❌ Setup test failed: $e');
-  }
-}
+      // Get user keys
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('rsa_private_key, rsa_public_key, email')
+          .eq('id', userId)
+          .single();
 
-static Future<void> _testProblematicFileKey(String userId) async {
-  try {
-    print('\n--- Testing Problematic File Key ---');
-    
-    // Get a problematic file key
-    final problemKey = await Supabase.instance.client
-        .from('File_Keys')
-        .select('aes_key_encrypted, file_id')
-        .eq('recipient_type', 'user')
-        .eq('recipient_id', userId)
-        .limit(1)
-        .single();
-        
-    final encryptedData = problemKey['aes_key_encrypted'] as String;
-    final fileId = problemKey['file_id'] as String;
-    
-    print('Testing file key for file: $fileId');
-    print('Encrypted data length: ${encryptedData.length}');
-    
-    // Get user's private key
-    final userResponse = await Supabase.instance.client
-        .from('User')
-        .select('rsa_private_key')
-        .eq('id', userId)
-        .single();
-        
-    final privateKeyPem = userResponse['rsa_private_key'] as String;
-    
-    // Try decrypting with current method
-    try {
-      final decrypted = await RSA.decryptOAEP(encryptedData, "", Hash.SHA256, privateKeyPem);
-      print('✅ Existing key DOES work with RSA-OAEP!');
-      print('Decrypted: ${decrypted.substring(0, 100)}...');
-    } catch (e) {
-      print('❌ Existing key does NOT work with RSA-OAEP: $e');
+      final privateKeyPem = userResponse['rsa_private_key'] as String;
+      final publicKeyPem = userResponse['rsa_public_key'] as String;
+      final email = userResponse['email'] as String;
+
+      print('Testing user: $email');
+
+      // Test data that matches your upload service format
+      final testKeyData = {
+        'key': base64Encode(List.generate(32, (i) => i)), // 32 byte AES key
+        'nonce': base64Encode(List.generate(12, (i) => i + 32)), // 12 byte nonce
+      };
+      final testJson = jsonEncode(testKeyData);
       
-      // Try PKCS1v15
+      print('Test data: $testJson');
+
+      // Test RSA-OAEP (matches your upload)
       try {
-        final decrypted = await RSA.decryptPKCS1v15(encryptedData, privateKeyPem);
-        print('✅ Existing key works with RSA-PKCS1v15!');
-        print('🔧 SOLUTION: Your old files use PKCS1v15, new files use OAEP');
-      } catch (e2) {
-        print('❌ Existing key does NOT work with PKCS1v15 either: $e2');
-        print('🔍 This key was encrypted with a different library/method');
+        final encrypted = await RSA.encryptOAEP(testJson, "", Hash.SHA256, publicKeyPem);
+        print('RSA-OAEP encryption successful: ${encrypted.length} chars');
+        
+        final decrypted = await RSA.decryptOAEP(encrypted, "", Hash.SHA256, privateKeyPem);
+        print('RSA-OAEP decryption successful');
+        
+        if (decrypted == testJson) {
+          print('✅ RSA-OAEP round-trip successful - your setup should work!');
+          
+          // Now test if you can decrypt existing problematic data
+          await _testProblematicFileKey(userId);
+          
+        } else {
+          print('❌ RSA-OAEP data mismatch');
+        }
+        
+      } catch (e) {
+        print('❌ RSA-OAEP failed: $e');
+        
+        // Your current setup is broken - check key format
+        print('\n--- Checking Key Formats ---');
+        print('Private key starts with: ${privateKeyPem.substring(0, 50)}...');
+        print('Public key starts with: ${publicKeyPem.substring(0, 50)}...');
       }
+      
+    } catch (e) {
+      print('❌ Setup test failed: $e');
     }
-    
-  } catch (e) {
-    print('Error testing problematic key: $e');
   }
-}
+
+  static Future<void> _testProblematicFileKey(String userId) async {
+    try {
+      print('\n--- Testing Problematic File Key ---');
+      
+      // Get a problematic file key
+      final problemKey = await Supabase.instance.client
+          .from('File_Keys')
+          .select('aes_key_encrypted, file_id')
+          .eq('recipient_type', 'user')
+          .eq('recipient_id', userId)
+          .limit(1)
+          .single();
+          
+      final encryptedData = problemKey['aes_key_encrypted'] as String;
+      final fileId = problemKey['file_id'] as String;
+      
+      print('Testing file key for file: $fileId');
+      print('Encrypted data length: ${encryptedData.length}');
+      
+      // Get user's private key
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('rsa_private_key')
+          .eq('id', userId)
+          .single();
+          
+      final privateKeyPem = userResponse['rsa_private_key'] as String;
+      
+      // Try decrypting with current method
+      try {
+        final decrypted = await RSA.decryptOAEP(encryptedData, "", Hash.SHA256, privateKeyPem);
+        print('✅ Existing key DOES work with RSA-OAEP!');
+        print('Decrypted: ${decrypted.substring(0, 100)}...');
+      } catch (e) {
+        print('❌ Existing key does NOT work with RSA-OAEP: $e');
+        
+        // Try PKCS1v15
+        try {
+          final decrypted = await RSA.decryptPKCS1v15(encryptedData, privateKeyPem);
+          print('✅ Existing key works with RSA-PKCS1v15!');
+          print('🔧 SOLUTION: Your old files use PKCS1v15, new files use OAEP');
+        } catch (e2) {
+          print('❌ Existing key does NOT work with PKCS1v15 either: $e2');
+          print('🔍 This key was encrypted with a different library/method');
+        }
+      }
+      
+    } catch (e) {
+      print('Error testing problematic key: $e');
+    }
+  }
+
+  // 🆕 NEW: Check if file can be decrypted (with blockchain verification)
+  static Future<bool> canDecryptFile({
+    required String fileId,
+    required String username,
+  }) async {
+    try {
+      print('Checking if file can be decrypted: $fileId');
+
+      final isVerified = await HiveCompareServiceWeb.verifyBeforeDecryption(
+        fileId: fileId,
+        username: username,
+      );
+
+      if (isVerified) {
+        print('✅ File can be decrypted - blockchain verification passed');
+      } else {
+        print('❌ File cannot be decrypted - blockchain verification failed');
+      }
+
+      return isVerified;
+    } catch (e) {
+      print('Error checking decryption eligibility: $e');
+      return false;
+    }
+  }
+
+  // 🆕 NEW: Get verification status for a file
+  static Future<Map<String, dynamic>> getFileVerificationStatus({
+    required String fileId,
+    required String username,
+  }) async {
+    return await HiveCompareServiceWeb.getVerificationStatus(
+      fileId: fileId,
+      username: username,
+    );
+  }
+
+  // 🆕 NEW: Batch verify multiple files before decryption
+  static Future<Map<String, bool>> batchVerifyFiles({
+    required List<String> fileIds,
+    required String username,
+  }) async {
+    return await HiveCompareServiceWeb.verifyMultipleFiles(
+      fileIds: fileIds,
+      username: username,
+    );
+  }
 }
