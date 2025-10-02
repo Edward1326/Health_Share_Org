@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
-import 'package:health_share_org/services/file_preview.dart';
 
 // Theme colors matching the staff dashboard
 class PatientsTheme {
@@ -784,7 +783,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           IconButton(
-                            onPressed: () => SimpleFilePreviewService.previewFile(
+                            onPressed: () => FileDecryptionService.previewFile(
                                 context, file, _showSnackBar),
                             icon: const Icon(Icons.visibility, size: 18),
                             color: PatientsTheme.primaryGreen,

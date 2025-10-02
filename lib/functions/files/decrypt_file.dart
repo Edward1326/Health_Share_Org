@@ -8,9 +8,12 @@ import 'package:fast_rsa/fast_rsa.dart';
 import 'package:health_share_org/services/aes_helper.dart';
 import 'package:health_share_org/services/hive/compare.dart';
 import 'dart:async';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:pointycastle/export.dart' hide Mac;
+import 'package:asn1lib/asn1lib.dart';
+import 'package:cryptography/cryptography.dart';
 
 class FileDecryptionService {
-  // CRITICAL: Remove skipVerification parameter - verification should NEVER be optional
   static Future<void> previewFile(
     BuildContext context,
     Map<String, dynamic> file,
@@ -31,14 +34,12 @@ class FileDecryptionService {
         return;
       }
 
-      // Get current user from auth
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         showSnackBar('Authentication error');
         return;
       }
 
-      // Get the User record by email
       final userResponse = await Supabase.instance.client
           .from('User')
           .select('id, rsa_private_key, email')
@@ -47,20 +48,18 @@ class FileDecryptionService {
 
       final actualUserId = userResponse['id'] as String?;
       final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
-      final userEmail = userResponse['email'] as String;
 
       if (actualUserId == null || rsaPrivateKeyPem == null) {
         showSnackBar('User authentication error');
         return;
       }
 
-      // 🔐 MANDATORY BLOCKCHAIN VERIFICATION - NO BYPASS ALLOWED
+      // 🔐 MANDATORY BLOCKCHAIN VERIFICATION
       print('\n🔐 === MANDATORY BLOCKCHAIN VERIFICATION START ===');
       showSnackBar('Verifying file integrity on blockchain...');
 
       final String hiveUsername = await _getHiveUsername(actualUserId);
 
-      // Use enhanced verification to get detailed results
       final verificationResult = await HiveCompareServiceWeb.verifyWithDetails(
         fileId: fileId.toString(),
         username: hiveUsername,
@@ -68,49 +67,33 @@ class FileDecryptionService {
 
       if (!verificationResult.success) {
         print('❌ BLOCKCHAIN VERIFICATION FAILED');
-        print('Supabase hash: ${verificationResult.supabaseFileHash}');
-        print('Blockchain hash: ${verificationResult.blockchainFileHash}');
-        print('Error: ${verificationResult.error}');
-        print('DECRYPTION BLOCKED FOR SECURITY');
-        print('=== BLOCKCHAIN VERIFICATION END ===\n');
-        
-        // Show detailed error to user
         await _showVerificationFailedDialogEnhanced(
           context, 
           fileId.toString(),
           verificationResult,
         );
-        
-        // CRITICAL: Stop execution here - no decryption allowed
         showSnackBar('❌ File cannot be decrypted - verification failed');
         return;
       }
 
-      // Additional check: Ensure hashes actually match
       if (!verificationResult.hashesMatch) {
         print('❌ HASH MISMATCH DETECTED');
-        print('Supabase hash: ${verificationResult.supabaseFileHash}');
-        print('Blockchain hash: ${verificationResult.blockchainFileHash}');
-        
         await _showHashMismatchDialog(
           context,
           verificationResult.supabaseFileHash ?? 'N/A',
           verificationResult.blockchainFileHash ?? 'N/A',
         );
-        
         showSnackBar('❌ File corrupted - hash mismatch detected');
         return;
       }
 
       print('✅ BLOCKCHAIN VERIFICATION PASSED');
-      print('File integrity confirmed - proceeding with decryption');
       print('Transaction ID: ${verificationResult.transactionId}');
       print('Block Number: ${verificationResult.blockNumber}');
       print('=== BLOCKCHAIN VERIFICATION END ===\n');
       
       showSnackBar('✓ Blockchain verification passed');
 
-      // Continue with decryption only after successful verification
       await _performDecryption(
         context: context,
         fileId: fileId,
@@ -129,7 +112,6 @@ class FileDecryptionService {
     }
   }
 
-  // Separate method for actual decryption logic
   static Future<void> _performDecryption({
     required BuildContext context,
     required dynamic fileId,
@@ -141,7 +123,6 @@ class FileDecryptionService {
     required Function(String) showSnackBar,
   }) async {
     try {
-      // Get all File_Keys for analysis
       final allFileKeys = await Supabase.instance.client
           .from('File_Keys')
           .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted, nonce_hex')
@@ -149,10 +130,8 @@ class FileDecryptionService {
 
       print('Found ${allFileKeys.length} File_Keys records for file $fileId');
 
-      // Find usable key
       Map<String, dynamic>? usableKey;
       
-      // Try direct user key first
       for (var key in allFileKeys) {
         if (key['recipient_type'] == 'user' && key['recipient_id'] == actualUserId) {
           usableKey = key;
@@ -167,88 +146,74 @@ class FileDecryptionService {
         return;
       }
 
-      // RSA Decryption
-      print('\n--- ATTEMPTING RSA DECRYPTION WITH FAST_RSA ---');
+      // RSA Decryption with PointyCastle fallback
+      print('\n--- ATTEMPTING RSA DECRYPTION ---');
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
       
+      String decryptedKeyDataJson;
+      
+      // FOR WEB: Use PointyCastle directly (fast_rsa has timeout issues on web)
+      print('WEB PLATFORM: Using PointyCastle for RSA decryption...');
+      showSnackBar('Decrypting encryption key...');
+      
       try {
-        String decryptedKeyDataJson;
-        
-        // Try RSA-OAEP first
-        try {
-          print('Attempting RSA-OAEP decryption...');
-          decryptedKeyDataJson = await RSA.decryptOAEP(
-            encryptedKeyData, 
-            "",
-            Hash.SHA256,
-            rsaPrivateKeyPem
-          );
-          print('RSA-OAEP decryption successful!');
-        } catch (oaepError) {
-          print('RSA-OAEP decryption failed, trying PKCS1v15: $oaepError');
-          // Fallback to PKCS1v15 for older encryptions
-          decryptedKeyDataJson = await RSA.decryptPKCS1v15(
-            encryptedKeyData,
-            rsaPrivateKeyPem
-          );
-          print('RSA-PKCS1v15 decryption successful!');
-        }
-
-        final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-        final aesKeyBase64 = keyData['key'] as String?;
-        final aesNonceBase64 = keyData['nonce'] as String?;
-
-        if (aesKeyBase64 == null) {
-          throw Exception('Missing AES key in decrypted data');
-        }
-
-        // Convert base64 to hex for AESHelper
-        final aesKeyBytes = base64Decode(aesKeyBase64);
-        final aesKeyHex = aesKeyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-        
-        String aesNonceHex;
-        if (aesNonceBase64 != null) {
-          final aesNonceBytes = base64Decode(aesNonceBase64);
-          aesNonceHex = aesNonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-        } else {
-          // Use nonce_hex from database if available
-          aesNonceHex = usableKey['nonce_hex'] as String? ?? '';
-        }
-
-        if (aesNonceHex.isEmpty) {
-          throw Exception('Missing AES nonce');
-        }
-
-        print('AES key and nonce extracted successfully');
-
-        // Download file from IPFS
-        showSnackBar('Downloading encrypted file from IPFS...');
-        final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
-        final response = await http.get(Uri.parse(ipfsUrl));
-
-        if (response.statusCode != 200) {
-          throw Exception('Failed to download from IPFS: ${response.statusCode}');
-        }
-
-        final encryptedFileBytes = response.bodyBytes;
-        print('Downloaded ${encryptedFileBytes.length} bytes from IPFS');
-
-        // Decrypt the file
-        showSnackBar('Decrypting file...');
-        final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-        final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
-
-        print('File decrypted successfully: ${decryptedBytes.length} bytes');
-
-        // Show preview
-        showSnackBar('✓ File decrypted successfully!');
-        await _showFilePreview(context, filename, mimeType, decryptedBytes);
-
-      } catch (rsaError) {
-        print('RSA decryption failed: $rsaError');
-        showSnackBar('RSA decryption failed: ${rsaError.toString()}');
+        decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
+        print('✓ PointyCastle RSA decryption successful!');
+      } catch (pointyCastleError) {
+        print('PointyCastle decryption failed: $pointyCastleError');
+        showSnackBar('RSA decryption failed: ${pointyCastleError.toString()}');
         return;
       }
+
+      final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+      final aesKeyBase64 = keyData['key'] as String?;
+      final aesNonceBase64 = keyData['nonce'] as String?;
+
+      if (aesKeyBase64 == null) {
+        throw Exception('Missing AES key in decrypted data');
+      }
+
+      // Convert base64 to hex for AESHelper
+      final aesKeyBytes = base64Decode(aesKeyBase64);
+      final aesKeyHex = aesKeyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      
+      String aesNonceHex;
+      if (aesNonceBase64 != null) {
+        final aesNonceBytes = base64Decode(aesNonceBase64);
+        aesNonceHex = aesNonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      } else {
+        aesNonceHex = usableKey['nonce_hex'] as String? ?? '';
+      }
+
+      if (aesNonceHex.isEmpty) {
+        throw Exception('Missing AES nonce');
+      }
+
+      print('AES key and nonce extracted successfully');
+
+      // Download file from IPFS
+      showSnackBar('Downloading encrypted file from IPFS...');
+      final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
+      final response = await http.get(Uri.parse(ipfsUrl));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download from IPFS: ${response.statusCode}');
+      }
+
+      final encryptedFileBytes = response.bodyBytes;
+      print('Downloaded ${encryptedFileBytes.length} bytes from IPFS');
+
+      // Decrypt the file
+      showSnackBar('Decrypting file...');
+      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
+      final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
+
+      print('File decrypted successfully: ${decryptedBytes.length} bytes');
+
+      // Show preview
+      showSnackBar('✓ File decrypted successfully!');
+      await _showFilePreview(context, filename, mimeType, decryptedBytes);
+
     } catch (e, stackTrace) {
       print('Error in _performDecryption: $e');
       print('Stack trace: $stackTrace');
@@ -256,7 +221,157 @@ class FileDecryptionService {
     }
   }
 
-  // Enhanced error dialog with verification details
+  // =====================================================
+  // PointyCastle RSA Decryption Methods (Fallback)
+  // =====================================================
+  
+  static RSAPrivateKey _parseRSAPrivateKeyFromPem(String pem) {
+    try {
+      print('Parsing RSA private key from PEM...');
+      
+      final cleanPem = pem.trim();
+      
+      bool isPkcs1 = cleanPem.contains('-----BEGIN RSA PRIVATE KEY-----');
+      bool isPkcs8 = cleanPem.contains('-----BEGIN PRIVATE KEY-----');
+      
+      if (!isPkcs1 && !isPkcs8) {
+        throw FormatException('Invalid PEM format - missing proper headers');
+      }
+      
+      String lines;
+      if (isPkcs1) {
+        print('Detected PKCS#1 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN RSA PRIVATE KEY-----', '')
+            .replaceAll('-----END RSA PRIVATE KEY-----', '')
+            .replaceAll(RegExp(r'\s+'), '')
+            .trim();
+      } else {
+        print('Detected PKCS#8 format');
+        lines = cleanPem
+            .replaceAll('-----BEGIN PRIVATE KEY-----', '')
+            .replaceAll('-----END PRIVATE KEY-----', '')
+            .replaceAll(RegExp(r'\s+'), '')
+            .trim();
+      }
+      
+      final keyBytes = base64Decode(lines);
+      
+      if (isPkcs1) {
+        return _parsePKCS1PrivateKey(keyBytes);
+      } else {
+        return _parsePKCS8PrivateKey(keyBytes);
+      }
+    } catch (e) {
+      print('Error parsing RSA private key from PEM: $e');
+      rethrow;
+    }
+  }
+
+  static RSAPrivateKey _parsePKCS1PrivateKey(Uint8List keyBytes) {
+    final privateKeyParser = ASN1Parser(keyBytes);
+    final privateKeySeq = privateKeyParser.nextObject() as ASN1Sequence;
+    
+    if (privateKeySeq.elements.length < 6) {
+      throw FormatException('Invalid PKCS#1 private key structure');
+    }
+    
+    final modulus = (privateKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+    final privateExponent = (privateKeySeq.elements[3] as ASN1Integer).valueAsBigInteger;
+    final p = (privateKeySeq.elements[4] as ASN1Integer).valueAsBigInteger;
+    final q = (privateKeySeq.elements[5] as ASN1Integer).valueAsBigInteger;
+    
+    if (modulus == null || privateExponent == null || p == null || q == null) {
+      throw FormatException('Failed to extract RSA key components');
+    }
+    
+    print('PKCS#1 RSA private key parsed - Modulus bits: ${modulus.bitLength}');
+    return RSAPrivateKey(modulus, privateExponent, p, q);
+  }
+
+  static RSAPrivateKey _parsePKCS8PrivateKey(Uint8List keyBytes) {
+    final asn1Parser = ASN1Parser(keyBytes);
+    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    
+    if (topLevelSeq.elements.length < 3) {
+      throw FormatException('Invalid PKCS#8 structure');
+    }
+    
+    final privateKeyBitString = topLevelSeq.elements[2] as ASN1OctetString;
+    final privateKeyBytes = privateKeyBitString.contentBytes();
+    
+    return _parsePKCS1PrivateKey(privateKeyBytes);
+  }
+
+  static String _decryptWithRSAOAEP(String encryptedData, String privateKeyPem) {
+    try {
+      print('Starting RSA-OAEP decryption with PointyCastle...');
+      
+      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+      
+      // Try SHA-256 first (modern standard)
+      try {
+        print('Attempting RSA-OAEP with SHA-256...');
+        
+        final cipher = OAEPEncoding.withCustomDigest(
+          () => SHA256Digest(),
+          RSAEngine(),
+        );
+        
+        cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+        
+        final encryptedBytes = base64Decode(encryptedData);
+        final decryptedBytes = cipher.process(encryptedBytes);
+        final decryptedString = utf8.decode(decryptedBytes);
+        
+        print('✓ RSA-OAEP SHA-256 decryption successful!');
+        return decryptedString;
+        
+      } catch (sha256Error) {
+        print('SHA-256 OAEP failed, trying SHA-1: $sha256Error');
+        
+        final cipher = OAEPEncoding.withCustomDigest(
+          () => SHA1Digest(),
+          RSAEngine(),
+        );
+        
+        cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+        
+        final encryptedBytes = base64Decode(encryptedData);
+        final decryptedBytes = cipher.process(encryptedBytes);
+        final decryptedString = utf8.decode(decryptedBytes);
+        
+        print('✓ RSA-OAEP SHA-1 decryption successful!');
+        return decryptedString;
+      }
+    } catch (e) {
+      print('RSA-OAEP failed, trying PKCS1v15 fallback: $e');
+      return _decryptWithRSAPKCS1v15(encryptedData, privateKeyPem);
+    }
+  }
+
+  static String _decryptWithRSAPKCS1v15(String encryptedData, String privateKeyPem) {
+    try {
+      final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
+      final cipher = PKCS1Encoding(RSAEngine());
+      cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+      
+      final encryptedBytes = base64Decode(encryptedData);
+      final decryptedBytes = cipher.process(encryptedBytes);
+      final decryptedString = utf8.decode(decryptedBytes);
+      
+      print('✓ PKCS1v15 decryption successful!');
+      return decryptedString;
+    } catch (e) {
+      print('PKCS1v15 decryption error: $e');
+      rethrow;
+    }
+  }
+
+  // =====================================================
+  // Dialog Methods
+  // =====================================================
+
   static Future<void> _showVerificationFailedDialogEnhanced(
     BuildContext context,
     String fileId,
@@ -319,7 +434,6 @@ class FileDecryptionService {
     );
   }
 
-  // Show hash mismatch dialog
   static Future<void> _showHashMismatchDialog(
     BuildContext context,
     String supabaseHash,
@@ -349,7 +463,7 @@ class FileDecryptionService {
             ),
             const SizedBox(height: 16),
             const Text(
-              'The file hash stored in the database does not match the blockchain record. This indicates the file or its metadata has been modified.',
+              'The file hash stored in the database does not match the blockchain record.',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 16),
@@ -382,27 +496,20 @@ class FileDecryptionService {
     );
   }
 
-  // Rest of the helper methods remain the same...
+  // =====================================================
+  // Helper Methods
+  // =====================================================
+
   static Future<String> _getHiveUsername(String userId) async {
-    try {
-      final response = await Supabase.instance.client
-          .from('User')
-          .select('hive_username')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (response != null && response['hive_username'] != null) {
-        return response['hive_username'] as String;
-      }
-
-      return 'your-hive-username'; // Replace with actual logic
-    } catch (e) {
-      print('Error getting Hive username: $e');
-      return 'your-hive-username';
+    final envUsername = dotenv.env['HIVE_ACCOUNT_NAME'];
+    
+    if (envUsername == null || envUsername.isEmpty) {
+      throw Exception('HIVE_ACCOUNT_NAME not found in .env file');
     }
+    
+    print('Using Hive username: $envUsername');
+    return envUsername;
   }
-
-  // [Previous helper methods like _showFilePreview, _buildPreviewContent, etc. remain unchanged]
   
   static Future<void> _showFilePreview(
     BuildContext context,
@@ -626,32 +733,5 @@ class FileDecryptionService {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  static String _bytesToHex(List<int> bytes) {
-    final buffer = StringBuffer();
-    for (int i = 0; i < bytes.length; i += 16) {
-      buffer.write('${i.toRadixString(16).padLeft(8, '0')}: ');
-      
-      for (int j = 0; j < 16; j++) {
-        if (i + j < bytes.length) {
-          buffer.write('${bytes[i + j].toRadixString(16).padLeft(2, '0')} ');
-        } else {
-          buffer.write('   ');
-        }
-      }
-      
-      buffer.write(' |');
-      for (int j = 0; j < 16 && i + j < bytes.length; j++) {
-        final byte = bytes[i + j];
-        if (byte >= 32 && byte <= 126) {
-          buffer.write(String.fromCharCode(byte));
-        } else {
-          buffer.write('.');
-        }
-      }
-      buffer.write('|\n');
-    }
-    return buffer.toString();
   }
 }

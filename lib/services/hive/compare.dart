@@ -323,91 +323,121 @@ class HiveCompareServiceWeb {
   }
 
   /// Enhanced verification with detailed result
-  static Future<VerificationResult> verifyWithDetails({
-    required String fileId,
-    String? trxId,
-    required String username,
-  }) async {
-    try {
-      // Fetch Supabase record
-      final supabase = Supabase.instance.client;
-      final hiveLogResult = await supabase
-          .from('Hive_Logs')
-          .select('trx_id, file_hash, user_id, file_name, timestamp')
-          .eq('file_id', fileId)
-          .maybeSingle();
+  /// Enhanced verification with detailed result - STRICT MODE
+/// Enhanced verification with detailed result - STRICT MODE
+static Future<VerificationResult> verifyWithDetails({
+  required String fileId,
+  String? trxId,
+  required String username,
+}) async {
+  try {
+    print('=== STRICT VERIFICATION START ===');
+    
+    // Fetch Supabase record
+    final supabase = Supabase.instance.client;
+    final hiveLogResult = await supabase
+        .from('Hive_Logs')
+        .select('trx_id, file_hash, user_id, file_name, timestamp')
+        .eq('file_id', fileId)
+        .maybeSingle();
 
-      if (hiveLogResult == null) {
+    if (hiveLogResult == null) {
+      return VerificationResult(
+        success: false,
+        error: 'No Hive_Logs record found for file',
+      );
+    }
+
+    final supabaseFileHash = hiveLogResult['file_hash'] as String;
+    final supabaseTrxId = hiveLogResult['trx_id'] as String?;
+    
+    // CRITICAL: We MUST have a transaction ID
+    if (supabaseTrxId == null || supabaseTrxId.isEmpty) {
+      return VerificationResult(
+        success: false,
+        error: 'No transaction ID found in Hive_Logs',
+        supabaseFileHash: supabaseFileHash,
+      );
+    }
+
+    print('Supabase file_hash: $supabaseFileHash');
+    print('Supabase trx_id: $supabaseTrxId');
+
+    // STRICT MODE: Only use the exact transaction ID from database
+    // NO FALLBACK to account history search
+    String? blockchainFileHash;
+    int? blockNumber;
+
+    try {
+      print('Fetching transaction: $supabaseTrxId');
+      final transaction = await HiveFetchWeb.getTransaction(supabaseTrxId);
+      blockNumber = transaction['block_num'] as int?;
+
+      final operations = transaction['operations'] as List<dynamic>;
+      final customJsonData = _extractCustomJsonData(operations);
+
+      if (customJsonData == null) {
         return VerificationResult(
           success: false,
-          error: 'No Hive_Logs record found',
+          error: 'No medical_logs custom_json found in transaction',
+          supabaseFileHash: supabaseFileHash,
+          transactionId: supabaseTrxId,
         );
       }
 
-      final supabaseFileHash = hiveLogResult['file_hash'] as String;
-      final supabaseTrxId = hiveLogResult['trx_id'] as String?;
-      final effectiveTrxId = trxId ?? supabaseTrxId;
-
-      String? blockchainFileHash;
-      int? blockNumber;
-
-      // Try to fetch from blockchain
-      if (effectiveTrxId != null && effectiveTrxId.isNotEmpty) {
-        try {
-          final transaction = await HiveFetchWeb.getTransaction(effectiveTrxId);
-          blockNumber = transaction['block_num'] as int?;
-
-          final operations = transaction['operations'] as List<dynamic>;
-          final customJsonData = _extractCustomJsonData(operations);
-
-          if (customJsonData != null) {
-            blockchainFileHash = customJsonData['file_hash'] as String?;
-          }
-        } catch (e) {
-          // Fallback to account history
-          final accountHistory = await HiveFetchWeb.getAccountHistory(username, 100);
-
-          for (final entry in accountHistory.reversed) {
-            final opData = entry['op'] as Map<String, dynamic>;
-            final opType = opData['op'] as List<dynamic>;
-            final opName = opType[0] as String;
-
-            if (opName == 'custom_json') {
-              final customJsonData = _extractCustomJsonFromOp(opType);
-              if (customJsonData != null && customJsonData['file_id'] == fileId) {
-                blockchainFileHash = customJsonData['file_hash'] as String?;
-                break;
-              }
-            }
-          }
-        }
-      }
-
+      // Extract file_hash from blockchain (file_id is not stored in blockchain)
+      blockchainFileHash = customJsonData['file_hash'] as String?;
+      
       if (blockchainFileHash == null) {
         return VerificationResult(
           success: false,
-          error: 'Could not retrieve file hash from blockchain',
+          error: 'No file_hash found in blockchain transaction',
           supabaseFileHash: supabaseFileHash,
+          transactionId: supabaseTrxId,
         );
       }
 
-      final hashesMatch = supabaseFileHash == blockchainFileHash;
+      print('Blockchain file_hash: $blockchainFileHash');
 
-      return VerificationResult(
-        success: hashesMatch,
-        supabaseFileHash: supabaseFileHash,
-        blockchainFileHash: blockchainFileHash,
-        transactionId: effectiveTrxId,
-        blockNumber: blockNumber,
-        error: hashesMatch ? null : 'File hashes do not match',
-      );
-    } catch (e, stackTrace) {
-      print('Error in verifyWithDetails: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
+      // CRITICAL: If we can't fetch the exact transaction, verification FAILS
+      // DO NOT fall back to account history
+      print('Failed to fetch transaction: $e');
       return VerificationResult(
         success: false,
-        error: e.toString(),
+        error: 'Failed to fetch transaction from blockchain: $e',
+        supabaseFileHash: supabaseFileHash,
+        transactionId: supabaseTrxId,
       );
     }
+
+    // Final comparison
+    final hashesMatch = supabaseFileHash == blockchainFileHash;
+
+    if (!hashesMatch) {
+      print('❌ HASH MISMATCH DETECTED');
+      print('Supabase:   $supabaseFileHash');
+      print('Blockchain: $blockchainFileHash');
+    } else {
+      print('✅ HASHES MATCH - Verification passed');
+    }
+
+    return VerificationResult(
+      success: hashesMatch,
+      supabaseFileHash: supabaseFileHash,
+      blockchainFileHash: blockchainFileHash,
+      transactionId: supabaseTrxId,
+      blockNumber: blockNumber,
+      error: hashesMatch ? null : 'File hash mismatch - file may be corrupted or tampered',
+    );
+    
+  } catch (e, stackTrace) {
+    print('Error in verifyWithDetails: $e');
+    print('Stack trace: $stackTrace');
+    return VerificationResult(
+      success: false,
+      error: 'Verification error: $e',
+    );
   }
+}
 }
