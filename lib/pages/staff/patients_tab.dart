@@ -793,16 +793,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                           PopupMenuButton(
                             icon: const Icon(Icons.more_vert, size: 18, color: PatientsTheme.textGray),
                             itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'download',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.download, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('Download'),
-                                  ],
-                                ),
-                              ),
+                              
                               const PopupMenuItem(
                                 value: 'details',
                                 child: Row(
@@ -824,16 +815,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                                 ),
                               ),
                             ],
-                            onSelected: (value) {
-                              if (value == 'download') {
-                                FileDecryptionService.downloadAndDecryptFile(
-                                    context, file, _showSnackBar);
-                              } else if (value == 'details') {
-                                _showFileDetails(file);
-                              } else if (value == 'delete') {
-                                _confirmDeleteFile(file);
-                              }
-                            },
+                            
                           ),
                         ],
                       ),
