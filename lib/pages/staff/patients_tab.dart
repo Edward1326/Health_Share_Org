@@ -150,7 +150,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
 
     final userEmail = currentUser.email!;
     
-    // Get current user's ID
+    // Get current doctor's user_id
     final currentUserResponse = await Supabase.instance.client
         .from('User')
         .select('id')
@@ -168,15 +168,19 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
         .single();
 
     final patientUserId = patientResponse['user_id'];
-    print('DEBUG: Patient ID: $patientId, Patient User ID: $patientUserId');
+    print('DEBUG: Patient user ID: $patientUserId');
 
-    // Get files shared WITH this doctor
-    final sharedFilesResponse = await Supabase.instance.client
+    // Get all File_Shares where either:
+    // - Doctor shared with patient (shared_by_user_id = doctor AND shared_with_user_id = patient)
+    // - Patient shared with doctor (shared_by_user_id = patient AND (shared_with_user_id = doctor OR shared_with_doctor = doctor))
+    final allShares = await Supabase.instance.client
         .from('File_Shares')
         .select('''
           id,
           shared_at,
           shared_by_user_id,
+          shared_with_user_id,
+          shared_with_doctor,
           Files!inner(
             id,
             filename,
@@ -195,70 +199,30 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             )
           )
         ''')
-        .eq('shared_with_user_id', currentDoctorUserId)
+        .or('and(shared_by_user_id.eq.$currentDoctorUserId,shared_with_user_id.eq.$patientUserId),and(shared_by_user_id.eq.$patientUserId,shared_with_user_id.eq.$currentDoctorUserId),and(shared_by_user_id.eq.$patientUserId,shared_with_doctor.eq.$currentDoctorUserId)')
         .order('shared_at', ascending: false);
 
-    // Get files uploaded BY this doctor (for the patient or anyone)
-    final doctorUploadedFilesResponse = await Supabase.instance.client
-        .from('Files')
-        .select('''
-          id,
-          filename,
-          category,
-          file_type,
-          uploaded_at,
-          file_size,
-          ipfs_cid,
-          sha256_hash,
-          uploaded_by,
-          uploader:User!uploaded_by(
-            Person!person_id(
-              first_name,
-              last_name
-            )
-          )
-        ''')
-        .eq('uploaded_by', currentDoctorUserId)
-        .order('uploaded_at', ascending: false);
-
-    List<Map<String, dynamic>> allFiles = [];
-
-    // Add files shared with doctor
-    for (var share in sharedFilesResponse) {
-      allFiles.add(Map<String, dynamic>.from(share as Map));
+    print('DEBUG: Doctor user_id: $currentDoctorUserId, Patient user_id: $patientUserId');
+    print('DEBUG: Found ${allShares.length} file shares between doctor and patient');
+    
+    // Debug: print the actual shares found
+    for (var share in allShares) {
+      print('DEBUG: Share - shared_by: ${share['shared_by_user_id']}, shared_with: ${share['shared_with_user_id']}');
     }
 
-    // Add files uploaded by doctor (wrap in same structure as shared files)
-    for (var file in doctorUploadedFilesResponse) {
-      allFiles.add(<String, dynamic>{
-        'id': null,
-        'shared_at': null,
-        'Files': Map<String, dynamic>.from(file as Map),
-        'is_doctor_upload': true,
-      });
+    List<Map<String, dynamic>> filesList = [];
+    for (var share in allShares) {
+      filesList.add(Map<String, dynamic>.from(share as Map));
     }
-
-    // Sort by date (shared_at for shared files, uploaded_at for doctor's uploads)
-    allFiles.sort((a, b) {
-      final aDate = DateTime.tryParse(
-              a['shared_at'] ?? a['Files']['uploaded_at'] ?? '') ??
-          DateTime.now();
-      final bDate = DateTime.tryParse(
-              b['shared_at'] ?? b['Files']['uploaded_at'] ?? '') ??
-          DateTime.now();
-      return bDate.compareTo(aDate);
-    });
 
     setState(() {
-      _selectedPatientFiles = allFiles;
+      _selectedPatientFiles = filesList;
       _loadingFiles = false;
     });
 
-    final sharedCount = sharedFilesResponse.length;
-    final uploadedCount = doctorUploadedFilesResponse.length;
-    print('Loaded $sharedCount shared files and $uploadedCount files uploaded by doctor');
+    print('Loaded ${filesList.length} files for this patient');
   } catch (e) {
-    print('Error loading files for doctor: $e');
+    print('Error loading files for patient: $e');
     setState(() {
       _loadingFiles = false;
     });
