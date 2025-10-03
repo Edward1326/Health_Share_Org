@@ -137,25 +137,46 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
   }
 
   Future<void> _loadAllFilesForPatient(String patientId) async {
-    setState(() {
-      _loadingFiles = true;
-    });
+  setState(() {
+    _loadingFiles = true;
+  });
 
-    try {
-      final patientResponse = await Supabase.instance.client
-          .from('Patient')
-          .select('user_id')
-          .eq('id', patientId)
-          .single();
+  try {
+    // Get the current doctor's user ID
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null || currentUser.email == null) {
+      throw Exception('No authenticated user found');
+    }
 
-      final userId = patientResponse['user_id'];
-      print('DEBUG: Patient ID: $patientId, User ID: $userId');
+    final userEmail = currentUser.email!;
+    
+    // Get current user's ID
+    final currentUserResponse = await Supabase.instance.client
+        .from('User')
+        .select('id')
+        .eq('email', userEmail)
+        .single();
+    
+    final currentDoctorUserId = currentUserResponse['id'];
+    print('DEBUG: Current doctor user ID: $currentDoctorUserId');
 
-      final sharedFilesResponse = await Supabase.instance.client
-          .from('File_Shares')
-          .select('''
+    // Get patient's user_id
+    final patientResponse = await Supabase.instance.client
+        .from('Patient')
+        .select('user_id')
+        .eq('id', patientId)
+        .single();
+
+    final patientUserId = patientResponse['user_id'];
+    print('DEBUG: Patient ID: $patientId, Patient User ID: $patientUserId');
+
+    // Get files shared WITH this doctor
+    final sharedFilesResponse = await Supabase.instance.client
+        .from('File_Shares')
+        .select('''
           id,
           shared_at,
+          shared_by_user_id,
           Files!inner(
             id,
             filename,
@@ -174,12 +195,13 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             )
           )
         ''')
-          .eq('shared_with_user_id', userId)
-          .order('shared_at', ascending: false);
+        .eq('shared_with_user_id', currentDoctorUserId)
+        .order('shared_at', ascending: false);
 
-      final patientFilesResponse = await Supabase.instance.client
-          .from('Files')
-          .select('''
+    // Get files uploaded BY this doctor (for the patient or anyone)
+    final doctorUploadedFilesResponse = await Supabase.instance.client
+        .from('Files')
+        .select('''
           id,
           filename,
           category,
@@ -196,50 +218,53 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             )
           )
         ''')
-          .eq('uploaded_by', userId)
-          .order('uploaded_at', ascending: false);
+        .eq('uploaded_by', currentDoctorUserId)
+        .order('uploaded_at', ascending: false);
 
-      List<Map<String, dynamic>> allFiles = [];
+    List<Map<String, dynamic>> allFiles = [];
 
-      for (var share in sharedFilesResponse) {
-        allFiles.add(Map<String, dynamic>.from(share as Map));
-      }
-
-      for (var file in patientFilesResponse) {
-        allFiles.add(<String, dynamic>{
-          'id': null,
-          'shared_at': null,
-          'Files': Map<String, dynamic>.from(file as Map),
-          'is_patient_file': true,
-        });
-      }
-
-      allFiles.sort((a, b) {
-        final aDate = DateTime.tryParse(
-                a['shared_at'] ?? a['Files']['uploaded_at'] ?? '') ??
-            DateTime.now();
-        final bDate = DateTime.tryParse(
-                b['shared_at'] ?? b['Files']['uploaded_at'] ?? '') ??
-            DateTime.now();
-        return bDate.compareTo(aDate);
-      });
-
-      setState(() {
-        _selectedPatientFiles = allFiles;
-        _loadingFiles = false;
-      });
-
-      final sharedCount = sharedFilesResponse.length;
-      final patientCount = patientFilesResponse.length;
-      print('Loaded $sharedCount shared files and $patientCount patient files');
-    } catch (e) {
-      print('Error loading all patient files: $e');
-      setState(() {
-        _loadingFiles = false;
-      });
-      _showSnackBar('Error loading files: $e');
+    // Add files shared with doctor
+    for (var share in sharedFilesResponse) {
+      allFiles.add(Map<String, dynamic>.from(share as Map));
     }
+
+    // Add files uploaded by doctor (wrap in same structure as shared files)
+    for (var file in doctorUploadedFilesResponse) {
+      allFiles.add(<String, dynamic>{
+        'id': null,
+        'shared_at': null,
+        'Files': Map<String, dynamic>.from(file as Map),
+        'is_doctor_upload': true,
+      });
+    }
+
+    // Sort by date (shared_at for shared files, uploaded_at for doctor's uploads)
+    allFiles.sort((a, b) {
+      final aDate = DateTime.tryParse(
+              a['shared_at'] ?? a['Files']['uploaded_at'] ?? '') ??
+          DateTime.now();
+      final bDate = DateTime.tryParse(
+              b['shared_at'] ?? b['Files']['uploaded_at'] ?? '') ??
+          DateTime.now();
+      return bDate.compareTo(aDate);
+    });
+
+    setState(() {
+      _selectedPatientFiles = allFiles;
+      _loadingFiles = false;
+    });
+
+    final sharedCount = sharedFilesResponse.length;
+    final uploadedCount = doctorUploadedFilesResponse.length;
+    print('Loaded $sharedCount shared files and $uploadedCount files uploaded by doctor');
+  } catch (e) {
+    print('Error loading files for doctor: $e');
+    setState(() {
+      _loadingFiles = false;
+    });
+    _showSnackBar('Error loading files: $e');
   }
+}
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
