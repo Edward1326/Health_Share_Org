@@ -203,128 +203,14 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with title and actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Hospital Profile',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
-              ),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _loadOrganizationData,
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('Refresh'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: primaryGreen,
-                      side: const BorderSide(color: primaryGreen),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: organizationData == null ? null : () => _showEditDialog(context),
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Edit Profile'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryGreen,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: primaryGreen),
+      );
+    }
 
-          const SizedBox(height: 24),
-
-          // Main content area
-          if (isLoading)
-            _buildLoadingCard()
-          else if (organizationData == null)
-            _buildErrorCard()
-          else
-            Column(
-              children: [
-                // Profile overview card
-                _buildProfileOverviewCard(),
-                const SizedBox(height: 24),
-                
-                // Information cards grid
-                _buildInformationGrid(),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingCard() {
-    return Container(
-      height: 400,
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        color: cardBackground,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: primaryGreen),
-            SizedBox(height: 16),
-            Text(
-              'Loading hospital profile...',
-              style: TextStyle(
-                fontSize: 16,
-                color: textGray,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard() {
-    return Container(
-      height: 400,
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        color: cardBackground,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
+    if (organizationData == null) {
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -360,16 +246,59 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
             ),
           ],
         ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with title and action button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Hospital Profile',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showEditDialog(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.edit, size: 18),
+                label: const Text('Edit Profile'),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Profile card
+          _buildProfileCard(),
+          
+          const SizedBox(height: 24),
+          
+          // Information sections
+          _buildInformationSections(),
+        ],
       ),
     );
   }
 
-  Widget _buildProfileOverviewCard() {
+  Widget _buildProfileCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: cardBackground,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -381,158 +310,179 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
       ),
       child: Column(
         children: [
-          // Profile image with edit overlay
-          Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: primaryGreen, width: 3),
-                ),
-                child: CircleAvatar(
-                  radius: 60,
-                  backgroundColor: primaryGreen.withOpacity(0.1),
-                  backgroundImage: organizationData!['image'] != null
-                      ? NetworkImage(organizationData!['image'])
-                      : null,
-                  child: organizationData!['image'] == null
-                      ? const Icon(
-                          Icons.local_hospital,
-                          size: 48,
-                          color: primaryGreen,
-                        )
-                      : null,
-                ),
+          // Profile header with image
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: primaryGreen.withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: GestureDetector(
-                  onTap: isUploadingImage ? null : _pickAndUploadImage,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: primaryGreen,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+            ),
+            child: Row(
+              children: [
+                // Profile image
+                Stack(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: primaryGreen, width: 3),
+                        color: Colors.white,
+                      ),
+                      child: CircleAvatar(
+                        radius: 45,
+                        backgroundColor: primaryGreen.withOpacity(0.1),
+                        backgroundImage: organizationData!['image'] != null
+                            ? NetworkImage(organizationData!['image'])
+                            : null,
+                        child: organizationData!['image'] == null
+                            ? const Icon(
+                                Icons.local_hospital,
+                                size: 40,
+                                color: primaryGreen,
+                              )
+                            : null,
+                      ),
                     ),
-                    child: isUploadingImage
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 16,
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: isUploadingImage ? null : _pickAndUploadImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: primaryGreen,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
+                          child: isUploadingImage
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 20),
+                // Hospital info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        organizationData!['name'] ?? 'Unknown Hospital',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (organizationData!['description'] != null)
+                        Text(
+                          organizationData!['description'],
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: textGray,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          
-          // Hospital name
-          Text(
-            organizationData!['name'] ?? 'Unknown Hospital',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+              ],
             ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
           
-          // Description
-          if (organizationData!['description'] != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                organizationData!['description'],
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: textGray,
+          // Quick stats row
+          Container(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildQuickStat(
+                    Icons.verified_user,
+                    'License',
+                    organizationData!['organization_license'] ?? 'N/A',
+                    DashboardTheme.approvedGreen,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: const Color(0xFFE5E7EB),
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                Expanded(
+                  child: _buildQuickStat(
+                    Icons.calendar_today,
+                    'Registered',
+                    _formatDateTime(organizationData!['created_at']),
+                    Colors.blue,
+                  ),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildInformationGrid() {
+  Widget _buildQuickStat(IconData icon, String label, String value, Color color) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left column
-        Expanded(
-          child: Column(
-            children: [
-              _buildInfoCard(
-                'Hospital Name',
-                organizationData!['name'] ?? 'Not specified',
-                Icons.local_hospital,
-                primaryGreen,
-              ),
-              const SizedBox(height: 16),
-              _buildInfoCard(
-                'Location',
-                organizationData!['location'] ?? 'Not specified',
-                Icons.location_on,
-                Colors.orange,
-              ),
-              const SizedBox(height: 16),
-              _buildInfoCard(
-                'Contact Number',
-                organizationData!['contact_number'] ?? 'Not specified',
-                Icons.phone,
-                Colors.blue,
-              ),
-            ],
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
+          child: Icon(icon, color: color, size: 18),
         ),
-        const SizedBox(width: 16),
-        
-        // Right column
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoCard(
-                'Email Address',
-                organizationData!['email'] ?? 'Not specified',
-                Icons.email,
-                Colors.teal,
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: textGray,
+                ),
               ),
-              const SizedBox(height: 16),
-              _buildInfoCard(
-                'License Number',
-                organizationData!['organization_license'] ?? 'Not specified',
-                Icons.verified_user,
-                DashboardTheme.approvedGreen,
-              ),
-              const SizedBox(height: 16),
-              _buildInfoCard(
-                'Registration Date',
-                _formatDateTime(organizationData!['created_at']),
-                Icons.calendar_today,
-                Colors.purple,
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -541,11 +491,10 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
     );
   }
 
-  Widget _buildInfoCard(String title, String content, IconData icon, Color iconColor) {
+  Widget _buildInformationSections() {
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardBackground,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -558,36 +507,81 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text(
+              'Contact Information',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
+            ),
+          ),
+          _buildInfoItem(
+            Icons.location_on,
+            'Location',
+            organizationData!['location'] ?? 'Not specified',
+            Colors.orange,
+          ),
+          _buildInfoItem(
+            Icons.email,
+            'Email Address',
+            organizationData!['email'] ?? 'Not specified',
+            Colors.teal,
+          ),
+          _buildInfoItem(
+            Icons.phone,
+            'Contact Number',
+            organizationData!['contact_number'] ?? 'Not specified',
+            Colors.blue,
+            isLast: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String label, String value, Color color, {bool isLast = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        border: isLast ? null : const Border(
+          bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
                     color: textGray,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            content,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -702,14 +696,10 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    OutlinedButton(
+                    TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
+                      style: TextButton.styleFrom(
                         foregroundColor: textGray,
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       ),
                       child: const Text('Cancel'),
@@ -783,24 +773,7 @@ class ModernAdminProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final isSmallScreen = screenSize.width < 800;
-
-    if (isSmallScreen) {
-      // Mobile - simple scaffold
-      return Scaffold(
-        backgroundColor: DashboardTheme.sidebarGray,
-        appBar: AppBar(
-          title: const Text('Hospital Profile'),
-          backgroundColor: DashboardTheme.primaryGreen,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: const HospitalProfileContentWidget(),
-      );
-    }
-
-    // Desktop - use modular layout
+    // Always use modular layout with sidebar
     return const MainDashboardLayout(
       title: 'Hospital Profile',
       selectedNavIndex: 3,
