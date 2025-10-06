@@ -188,12 +188,22 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                       side: const BorderSide(color: primaryGreen),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                     const SizedBox(width: 12),
                   ElevatedButton.icon(
-                    onPressed: _showInviteDialog,
-                    icon: const Icon(Icons.person_add, size: 18),
+                    onPressed: () {
+                      _showInviteDialog();
+                    },
+                    icon: const Icon(Icons.add, size: 18),
                     label: const Text('Invite Patient'),
-                    style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -631,7 +641,12 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
       setState(() { _isSearching = false; });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Search error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Search error: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         );
       }
     }
@@ -640,8 +655,16 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text('Invite Patient'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      backgroundColor: const Color(0xFFF8F9FA),
+      title: const Text(
+        'Invite Patient',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: DashboardTheme.darkGray,
+        ),
+      ),
       content: SizedBox(
         width: 400,
         height: 300,
@@ -649,56 +672,147 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
           children: [
             TextField(
               controller: _controller,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Search by email...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search, color: DashboardTheme.textGray),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: DashboardTheme.primaryGreen, width: 2),
+                ),
               ),
               onChanged: _searchUsers,
             ),
             const SizedBox(height: 16),
             Expanded(
               child: _isSearching
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: DashboardTheme.primaryGreen,
+                    ),
+                  )
                 : _searchResults.isEmpty
-                  ? const Center(child: Text('Start typing to search'))
-                  : ListView.builder(
-                      itemCount: _searchResults.length,
-                      itemBuilder: (context, index) {
-                        final user = _searchResults[index];
-                        return ListTile(
-                          leading: CircleAvatar(child: Text(user['name']?[0] ?? 'U')),
-                          title: Text(user['name'] ?? 'Unknown'),
-                          subtitle: Text(user['email'] ?? ''),
-                          trailing: ElevatedButton(
-                            onPressed: () async {
-                              try {
-                                await widget.functions.inviteUser(user);
-                                widget.onPatientInvited();
-                                if (mounted) {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Patient invited!')),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error: $e')),
-                                  );
-                                }
-                              }
-                            },
-                            child: const Text('Invite'),
-                          ),
-                        );
-                      },
+                  ? const Center(
+                      child: Text(
+                        'Start typing to search',
+                        style: TextStyle(color: DashboardTheme.textGray),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final user = _searchResults[index];
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: index < _searchResults.length - 1
+                                      ? Colors.grey.shade200
+                                      : Colors.transparent,
+                                ),
+                              ),
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: DashboardTheme.primaryGreen,
+                                child: Text(
+                                  user['name']?[0] ?? 'U',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                user['name'] ?? 'Unknown',
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(
+                                user['email'] ?? '',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: DashboardTheme.textGray,
+                                ),
+                              ),
+                              trailing: ElevatedButton(
+                                onPressed: () async {
+                                  try {
+                                    await widget.functions.inviteUser(user);
+                                    widget.onPatientInvited();
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: const Text('Patient invited successfully!'),
+                                          backgroundColor: DashboardTheme.approvedGreen,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Error: $e'),
+                                          backgroundColor: Colors.red,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: DashboardTheme.primaryGreen,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Invite'),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: DashboardTheme.primaryGreen,
+          ),
+          child: const Text('Close'),
+        ),
       ],
     );
   }
