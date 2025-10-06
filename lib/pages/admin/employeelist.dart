@@ -155,8 +155,16 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                       );
                     },
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add employee'),
-                    style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+                    label: const Text('Add Employee'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                 ],
               ),

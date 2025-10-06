@@ -66,11 +66,23 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
       print('DEBUG: Loading data for user: ${user.id}');
 
+      // Get User data first (contains email)
+      final userResponse = await supabase
+          .from('User')
+          .select('id, email, person_id')
+          .eq('id', user.id)
+          .single();
+
+      print('DEBUG: User data: $userResponse');
+      final userId = userResponse['id'];
+      final personId = userResponse['person_id'];
+      final userEmail = userResponse['email'];
+
       // Get Organization_User data with position
       final orgUserResponse = await supabase
           .from('Organization_User')
           .select()
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .single();
 
       print('DEBUG: Organization_User data: $orgUserResponse');
@@ -79,7 +91,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       final personResponse = await supabase
           .from('Person')
           .select()
-          .eq('auth_user_id', user.id)
+          .eq('id', personId)
           .single();
 
       print('DEBUG: Person data: $personResponse');
@@ -87,13 +99,15 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       setState(() {
         organizationUserData = orgUserResponse;
         staffData = personResponse;
+        // Store email separately since it comes from User table
+        staffData!['email'] = userEmail;
         isLoading = false;
 
         // Initialize controllers with existing data
         _firstNameController.text = staffData!['first_name'] ?? '';
         _middleNameController.text = staffData!['middle_name'] ?? '';
         _lastNameController.text = staffData!['last_name'] ?? '';
-        _emailController.text = staffData!['email'] ?? '';
+        _emailController.text = userEmail ?? '';
         _addressController.text = staffData!['address'] ?? '';
         _contactNumberController.text = staffData!['contact_number'] ?? '';
         _bloodTypeController.text = staffData!['blood_type'] ?? '';
@@ -103,7 +117,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
         _disabilitiesController.text = staffData!['disabilities'] ?? '';
       });
 
-      print('DEBUG: Data loaded successfully');
+      print('DEBUG: Data loaded successfully with email: $userEmail');
     } catch (error) {
       print('DEBUG: Error loading data: $error');
       setState(() {

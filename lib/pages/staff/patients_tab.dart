@@ -260,18 +260,21 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             children: [
               const Text(
                 'My Patients',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: PatientsTheme.darkGray),
               ),
               Row(
                 children: [
-                  ElevatedButton.icon(
+                  OutlinedButton.icon(
                     onPressed: _loadPatients,
                     icon: const Icon(Icons.refresh, size: 18),
                     label: const Text('Refresh'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
+                    style: OutlinedButton.styleFrom(
                       foregroundColor: PatientsTheme.primaryGreen,
                       side: const BorderSide(color: PatientsTheme.primaryGreen),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -281,6 +284,12 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                     label: const Text('Add Patient'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: PatientsTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ],
@@ -399,7 +408,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                             backgroundColor: _getPatientAvatarColor(index),
                             child: Text(
                               _getPatientInitials(fullName),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -409,7 +418,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                               children: [
                                 Text(
                                   fullName,
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
@@ -428,6 +437,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                     Expanded(
                       child: Text(
                         patient['patient_id'].toString(),
+                        style: const TextStyle(fontSize: 14),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -437,6 +447,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                       flex: 2,
                       child: Text(
                         patient['User']['email'] ?? '',
+                        style: const TextStyle(fontSize: 14),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -571,6 +582,12 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                 label: const Text('Upload File'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: PatientsTheme.primaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
             ],
@@ -781,7 +798,6 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                           PopupMenuButton(
                             icon: const Icon(Icons.more_vert, size: 18, color: PatientsTheme.textGray),
                             itemBuilder: (context) => [
-                              
                               const PopupMenuItem(
                                 value: 'details',
                                 child: Row(
@@ -803,7 +819,13 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                                 ),
                               ),
                             ],
-                            
+                            onSelected: (value) {
+                              if (value == 'details') {
+                                _showFileDetails(file);
+                              } else if (value == 'delete') {
+                                _confirmDeleteFile(file);
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -981,18 +1003,27 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: const Color(0xFFF8F9FA),
         title: Row(
           children: [
-            Icon(
-              _getFileTypeIcon(file['file_type'] ?? ''),
-              color: _getFileTypeColor(file['file_type'] ?? ''),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getFileTypeIcon(file['file_type'] ?? ''),
+                color: _getFileTypeColor(file['file_type'] ?? ''),
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
                 'File Details',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: PatientsTheme.darkGray),
               ),
             ),
           ],
@@ -1019,7 +1050,10 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: PatientsTheme.primaryGreen)),
+            style: TextButton.styleFrom(
+              foregroundColor: PatientsTheme.primaryGreen,
+            ),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -1034,9 +1068,9 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
         children: [
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
-              color: Colors.grey[600],
+              color: PatientsTheme.textGray,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1058,15 +1092,27 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Delete File'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: const Color(0xFFF8F9FA),
+        title: const Text(
+          'Delete File',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: PatientsTheme.darkGray,
+          ),
+        ),
         content: Text(
           'Are you sure you want to delete "${file['filename']}"? This action cannot be undone.',
+          style: const TextStyle(color: PatientsTheme.darkGray),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: PatientsTheme.textGray)),
+            style: TextButton.styleFrom(
+              foregroundColor: PatientsTheme.textGray,
+            ),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1076,6 +1122,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
+              elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Delete'),
