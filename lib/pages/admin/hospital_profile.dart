@@ -601,127 +601,136 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Container(
-            width: 600,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Dialog header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Edit Hospital Profile',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.grey.shade100,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                // Form fields
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        _buildEditField(
-                          controller: _nameController,
-                          label: 'Hospital Name',
-                          icon: Icons.local_hospital,
-                          hint: 'Enter hospital name',
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEditField(
-                          controller: _descriptionController,
-                          label: 'Description',
-                          icon: Icons.description,
-                          hint: 'Enter hospital description',
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEditField(
-                          controller: _locationController,
-                          label: 'Location',
-                          icon: Icons.location_on,
-                          hint: 'Enter hospital address',
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEditField(
-                          controller: _emailController,
-                          label: 'Email Address',
-                          icon: Icons.email,
-                          hint: 'Enter email address',
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEditField(
-                          controller: _contactController,
-                          label: 'Contact Number',
-                          icon: Icons.phone,
-                          hint: 'Enter contact number',
-                          keyboardType: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEditField(
-                          controller: _licenseController,
-                          label: 'License Number',
-                          icon: Icons.verified_user,
-                          hint: 'Enter license number',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Dialog actions
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        foregroundColor: textGray,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: _updateOrganizationData,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGreen,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      ),
-                      child: const Text('Save Changes'),
-                    ),
-                  ],
-                ),
-              ],
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          backgroundColor: const Color(0xFFF8F9FA),
+          title: const Text(
+            'Edit Hospital Profile',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              color: Color(0xFF495057),
             ),
           ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Hospital Information
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Hospital Information',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF495057),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _nameController,
+                    label: 'Hospital Name',
+                    icon: Icons.local_hospital,
+                    hint: 'Enter hospital name',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _descriptionController,
+                    label: 'Description',
+                    icon: Icons.description,
+                    hint: 'Enter hospital description',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _licenseController,
+                    label: 'License Number',
+                    icon: Icons.verified_user,
+                    hint: 'Enter license number',
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Contact Information
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Contact Information',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF495057),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _locationController,
+                    label: 'Location',
+                    icon: Icons.location_on,
+                    hint: 'Enter hospital address',
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _emailController,
+                    label: 'Email Address',
+                    icon: Icons.email,
+                    hint: 'Enter email address',
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    controller: _contactController,
+                    label: 'Contact Number',
+                    icon: Icons.phone,
+                    hint: 'Enter contact number',
+                    keyboardType: TextInputType.phone,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF6C757D),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: _updateOrganizationData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4A8B3A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Save',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -742,26 +751,35 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: primaryGreen),
+        prefixIcon: Icon(icon, color: const Color(0xFF4A8B3A), size: 20),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: Color(0xFFDEE2E6)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: Color(0xFFDEE2E6)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: primaryGreen, width: 2),
+          borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey.shade50,
+        fillColor: Colors.white,
         alignLabelWithHint: maxLines > 1,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        labelStyle: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFF6C757D),
+        ),
+        hintStyle: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFFADB5BD),
+        ),
       ),
       style: const TextStyle(
         fontSize: 14,
-        color: Colors.black,
+        color: Color(0xFF495057),
       ),
     );
   }

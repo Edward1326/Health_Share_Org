@@ -183,10 +183,14 @@ Widget _buildNavItem(IconData icon, String title, int index, bool isSelected) {
             );
             break;
           case 3: // Hospital Profile
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => const HospitalProfileContentWidget(),
+                builder: (_) => const MainDashboardLayout(
+                  title: 'Hospital Profile',
+                  selectedNavIndex: 3,
+                  content: HospitalProfileContentWidget(),
+                ),
               ),
             );
             break;
