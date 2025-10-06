@@ -8,6 +8,7 @@ import 'pages/admin/admin_dashboard.dart';
 import 'pages/health_share/create_organization.dart';
 import 'pages/staff/staff_settings.dart';
 import 'pages/staff/staff_dashboard.dart';
+import 'pages/staff/staff_profile.dart';
 import 'pages/reset_password.dart';
 import 'pages/admin/hospital_profile.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -48,7 +49,7 @@ class MyApp extends StatelessWidget {
         '/staff_dashboard': (context) => const StaffDashboard(),
         '/reset_password': (context) => const ResetPasswordPage(),
         '/profile': (context) => const HospitalProfileContentWidget(),
-        '/staff_profile': (context) => const DoctorProfilePage(),
+        '/staff_profile': (context) => const StaffProfilePage(),
       },
       // Handle unknown routes
     );

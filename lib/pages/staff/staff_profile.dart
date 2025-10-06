@@ -2,24 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import 'staff_dashboard.dart';
 
-// doctor_profile.dart
-class DoctorProfilePage extends StatefulWidget {
-  // Add route name constant for easy reference
-  static const String routeName = '/doctor_profile';
+// staff_profile.dart
+class StaffProfilePage extends StatefulWidget {
+  static const String routeName = '/staff_profile';
 
-  const DoctorProfilePage({super.key});
+  const StaffProfilePage({super.key});
 
   @override
-  State<DoctorProfilePage> createState() => _DoctorProfilePageState();
+  State<StaffProfilePage> createState() => _StaffProfilePageState();
 }
 
-class _DoctorProfilePageState extends State<DoctorProfilePage> {
+class _StaffProfilePageState extends State<StaffProfilePage> {
   final supabase = Supabase.instance.client;
   final ImagePicker _picker = ImagePicker();
 
-  // Doctor data
-  Map<String, dynamic>? doctorData;
+  // Staff data
+  Map<String, dynamic>? staffData;
   Map<String, dynamic>? organizationUserData;
   bool isLoading = true;
   bool isUploadingImage = false;
@@ -40,7 +40,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
   @override
   void initState() {
     super.initState();
-    _loadDoctorData();
+    _loadStaffData();
   }
 
   @override
@@ -59,7 +59,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
     super.dispose();
   }
 
-  Future<void> _loadDoctorData() async {
+  Future<void> _loadStaffData() async {
     try {
       final user = supabase.auth.currentUser;
       if (user == null) throw 'No authenticated user';
@@ -86,21 +86,21 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
 
       setState(() {
         organizationUserData = orgUserResponse;
-        doctorData = personResponse;
+        staffData = personResponse;
         isLoading = false;
 
         // Initialize controllers with existing data
-        _firstNameController.text = doctorData!['first_name'] ?? '';
-        _middleNameController.text = doctorData!['middle_name'] ?? '';
-        _lastNameController.text = doctorData!['last_name'] ?? '';
-        _emailController.text = doctorData!['email'] ?? '';
-        _addressController.text = doctorData!['address'] ?? '';
-        _contactNumberController.text = doctorData!['contact_number'] ?? '';
-        _bloodTypeController.text = doctorData!['blood_type'] ?? '';
-        _allergiesController.text = doctorData!['allergies'] ?? '';
-        _medicalConditionsController.text = doctorData!['medical_conditions'] ?? '';
-        _currentMedicationsController.text = doctorData!['current_medications'] ?? '';
-        _disabilitiesController.text = doctorData!['disabilities'] ?? '';
+        _firstNameController.text = staffData!['first_name'] ?? '';
+        _middleNameController.text = staffData!['middle_name'] ?? '';
+        _lastNameController.text = staffData!['last_name'] ?? '';
+        _emailController.text = staffData!['email'] ?? '';
+        _addressController.text = staffData!['address'] ?? '';
+        _contactNumberController.text = staffData!['contact_number'] ?? '';
+        _bloodTypeController.text = staffData!['blood_type'] ?? '';
+        _allergiesController.text = staffData!['allergies'] ?? '';
+        _medicalConditionsController.text = staffData!['medical_conditions'] ?? '';
+        _currentMedicationsController.text = staffData!['current_medications'] ?? '';
+        _disabilitiesController.text = staffData!['disabilities'] ?? '';
       });
 
       print('DEBUG: Data loaded successfully');
@@ -112,7 +112,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading doctor data: $error'),
+            content: Text('Error loading staff data: $error'),
             backgroundColor: Colors.red,
           ),
         );
@@ -137,7 +137,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
 
       // Generate unique filename
       final fileName =
-          'doctor_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'staff_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       // Read image as bytes (works for both web and mobile)
       final bytes = await image.readAsBytes();
@@ -167,28 +167,28 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
         supabase.storage.from('profile-images').getPublicUrl(fileName);
 
     // Update person record (image is stored in Person table)
-    await _updateDoctorImage(imageUrl);
+    await _updateStaffImage(imageUrl);
   }
 
-  Future<void> _updateDoctorImage(String imageUrl) async {
+  Future<void> _updateStaffImage(String imageUrl) async {
     await supabase
         .from('Person')
-        .update({'image': imageUrl}).eq('id', doctorData!['id']);
+        .update({'image': imageUrl}).eq('id', staffData!['id']);
 
     // Reload data to show updated image
-    await _loadDoctorData();
+    await _loadStaffData();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Profile image updated successfully!'),
-          backgroundColor: Colors.green,
+          backgroundColor: Color(0xFF4A8B3A),
         ),
       );
     }
   }
 
-  Future<void> _updateDoctorData() async {
+  Future<void> _updateStaffData() async {
     try {
       // Update Person table
       await supabase.from('Person').update({
@@ -203,16 +203,16 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
         'medical_conditions': _medicalConditionsController.text.trim(),
         'current_medications': _currentMedicationsController.text.trim(),
         'disabilities': _disabilitiesController.text.trim(),
-      }).eq('id', doctorData!['id']);
+      }).eq('id', staffData!['id']);
 
-      await _loadDoctorData();
+      await _loadStaffData();
 
       if (mounted) {
         Navigator.of(context).pop(); // Close dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile updated successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: Color(0xFF4A8B3A),
           ),
         );
       }
@@ -240,324 +240,327 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
   }
 
   String _getFullName() {
-    if (doctorData == null) return 'Unknown Doctor';
+    if (staffData == null) return 'Unknown Staff';
     
-    final firstName = doctorData!['first_name'] ?? '';
-    final middleName = doctorData!['middle_name'] ?? '';
-    final lastName = doctorData!['last_name'] ?? '';
+    final firstName = staffData!['first_name'] ?? '';
+    final middleName = staffData!['middle_name'] ?? '';
+    final lastName = staffData!['last_name'] ?? '';
     
     return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: const Text(
-          'Doctor Profile',
-          style: TextStyle(
-            color: Color(0xFF2D3748),
-            fontWeight: FontWeight.bold,
-          ),
+    return MainStaffDashboardLayout(
+      title: 'My Profile',
+      selectedNavIndex: 4,
+      content: _buildProfileContent(),
+    );
+  }
+
+  Widget _buildProfileContent() {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF4A8B3A),
         ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF2D3748)),
-        shadowColor: Colors.black.withOpacity(0.1),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadDoctorData,
+      );
+    }
+
+    if (staffData == null || organizationUserData == null) {
+      return const Center(
+        child: Text(
+          'No staff data found',
+          style: TextStyle(fontSize: 16, color: Color(0xFF6C757D)),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile Header Card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Stack(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF4A8B3A),
+                          width: 3,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundColor: const Color(0xFF4A8B3A),
+                        backgroundImage:
+                            staffData!['image'] != null
+                                ? NetworkImage(staffData!['image'])
+                                : null,
+                        child: staffData!['image'] == null
+                            ? const Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: isUploadingImage
+                            ? null
+                            : _pickAndUploadImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4A8B3A),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                          child: isUploadingImage
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation<
+                                            Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _getFullName(),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF495057),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4A8B3A).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    organizationUserData!['position'] ?? 'Staff',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF4A8B3A),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Personal Information Section
+          const Text(
+            'Personal Information',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF495057),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Full Name',
+            _getFullName(),
+            Icons.person,
+            const Color(0xFF4A8B3A),
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Email Address',
+            staffData!['email'] ?? 'Not specified',
+            Icons.email,
+            const Color(0xFF6BA85A),
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Contact Number',
+            staffData!['contact_number'] ?? 'Not specified',
+            Icons.phone,
+            Colors.blue,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Address',
+            staffData!['address'] ?? 'Not specified',
+            Icons.location_on,
+            Colors.orange,
+          ),
+
+          const SizedBox(height: 24),
+
+          // Medical Information Section
+          const Text(
+            'Medical Information',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF495057),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Blood Type',
+            staffData!['blood_type'] ?? 'Not specified',
+            Icons.bloodtype,
+            Colors.red,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Allergies',
+            staffData!['allergies'] ?? 'None specified',
+            Icons.warning,
+            Colors.orange,
+            isMultiline: true,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Medical Conditions',
+            staffData!['medical_conditions'] ?? 'None specified',
+            Icons.medical_services,
+            Colors.purple,
+            isMultiline: true,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Current Medications',
+            staffData!['current_medications'] ?? 'None specified',
+            Icons.medication,
+            const Color(0xFF28A745),
+            isMultiline: true,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Disabilities',
+            staffData!['disabilities'] ?? 'None specified',
+            Icons.accessibility,
+            Colors.blue,
+            isMultiline: true,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildInfoCard(
+            'Member Since',
+            _formatDateTime(staffData!['created_at']),
+            Icons.calendar_today,
+            const Color(0xFF6C757D),
+          ),
+
+          const SizedBox(height: 32),
+
+          // Action Button
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () {
+                _showEditDialog(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4A8B3A),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.edit, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Edit Profile',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : (doctorData == null || organizationUserData == null)
-              ? const Center(
-                  child: Text(
-                    'No doctor data found',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Profile Header Card
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Stack(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: const Color(0xFF3182CE),
-                                      width: 3,
-                                    ),
-                                  ),
-                                  child: CircleAvatar(
-                                    radius: 50,
-                                    backgroundColor: const Color(0xFF3182CE),
-                                    backgroundImage:
-                                        doctorData!['image'] != null
-                                            ? NetworkImage(doctorData!['image'])
-                                            : null,
-                                    child: doctorData!['image'] == null
-                                        ? const Icon(
-                                            Icons.person,
-                                            size: 40,
-                                            color: Colors.white,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                                Positioned(
-                                  bottom: 0,
-                                  right: 0,
-                                  child: GestureDetector(
-                                    onTap: isUploadingImage
-                                        ? null
-                                        : _pickAndUploadImage,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF3182CE),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.white,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: isUploadingImage
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                        Color>(
-                                                  Colors.white,
-                                                ),
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.camera_alt,
-                                              color: Colors.white,
-                                              size: 16,
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Dr. ${_getFullName()}',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3748),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              organizationUserData!['position'] ?? 'Doctor',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                                fontStyle: FontStyle.italic,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Personal Information Section
-                      const Text(
-                        'Personal Information',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2D3748),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      _buildInfoCard(
-                        'Full Name',
-                        _getFullName(),
-                        Icons.person,
-                        const Color(0xFF3182CE),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Email Address',
-                        doctorData!['email'] ?? 'Not specified',
-                        Icons.email,
-                        const Color(0xFF38B2AC),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Contact Number',
-                        doctorData!['contact_number'] ?? 'Not specified',
-                        Icons.phone,
-                        const Color(0xFF4299E1),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Address',
-                        doctorData!['address'] ?? 'Not specified',
-                        Icons.location_on,
-                        const Color(0xFFED8936),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Medical Information Section
-                      const Text(
-                        'Medical Information',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2D3748),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      _buildInfoCard(
-                        'Blood Type',
-                        doctorData!['blood_type'] ?? 'Not specified',
-                        Icons.bloodtype,
-                        const Color(0xFFE53E3E),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Allergies',
-                        doctorData!['allergies'] ?? 'None specified',
-                        Icons.warning,
-                        const Color(0xFFED8936),
-                        isMultiline: true,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Medical Conditions',
-                        doctorData!['medical_conditions'] ?? 'None specified',
-                        Icons.medical_services,
-                        const Color(0xFF9F7AEA),
-                        isMultiline: true,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Current Medications',
-                        doctorData!['current_medications'] ?? 'None specified',
-                        Icons.medication,
-                        const Color(0xFF38A169),
-                        isMultiline: true,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Disabilities',
-                        doctorData!['disabilities'] ?? 'None specified',
-                        Icons.accessibility,
-                        const Color(0xFF4299E1),
-                        isMultiline: true,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      _buildInfoCard(
-                        'Registered On',
-                        _formatDateTime(doctorData!['created_at']),
-                        Icons.calendar_today,
-                        const Color(0xFF718096),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Action Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            _showEditDialog(context);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF3182CE),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.edit, size: 20),
-                              SizedBox(width: 8),
-                              Text(
-                                'Edit Profile',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
     );
   }
 
   Widget _buildInfoCard(
       String title, String content, IconData icon, Color iconColor, {bool isMultiline = false}) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -570,18 +573,18 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
         crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               color: iconColor,
-              size: 24,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,17 +592,18 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF2D3748),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF6C757D),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   content,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF495057),
+                    fontWeight: FontWeight.w500,
                   ),
                   maxLines: isMultiline ? null : 2,
                   overflow: isMultiline ? null : TextOverflow.ellipsis,
@@ -614,30 +618,32 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
 
   void _showEditDialog(BuildContext context) {
     // Reset controllers with current data
-    _firstNameController.text = doctorData!['first_name'] ?? '';
-    _middleNameController.text = doctorData!['middle_name'] ?? '';
-    _lastNameController.text = doctorData!['last_name'] ?? '';
-    _emailController.text = doctorData!['email'] ?? '';
-    _addressController.text = doctorData!['address'] ?? '';
-    _contactNumberController.text = doctorData!['contact_number'] ?? '';
-    _bloodTypeController.text = doctorData!['blood_type'] ?? '';
-    _allergiesController.text = doctorData!['allergies'] ?? '';
-    _medicalConditionsController.text = doctorData!['medical_conditions'] ?? '';
-    _currentMedicationsController.text = doctorData!['current_medications'] ?? '';
-    _disabilitiesController.text = doctorData!['disabilities'] ?? '';
+    _firstNameController.text = staffData!['first_name'] ?? '';
+    _middleNameController.text = staffData!['middle_name'] ?? '';
+    _lastNameController.text = staffData!['last_name'] ?? '';
+    _emailController.text = staffData!['email'] ?? '';
+    _addressController.text = staffData!['address'] ?? '';
+    _contactNumberController.text = staffData!['contact_number'] ?? '';
+    _bloodTypeController.text = staffData!['blood_type'] ?? '';
+    _allergiesController.text = staffData!['allergies'] ?? '';
+    _medicalConditionsController.text = staffData!['medical_conditions'] ?? '';
+    _currentMedicationsController.text = staffData!['current_medications'] ?? '';
+    _disabilitiesController.text = staffData!['disabilities'] ?? '';
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
           ),
+          backgroundColor: const Color(0xFFF8F9FA),
           title: const Text(
-            'Edit Doctor Profile',
+            'Edit Profile',
             style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3748),
+              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              color: Color(0xFF495057),
             ),
           ),
           content: SizedBox(
@@ -652,71 +658,52 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
                     child: Text(
                       'Personal Information',
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2D3748),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF495057),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
+                  _buildTextField(
                     controller: _firstNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'First Name',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
+                    label: 'First Name',
+                    icon: Icons.person,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _middleNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Middle Name (Optional)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
+                    label: 'Middle Name (Optional)',
+                    icon: Icons.person_outline,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _lastNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Last Name',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
+                    label: 'Last Name',
+                    icon: Icons.person,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _emailController,
+                    label: 'Email',
+                    icon: Icons.email,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _contactNumberController,
+                    label: 'Contact Number',
+                    icon: Icons.phone,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Contact Number',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.phone),
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _addressController,
+                    label: 'Address',
+                    icon: Icons.location_on,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Address',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.location_on),
-                      alignLabelWithHint: true,
-                    ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   
                   // Medical Information
                   const Align(
@@ -724,64 +711,45 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
                     child: Text(
                       'Medical Information',
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2D3748),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF495057),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
+                  _buildTextField(
                     controller: _bloodTypeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Blood Type (e.g., A+, B-, O+)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.bloodtype),
-                    ),
+                    label: 'Blood Type (e.g., A+, B-, O+)',
+                    icon: Icons.bloodtype,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _allergiesController,
+                    label: 'Allergies',
+                    icon: Icons.warning,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Allergies',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.warning),
-                      alignLabelWithHint: true,
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _medicalConditionsController,
+                    label: 'Medical Conditions',
+                    icon: Icons.medical_services,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Medical Conditions',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.medical_services),
-                      alignLabelWithHint: true,
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _currentMedicationsController,
+                    label: 'Current Medications',
+                    icon: Icons.medication,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Current Medications',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.medication),
-                      alignLabelWithHint: true,
-                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: 12),
+                  _buildTextField(
                     controller: _disabilitiesController,
+                    label: 'Disabilities',
+                    icon: Icons.accessibility,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Disabilities',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.accessibility),
-                      alignLabelWithHint: true,
-                    ),
                   ),
                 ],
               ),
@@ -792,22 +760,86 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
               onPressed: () {
                 Navigator.of(context).pop();
               },
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF6C757D),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
               child: const Text(
                 'Cancel',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
             ElevatedButton(
-              onPressed: _updateDoctorData,
+              onPressed: _updateStaffData,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3182CE),
+                backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child: const Text('Save'),
+              child: const Text(
+                'Save',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      style: const TextStyle(
+        fontSize: 14,
+        color: Color(0xFF495057),
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          fontSize: 13,
+          color: Color(0xFF6C757D),
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: const Color(0xFF6C757D),
+          size: 20,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        alignLabelWithHint: maxLines > 1,
+      ),
     );
   }
 }

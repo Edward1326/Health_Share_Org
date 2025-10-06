@@ -197,7 +197,7 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
           _buildNavItem(Icons.people, 'Patients', 1, widget.selectedNavIndex == 1),
           _buildNavItem(Icons.science, 'Laboratories', 2, widget.selectedNavIndex == 2),
           _buildNavItem(Icons.assignment, 'Reports', 3, widget.selectedNavIndex == 3),
-          _buildNavItem(Icons.settings, 'Settings', 4, widget.selectedNavIndex == 4),
+          _buildNavItem(Icons.person, 'Profile', 4, widget.selectedNavIndex == 4),
           
           const Spacer(),
           
@@ -260,8 +260,11 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
             case 3: // Reports
               _showSnackBar('Reports coming soon!');
               break;
-            case 4: // Settings
-              _showSnackBar('Settings coming soon!');
+            case 4: // Profile
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const StaffProfilePage()),
+              );
               break;
           }
         },
@@ -721,7 +724,10 @@ class StaffDashboard extends StatelessWidget {
             onSelected: (value) {
               switch (value) {
                 case 'profile':
-                  Navigator.pushNamed(context, '/staff_profile');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const StaffProfilePage()),
+                  );
                   break;
                 case 'signout':
                   // Add sign out functionality
@@ -734,14 +740,6 @@ class StaffDashboard extends StatelessWidget {
                 child: ListTile(
                   leading: Icon(Icons.person_outline),
                   title: Text('Profile'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'settings',
-                child: ListTile(
-                  leading: Icon(Icons.settings_outlined),
-                  title: Text('Settings'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
