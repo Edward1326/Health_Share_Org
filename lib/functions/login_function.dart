@@ -13,85 +13,99 @@ class LoginService {
 
   /// Main login function
   static Future<LoginResult> login({
-    required String emailOrUsername,
-    required String password,
-  }) async {
-    // Check rate limiting
-    if (_lastLoginAttempt != null) {
-      final timeSinceLastAttempt =
-          DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-      if (timeSinceLastAttempt < _loginCooldownSeconds) {
-        final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
-        return LoginResult.failure(
-            'Please wait $remainingTime seconds before trying again.');
-      }
-    }
-
-    _lastLoginAttempt = DateTime.now();
-
-    try {
-      final input = emailOrUsername.trim();
-
-      print('DEBUG: Input received: $input');
-
-      String email = input;
-
-      // If input doesn't contain @, it's likely a username
-      if (!input.contains('@')) {
-        print('DEBUG: Treating input as username, looking up email...');
-        throw Exception(
-            'Username login not supported. Please use email address.');
-      } else {
-        print('DEBUG: Treating input as email directly');
-      }
-
-      print('DEBUG: Attempting to sign in with email: $email');
-
-      // Use Supabase Auth to sign in
-      final authResponse =
-          await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-
-      print('DEBUG: Auth response received: ${authResponse.user?.id}');
-
-      if (authResponse.user == null) {
-        throw Exception('Login failed');
-      }
-
-      final user = authResponse.user!;
-      print('Auth user signed in: ${user.id}');
-
-      // Get comprehensive user details after successful authentication
-      final userDetails = await _getUserDetailsFromAuth(user);
-
-      // Store user session
-      await _storeUserSession(userDetails, user);
-
-      print('Login successful');
-
-      // Determine user position
-      String userPosition = '';
-      if (userDetails['organization_users'].isNotEmpty) {
-        userPosition = userDetails['organization_users'][0]['position']
-                ?.toString()
-                .toLowerCase() ??
-            '';
-      }
-
-      return LoginResult.success(
-        userDetails: userDetails,
-        userPosition: userPosition,
-        authUser: user,
-      );
-    } catch (e) {
-      print('Login error: $e');
-
-      String errorMessage = _getErrorMessage(e.toString());
-      return LoginResult.failure(errorMessage);
+  required String emailOrUsername,
+  required String password,
+}) async {
+  // Check rate limiting
+  if (_lastLoginAttempt != null) {
+    final timeSinceLastAttempt =
+        DateTime.now().difference(_lastLoginAttempt!).inSeconds;
+    if (timeSinceLastAttempt < _loginCooldownSeconds) {
+      final remainingTime = _loginCooldownSeconds - timeSinceLastAttempt;
+      return LoginResult.failure(
+          'Please wait $remainingTime seconds before trying again.');
     }
   }
+
+  _lastLoginAttempt = DateTime.now();
+
+  try {
+    final input = emailOrUsername.trim();
+
+    print('DEBUG: Input received: $input');
+
+    String email = input;
+
+    // If input doesn't contain @, it's likely a username
+    if (!input.contains('@')) {
+      print('DEBUG: Treating input as username, looking up email...');
+      throw Exception(
+          'Username login not supported. Please use email address.');
+    } else {
+      print('DEBUG: Treating input as email directly');
+    }
+
+    print('DEBUG: Attempting to sign in with email: $email');
+
+    // Use Supabase Auth to sign in
+    final authResponse =
+        await Supabase.instance.client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+
+    print('DEBUG: Auth response received: ${authResponse.user?.id}');
+
+    if (authResponse.user == null) {
+      throw Exception('Login failed');
+    }
+
+    final user = authResponse.user!;
+    print('Auth user signed in: ${user.id}');
+
+    // Get comprehensive user details after successful authentication
+    final userDetails = await _getUserDetailsFromAuth(user);
+
+    // ✅ CRITICAL CHECK: Verify user is an Organization User
+    if (userDetails['organization_users'].isEmpty) {
+      print('❌ Access denied: User is not an organization member');
+      
+      // Sign the user out immediately
+      await Supabase.instance.client.auth.signOut();
+      
+      return LoginResult.failure(
+        'Access denied. This login is for staff members only. Patients should use the patient portal.',
+      );
+    }
+
+    print('✅ User verified as organization member');
+
+    // Store user session
+    await _storeUserSession(userDetails, user);
+
+    print('Login successful');
+
+    // Determine user position
+    String userPosition = '';
+    if (userDetails['organization_users'].isNotEmpty) {
+      userPosition = userDetails['organization_users'][0]['position']
+              ?.toString()
+              .toLowerCase() ??
+          '';
+    }
+
+    return LoginResult.success(
+      userDetails: userDetails,
+      userPosition: userPosition,
+      authUser: user,
+    );
+  } catch (e) {
+    print('Login error: $e');
+
+    String errorMessage = _getErrorMessage(e.toString());
+    return LoginResult.failure(errorMessage);
+  }
+}
 
   /// Get user details from authenticated user
   static Future<Map<String, dynamic>> _getUserDetailsFromAuth(
