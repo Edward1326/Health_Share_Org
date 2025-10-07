@@ -3,7 +3,7 @@ import 'package:health_share_org/pages/staff/staff_profile.dart';
 import 'pages/admin/admin_dashboard.dart';
 import 'services/signup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'pages/login.dart';
+import 'services/login.dart';
 import 'pages/admin/admin_dashboard.dart';
 import 'pages/health_share/create_organization.dart';
 import 'pages/staff/staff_settings.dart';

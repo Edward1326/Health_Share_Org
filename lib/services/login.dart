@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/signup.dart';
-import 'admin/admin_dashboard.dart';
-import 'staff/staff_dashboard.dart';
-import 'reset_password.dart';
-import 'package:health_share_org/functions/login_function.dart'; // Import your new service
+import 'signup.dart';
+import '../pages/admin/admin_dashboard.dart';
+import '../pages/staff/staff_dashboard.dart';
+import '../pages/reset_password.dart';
+import 'login_service.dart'; // Import your new service
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:health_share_org/functions/login_function.dart' as login_functions;
 import 'package:health_share_org/services/signup_service.dart'; 
 
-// Theme colors matching the dashboard
 class SignupTheme {
   static const Color primaryGreen = Color(0xFF4A8B3A);
   static const Color lightGreen = Color(0xFF6BA85A);
@@ -30,12 +28,19 @@ class _SignupPageState extends State<SignupPage> {
   final _contactNumberController = TextEditingController();
   final _positionController = TextEditingController();
   final _departmentController = TextEditingController();
+  final _otpController = TextEditingController();
 
   String? _selectedOrganizationId;
   List<Map<String, dynamic>> _organizations = [];
   bool _isLoading = false;
   bool _isLoadingOrgs = true;
   String _loadingStatus = '';
+  
+  // OTP verification state
+  bool _isEmailVerified = false;
+  bool _isVerifyingOTP = false;
+  bool _isSendingOTP = false;
+  bool _showOTPField = false;
 
   @override
   void initState() {
@@ -55,6 +60,7 @@ class _SignupPageState extends State<SignupPage> {
     _contactNumberController.dispose();
     _positionController.dispose();
     _departmentController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
@@ -73,6 +79,82 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
+  Future<void> _sendOTP() async {
+    final email = _emailController.text.trim();
+    
+    if (email.isEmpty) {
+      _showErrorSnackBar('Please enter your email address');
+      return;
+    }
+
+    if (!SignupService.isValidEmail(email)) {
+      _showErrorSnackBar('Please enter a valid email address');
+      return;
+    }
+
+    if (!SignupService.canResendOTP()) {
+      final remainingTime = SignupService.getRemainingOTPCooldownTime();
+      _showErrorSnackBar('Please wait $remainingTime seconds before resending');
+      return;
+    }
+
+    setState(() {
+      _isSendingOTP = true;
+    });
+
+    try {
+      final result = await SignupService.sendOTPToEmail(email);
+      
+      if (result.success) {
+        setState(() {
+          _showOTPField = true;
+        });
+        _showSuccessSnackBar(result.message ?? 'Verification code sent!');
+      } else {
+        _showErrorSnackBar(result.errorMessage ?? 'Failed to send verification code');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to send verification code: $e');
+    } finally {
+      setState(() {
+        _isSendingOTP = false;
+      });
+    }
+  }
+
+  Future<void> _verifyOTP() async {
+    final email = _emailController.text.trim();
+    final otp = _otpController.text.trim();
+    
+    if (otp.isEmpty) {
+      _showErrorSnackBar('Please enter the verification code');
+      return;
+    }
+
+    setState(() {
+      _isVerifyingOTP = true;
+    });
+
+    try {
+      final result = await SignupService.verifyOTP(email, otp);
+      
+      if (result.success) {
+        setState(() {
+          _isEmailVerified = true;
+        });
+        _showSuccessSnackBar('Email verified successfully! You can now complete registration.');
+      } else {
+        _showErrorSnackBar(result.errorMessage ?? 'Verification failed');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Verification failed: $e');
+    } finally {
+      setState(() {
+        _isVerifyingOTP = false;
+      });
+    }
+  }
+
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedOrganizationId == null) {
@@ -80,10 +162,14 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
+    if (!_isEmailVerified) {
+      _showErrorSnackBar('Please verify your email first');
+      return;
+    }
+
     if (!SignupService.canAttemptSignup()) {
       final remainingTime = SignupService.getRemainingSignupCooldownTime();
-      _showErrorSnackBar(
-          'Please wait $remainingTime seconds before trying again.');
+      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
       return;
     }
 
@@ -112,6 +198,7 @@ class _SignupPageState extends State<SignupPage> {
         position: _positionController.text.trim(),
         department: _departmentController.text.trim(),
         organizationId: _selectedOrganizationId!,
+        emailVerified: _isEmailVerified,
       );
 
       if (result.success) {
@@ -195,18 +282,14 @@ class _SignupPageState extends State<SignupPage> {
                   SizedBox(height: 16),
                   Text(
                     'Loading organizations...',
-                    style: TextStyle(
-                      color: SignupTheme.textGray,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(color: SignupTheme.textGray, fontSize: 16),
                   ),
                 ],
               ),
             )
           : SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0, vertical: 20.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -247,16 +330,12 @@ class _SignupPageState extends State<SignupPage> {
                             const SizedBox(height: 8),
                             const Text(
                               'Join your organization with secure encryption',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: SignupTheme.textGray,
-                              ),
+                              style: TextStyle(fontSize: 15, color: SignupTheme.textGray),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 12),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                               decoration: BoxDecoration(
                                 color: SignupTheme.primaryGreen.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
@@ -270,6 +349,157 @@ class _SignupPageState extends State<SignupPage> {
                                 ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+
+                      // Email Verification Section
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          color: _isEmailVerified 
+                              ? SignupTheme.primaryGreen.withOpacity(0.1)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _isEmailVerified 
+                                ? SignupTheme.primaryGreen 
+                                : Colors.grey.shade200,
+                            width: _isEmailVerified ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  _isEmailVerified ? Icons.check_circle : Icons.email,
+                                  color: _isEmailVerified 
+                                      ? SignupTheme.primaryGreen 
+                                      : SignupTheme.textGray,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _isEmailVerified 
+                                        ? 'Email Verified ✓' 
+                                        : 'Step 1: Verify Your Email',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: _isEmailVerified 
+                                          ? SignupTheme.primaryGreen 
+                                          : SignupTheme.darkGray,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (!_isEmailVerified) ...[
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _emailController,
+                                      keyboardType: TextInputType.emailAddress,
+                                      enabled: !_isEmailVerified,
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter your email',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 12),
+                                      ),
+                                      validator: (value) {
+                                        if (value?.trim().isEmpty ?? true) {
+                                          return 'Please enter your email';
+                                        }
+                                        if (!SignupService.isValidEmail(value!)) {
+                                          return 'Please enter a valid email';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  ElevatedButton(
+                                    onPressed: _isSendingOTP ? null : _sendOTP,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: SignupTheme.primaryGreen,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 20, vertical: 16),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: _isSendingOTP
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                      Colors.white),
+                                            ),
+                                          )
+                                        : const Text('Send Code'),
+                                  ),
+                                ],
+                              ),
+                              if (_showOTPField) ...[
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _otpController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          hintText: 'Enter 6-digit code',
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 16, vertical: 12),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    ElevatedButton(
+                                      onPressed: _isVerifyingOTP ? null : _verifyOTP,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: SignupTheme.primaryGreen,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 20, vertical: 16),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      child: _isVerifyingOTP
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<Color>(
+                                                        Colors.white),
+                                              ),
+                                            )
+                                          : const Text('Verify'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ],
                         ),
                       ),
@@ -353,7 +583,7 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.person,
                       ),
 
-                      // Contact and professional info
+                      // Contact info
                       _buildInputField(
                         child: TextFormField(
                           controller: _contactNumberController,
@@ -368,10 +598,7 @@ class _SignupPageState extends State<SignupPage> {
                             if (value?.trim().isEmpty ?? true) {
                               return 'Please enter your contact number';
                             }
-                            final cleanNumber =
-                                value!.replaceAll(RegExp(r'[\s\-\(\)]'), '');
-                            if (!RegExp(r'^[\+]?[0-9]{10,15}$')
-                                .hasMatch(cleanNumber)) {
+                            if (!SignupService.isValidPhoneNumber(value!)) {
                               return 'Please enter a valid contact number';
                             }
                             return null;
@@ -429,31 +656,7 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.group_work,
                       ),
 
-                      // Authentication fields
-                      _buildInputField(
-                        child: TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            hintText: 'Email Address',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                          ),
-                          validator: (value) {
-                            if (value?.trim().isEmpty ?? true) {
-                              return 'Please enter your email';
-                            }
-                            if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$')
-                                .hasMatch(value!)) {
-                              return 'Please enter a valid email address';
-                            }
-                            return null;
-                          },
-                        ),
-                        icon: Icons.alternate_email,
-                      ),
-
+                      // Password fields
                       _buildInputField(
                         child: TextFormField(
                           controller: _passwordController,
@@ -468,11 +671,8 @@ class _SignupPageState extends State<SignupPage> {
                             if (value?.isEmpty ?? true) {
                               return 'Please enter a password';
                             }
-                            if (value!.length < 8) {
-                              return 'Password must be at least 8 characters long';
-                            }
-                            if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(value)) {
-                              return 'Password must contain uppercase, lowercase, and numbers';
+                            if (!SignupService.isValidPassword(value!)) {
+                              return 'Password must be 8+ chars with uppercase, lowercase, and numbers';
                             }
                             return null;
                           },
@@ -510,10 +710,11 @@ class _SignupPageState extends State<SignupPage> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _signup,
+                          onPressed: (_isLoading || !_isEmailVerified) ? null : _signup,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: SignupTheme.primaryGreen,
                             foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.grey.shade300,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -529,9 +730,11 @@ class _SignupPageState extends State<SignupPage> {
                                         Colors.white),
                                   ),
                                 )
-                              : const Text(
-                                  'Create Account',
-                                  style: TextStyle(
+                              : Text(
+                                  _isEmailVerified 
+                                      ? 'Create Account' 
+                                      : 'Verify Email First',
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -551,14 +754,14 @@ class _SignupPageState extends State<SignupPage> {
                             color: SignupTheme.primaryGreen.withOpacity(0.2),
                           ),
                         ),
-                        child: Row(
+                        child: const Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.security,
                               color: SignupTheme.primaryGreen,
                               size: 20,
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 'Your account will be secured with RSA-2048 encryption keys generated during signup.',
