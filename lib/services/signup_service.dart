@@ -241,6 +241,8 @@ static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
 
 
 // 3. Complete signup (creates database records for existing auth user)
+// Replace the signup() method in signup_service.dart with this fixed version:
+
 static Future<SignupResult> signup({
   required String email,
   required String password,
@@ -274,11 +276,29 @@ static Future<SignupResult> signup({
       );
     }
 
-    print('Starting doctor registration for existing auth user...');
+    print('Starting user registration for existing auth user...');
     _lastSignupAttempt = DateTime.now();
 
     final authUserId = currentUser.id;
     print('Using authenticated user: $authUserId');
+
+    // ========== FIX: SET PASSWORD FOR THE USER ==========
+    print('Setting user password...');
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          password: password,
+        ),
+      );
+      print('Password set successfully');
+    } catch (e) {
+      print('Error setting password: $e');
+      return SignupResult(
+        success: false,
+        errorMessage: 'Failed to set password. Please try again.',
+      );
+    }
+    // ====================================================
 
     // Verify organization exists
     final orgCheck = await _supabase
@@ -341,7 +361,7 @@ static Future<SignupResult> signup({
       print('User record created successfully');
         
       // Create Organization_User record
-      print('Inserting Doctor record...');
+      print('Inserting Organization_User record...');
       await _supabase.from('Organization_User').insert({
         'user_id': authUserId,
         'organization_id': organizationId,
@@ -350,7 +370,7 @@ static Future<SignupResult> signup({
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
       doctorCreated = true;
-      print('Doctor record created successfully');
+      print('Organization_User record created successfully');
 
       print('All database records created successfully');
 
@@ -362,7 +382,7 @@ static Future<SignupResult> signup({
         try {
           await _supabase.from('Organization_User').delete().eq('user_id', authUserId);
         } catch (e) {
-          print('Failed to clean up Doctor record: $e');
+          print('Failed to clean up Organization_User record: $e');
         }
       }
       
@@ -390,7 +410,7 @@ static Future<SignupResult> signup({
     _otpSentTime = null;
 
     stopwatch.stop();
-    print('Staff registration completed in ${stopwatch.elapsedMilliseconds}ms!');
+    print('User registration completed in ${stopwatch.elapsedMilliseconds}ms!');
 
     return SignupResult(
       success: true,
@@ -404,6 +424,13 @@ static Future<SignupResult> signup({
     return SignupResult(
       success: false,
       errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
+    );
+  } on AuthException catch (e) {
+    stopwatch.stop();
+    print('Auth error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
+    return SignupResult(
+      success: false,
+      errorMessage: 'Failed to set password: ${e.message}',
     );
   } catch (e) {
     stopwatch.stop();
