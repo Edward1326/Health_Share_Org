@@ -182,13 +182,31 @@ static Future<OTPVerificationResult> sendOTPToEmail(String email) async {
   }
 }
 
-// 2. Verify OTP (confirms the email, creates temp session)
-static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
+// BETTER APPROACH: Set password during OTP verification, not during signup
+// This avoids the complexity and potential timeout issues
+
+// Replace the verifyOTP method in signup_service.dart with this version:
+
+// This should go where your current verifyOTP method is located
+
+static Future<OTPVerificationResult> verifyOTP(
+  String email, 
+  String otp, 
+  String password, // Added password parameter
+) async {
   try {
     if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
       return OTPVerificationResult(
         success: false,
         errorMessage: 'Please request a new verification code',
+      );
+    }
+
+    // Validate password before proceeding
+    if (!isValidPassword(password)) {
+      return OTPVerificationResult(
+        success: false,
+        errorMessage: 'Password must be 8+ chars with uppercase, lowercase, and numbers',
       );
     }
 
@@ -202,14 +220,43 @@ static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
     );
 
     if (response.session != null && response.user != null) {
-      // OTP verified and user created in auth.users
-      // KEEP the session for the signup process
       print('OTP verified, auth user created: ${response.user!.id}');
       
-      return OTPVerificationResult(
-        success: true,
-        message: 'Email verified successfully',
-      );
+      // Immediately set the password while we have the session
+      print('Setting password...');
+      try {
+        final updateResponse = await _supabase.auth.updateUser(
+          UserAttributes(password: password),
+        );
+        
+        if (updateResponse.user != null) {
+          print('Password set successfully');
+          
+          return OTPVerificationResult(
+            success: true,
+            message: 'Email verified and password set successfully',
+          );
+        } else {
+          // If update failed, sign out and return error
+          await _supabase.auth.signOut();
+          return OTPVerificationResult(
+            success: false,
+            errorMessage: 'Failed to set password. Please try again.',
+          );
+        }
+      } catch (e) {
+        print('Error setting password: $e');
+        // Clean up - sign out the user
+        try {
+          await _supabase.auth.signOut();
+        } catch (signOutError) {
+          print('Error signing out after password failure: $signOutError');
+        }
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Failed to set password: ${e.toString()}',
+        );
+      }
     } else {
       return OTPVerificationResult(
         success: false,
@@ -239,13 +286,10 @@ static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
   }
 }
 
-
-// 3. Complete signup (creates database records for existing auth user)
-// Replace the signup() method in signup_service.dart with this fixed version:
-
+// 2. SIMPLIFY signup() method - Remove password setting since it's done in verifyOTP
 static Future<SignupResult> signup({
   required String email,
-  required String password,
+  required String password, // Still needed for validation, but not used for setting
   required String firstName,
   required String lastName,
   String? middleName,
@@ -282,24 +326,6 @@ static Future<SignupResult> signup({
     final authUserId = currentUser.id;
     print('Using authenticated user: $authUserId');
 
-    // ========== FIX: SET PASSWORD FOR THE USER ==========
-    print('Setting user password...');
-    try {
-      await _supabase.auth.updateUser(
-        UserAttributes(
-          password: password,
-        ),
-      );
-      print('Password set successfully');
-    } catch (e) {
-      print('Error setting password: $e');
-      return SignupResult(
-        success: false,
-        errorMessage: 'Failed to set password. Please try again.',
-      );
-    }
-    // ====================================================
-
     // Verify organization exists
     final orgCheck = await _supabase
         .from('Organization')
@@ -324,7 +350,7 @@ static Future<SignupResult> signup({
     
     String? personId;
     bool userCreated = false;
-    bool doctorCreated = false;
+    bool orgUserCreated = false;
     
     try {
       // Create Person record
@@ -369,7 +395,7 @@ static Future<SignupResult> signup({
         'department': department,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
-      doctorCreated = true;
+      orgUserCreated = true;
       print('Organization_User record created successfully');
 
       print('All database records created successfully');
@@ -378,7 +404,7 @@ static Future<SignupResult> signup({
       print('Database error: $dbError');
       
       // Cleanup on error
-      if (doctorCreated) {
+      if (orgUserCreated) {
         try {
           await _supabase.from('Organization_User').delete().eq('user_id', authUserId);
         } catch (e) {
@@ -424,13 +450,6 @@ static Future<SignupResult> signup({
     return SignupResult(
       success: false,
       errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
-    );
-  } on AuthException catch (e) {
-    stopwatch.stop();
-    print('Auth error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
-    return SignupResult(
-      success: false,
-      errorMessage: 'Failed to set password: ${e.message}',
     );
   } catch (e) {
     stopwatch.stop();

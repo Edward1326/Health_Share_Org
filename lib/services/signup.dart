@@ -125,9 +125,25 @@ class _SignupPageState extends State<SignupPage> {
   Future<void> _verifyOTP() async {
     final email = _emailController.text.trim();
     final otp = _otpController.text.trim();
+    final password = _passwordController.text;
     
     if (otp.isEmpty) {
       _showErrorSnackBar('Please enter the verification code');
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showErrorSnackBar('Please enter a password first');
+      return;
+    }
+
+    if (!SignupService.isValidPassword(password)) {
+      _showErrorSnackBar('Password must be 8+ chars with uppercase, lowercase, and numbers');
+      return;
+    }
+
+    if (password != _confirmPasswordController.text) {
+      _showErrorSnackBar('Passwords do not match');
       return;
     }
 
@@ -136,13 +152,13 @@ class _SignupPageState extends State<SignupPage> {
     });
 
     try {
-      final result = await SignupService.verifyOTP(email, otp);
+      final result = await SignupService.verifyOTP(email, otp, password);
       
       if (result.success) {
         setState(() {
           _isEmailVerified = true;
         });
-        _showSuccessSnackBar('Email verified successfully! You can now complete registration.');
+        _showSuccessSnackBar('Email verified and password set! You can now complete registration.');
       } else {
         _showErrorSnackBar(result.errorMessage ?? 'Verification failed');
       }
@@ -155,44 +171,36 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
+  // THIS IS THE MISSING _signup METHOD
   Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedOrganizationId == null) {
-      _showErrorSnackBar('Please select an organization');
+    if (!_formKey.currentState!.validate()) {
+      _showErrorSnackBar('Please fill in all required fields correctly');
       return;
     }
 
     if (!_isEmailVerified) {
-      _showErrorSnackBar('Please verify your email first');
+      _showErrorSnackBar('Please verify your email before signing up');
       return;
     }
 
     if (!SignupService.canAttemptSignup()) {
       final remainingTime = SignupService.getRemainingSignupCooldownTime();
-      _showErrorSnackBar('Please wait $remainingTime seconds before trying again.');
+      _showErrorSnackBar('Please wait $remainingTime seconds before trying again');
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _loadingStatus = 'Generating encryption keys...';
+      _loadingStatus = 'Creating your account...';
     });
 
     try {
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      setState(() {
-        _loadingStatus = 'Creating secure account...';
-      });
-
       final result = await SignupService.signup(
         email: _emailController.text.trim(),
-        password: _passwordController.text,
+        password: _passwordController.text, // Not used for setting, just validation
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        middleName: _middleNameController.text.trim().isEmpty
-            ? null
-            : _middleNameController.text.trim(),
+        middleName: _middleNameController.text.trim(),
         address: _addressController.text.trim(),
         contactNumber: _contactNumberController.text.trim(),
         position: _positionController.text.trim(),
@@ -201,24 +209,23 @@ class _SignupPageState extends State<SignupPage> {
         emailVerified: _isEmailVerified,
       );
 
+      if (!mounted) return;
+
       if (result.success) {
-        setState(() {
-          _loadingStatus = 'Account created successfully...';
-        });
-
-        await Future.delayed(const Duration(milliseconds: 500));
-        _showSuccessSnackBar('Account created successfully! End-to-end encryption enabled');
-
+        _showSuccessSnackBar(result.message ?? 'Account created successfully!');
+        
+        // Navigate to login after short delay
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) {
           Navigator.pop(context);
         }
       } else {
-        _showErrorSnackBar(result.errorMessage!);
+        _showErrorSnackBar(result.errorMessage ?? 'Failed to create account');
       }
     } catch (e) {
-      print('Signup error in UI: $e');
-      _showErrorSnackBar('An unexpected error occurred. Please try again.');
+      if (mounted) {
+        _showErrorSnackBar('An error occurred: $e');
+      }
     } finally {
       if (mounted) {
         setState(() {
