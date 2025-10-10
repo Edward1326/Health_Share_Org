@@ -193,7 +193,7 @@ class FileDecryptionService {
 
       // Download file from IPFS
       showSnackBar('Downloading encrypted file from IPFS...');
-      final ipfsUrl = 'https://gateway.pinata.cloud/ipfs/$ipfsCid';
+      final ipfsUrl = 'https://apricot-delicate-vole-342.mypinata.cloud/ipfs/$ipfsCid';
       final response = await http.get(Uri.parse(ipfsUrl));
 
       if (response.statusCode != 200) {

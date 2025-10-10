@@ -22,6 +22,12 @@ class FileUploadService {
   static const Color lightBlue = Color(0xFFE3F2FD);
   static const Color darkGray = Color(0xFF757575);
 
+  // File size limits
+  static const int MAX_FILE_SIZE_MB = 50;
+  static const int MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  static const int LARGE_FILE_WARNING_MB = 5;
+  static const int LARGE_FILE_WARNING_BYTES = LARGE_FILE_WARNING_MB * 1024 * 1024;
+
   // Cryptography instances
   static final _aesGcm = AesGcm.with256bits();
 
@@ -36,6 +42,91 @@ class FileUploadService {
   static String _calculateSHA256(Uint8List data) {
     final digest = sha256.convert(data);
     return digest.toString();
+  }
+
+  // Format file size for display
+  static String formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+  }
+
+  // Check if file size is acceptable
+  static bool isFileSizeAcceptable(int fileSize) {
+    return fileSize <= MAX_FILE_SIZE_BYTES;
+  }
+
+  // Show file size warning dialog
+  static Future<bool?> showFileSizeWarning(
+    BuildContext context,
+    String fileName,
+    int fileSize,
+  ) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange[700]),
+            const SizedBox(width: 12),
+            const Text('Large File Detected'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('File: $fileName'),
+            Text('Size: ${formatFileSize(fileSize)}'),
+            const SizedBox(height: 16),
+            Text(
+              'This file may take several minutes to encrypt and upload.',
+              style: TextStyle(color: Colors.grey[700]),
+            ),
+            const SizedBox(height: 8),
+            if (fileSize > MAX_FILE_SIZE_BYTES)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[300]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'File exceeds ${MAX_FILE_SIZE_MB}MB limit!',
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          if (fileSize <= MAX_FILE_SIZE_BYTES)
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Continue Anyway'),
+            ),
+        ],
+      ),
+    );
   }
 
   // AES-256-GCM encryption using cryptography package - consistent format with mobile
@@ -331,9 +422,27 @@ class FileUploadService {
       final fileSize = file.size;
       final fileExtension = fileName.split('.').last.toLowerCase();
 
-      print('File selected: $fileName (${fileSize} bytes)');
+      print('File selected: $fileName (${fileSize} bytes - ${formatFileSize(fileSize)})');
 
-      // Step 2: Read file as bytes
+      // Step 2: Check file size
+      if (!isFileSizeAcceptable(fileSize)) {
+        showSnackBar('File too large! Maximum size is ${MAX_FILE_SIZE_MB}MB. Your file is ${formatFileSize(fileSize)}');
+        print('File rejected: exceeds ${MAX_FILE_SIZE_MB}MB limit');
+        return;
+      }
+
+      // Warn about large files
+      if (fileSize > LARGE_FILE_WARNING_BYTES) {
+        print('Large file detected (>${LARGE_FILE_WARNING_MB}MB), showing warning...');
+        final shouldContinue = await showFileSizeWarning(context, fileName, fileSize);
+        if (shouldContinue != true) {
+          print('User cancelled large file upload');
+          return;
+        }
+        print('User confirmed large file upload');
+      }
+
+      // Step 3: Read file as bytes
       print('Step 2: Reading file as bytes...');
       final reader = html.FileReader();
       reader.readAsArrayBuffer(file);
@@ -342,7 +451,7 @@ class FileUploadService {
       final Uint8List fileBytes = reader.result as Uint8List;
       print('File read successfully: ${fileBytes.length} bytes');
 
-      // Step 3: Show file details dialog and get description
+      // Step 4: Show file details dialog and get description
       print('Step 3: Getting file details from user...');
       final fileDetails = await _showFileDetailsDialog(context, fileName, fileSize);
       if (fileDetails == null) {
@@ -350,23 +459,36 @@ class FileUploadService {
         return;
       }
 
-      // Show loading dialog
+      // Show loading dialog with file info
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: const Row(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: primaryBlue),
-              SizedBox(width: 16),
-              Text('Encrypting and uploading file...'),
+              const CircularProgressIndicator(color: primaryBlue),
+              const SizedBox(height: 16),
+              Text('Encrypting and uploading $fileName...'),
+              const SizedBox(height: 8),
+              Text(
+                'Size: ${formatFileSize(fileSize)}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              if (fileSize > LARGE_FILE_WARNING_BYTES) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'This may take several minutes',
+                  style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                ),
+              ],
             ],
           ),
         ),
       );
 
-      // Step 4: Get current user info
+      // Step 5: Get current user info
       print('Step 4: Getting current user info...');
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
@@ -414,12 +536,12 @@ class FileUploadService {
         return;
       }
 
-      // Step 5: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
+      // Step 6: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
       print('Step 5: Calculating SHA256 hash of original file...');
       final sha256Hash = _calculateSHA256(fileBytes);
       print('File SHA256 hash: $sha256Hash');
 
-      // Step 6: Generate AES key and nonce for GCM mode
+      // Step 7: Generate AES key and nonce for GCM mode
       print('Step 6: Generating AES-256 key and nonce...');
       final aesKey = _generateRandomBytes(32); // 32 bytes for AES-256
       final aesNonce = _generateRandomBytes(12); // 12 bytes for GCM nonce
@@ -427,14 +549,14 @@ class FileUploadService {
       print('Generated AES-256 key (base64): ${base64Encode(aesKey)}');
       print('Generated GCM nonce (base64): ${base64Encode(aesNonce)}');
 
-      // Step 7: Encrypt file with AES-256-GCM (using consistent format)
+      // Step 8: Encrypt file with AES-256-GCM (using consistent format)
       print('Step 7: Encrypting file with AES-256-GCM...');
       final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
       print('Original file size: ${fileBytes.length} bytes');
       print('Encrypted file size: ${encryptedBytes.length} bytes');
 
-      // Step 8: Get patient's RSA public key
+      // Step 9: Get patient's RSA public key
       print('Step 8: Getting patient RSA public key...');
       final patientId = selectedPatient['patient_id'];
       
@@ -474,7 +596,7 @@ class FileUploadService {
 
       print('Patient RSA public key retrieved');
 
-      // Step 9: Get doctor's RSA public key
+      // Step 10: Get doctor's RSA public key
       print('Step 9: Getting doctor RSA public key...');
       final doctorResponse = await Supabase.instance.client
           .from('User')
@@ -498,7 +620,7 @@ class FileUploadService {
 
       print('Doctor RSA public key retrieved');
 
-      // Step 10: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
+      // Step 11: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
       print('Step 10: Encrypting AES key with RSA-OAEP...');
       final keyData = {
         'key': base64Encode(aesKey),      // BASE64 format (consistent with mobile)
@@ -513,7 +635,7 @@ class FileUploadService {
 
       print('RSA-OAEP encryption completed for both patient and doctor');
 
-      // Step 11: Upload encrypted file to IPFS
+      // Step 12: Upload encrypted file to IPFS
       print('Step 11: Uploading encrypted file to IPFS...');
 
       final url = Uri.parse('https://api.pinata.cloud/pinning/pinFileToIPFS');
@@ -558,8 +680,9 @@ class FileUploadService {
 
       request.fields['pinataOptions'] = jsonEncode(options);
 
+      print('Sending IPFS upload request (timeout: 10 minutes)...');
       final streamedResponse = await request.send().timeout(
-        const Duration(minutes: 5),
+        const Duration(minutes: 10), // Increased timeout for large files
       );
 
       final response = await http.Response.fromStream(streamedResponse);
@@ -569,7 +692,7 @@ class FileUploadService {
         final ipfsCid = ipfsJson['IpfsHash'] as String;
         print('IPFS upload successful. CID: $ipfsCid');
 
-        // Step 12: Create file record in Files table
+        // Step 13: Create file record in Files table
         print('Step 12: Creating file record in database...');
         final uploadTimestamp = DateTime.now();
         final fileResponse = await Supabase.instance.client
@@ -589,7 +712,7 @@ class FileUploadService {
         final fileId = fileResponse['id'];
         print('File record created with ID: $fileId');
 
-        // Step 13: Insert encrypted AES keys for both patient and doctor
+        // Step 14: Insert encrypted AES keys for both patient and doctor
         print('Step 13: Storing encrypted keys in database...');
         await Supabase.instance.client.from('File_Keys').insert({
           'file_id': fileId,
@@ -607,7 +730,7 @@ class FileUploadService {
 
         print('Encrypted keys stored successfully');
 
-        // Step 14: Create File_Shares record
+        // Step 15: Create File_Shares record
         print('Step 14: Creating file sharing record...');
         await Supabase.instance.client.from('File_Shares').insert({
           'file_id': fileId,
@@ -618,7 +741,7 @@ class FileUploadService {
 
         print('File sharing record created successfully');
 
-        // 🔗 Step 15: LOG TO HIVE BLOCKCHAIN
+        // 🔗 Step 16: LOG TO HIVE BLOCKCHAIN
         print('🔗 Step 15: Logging to Hive blockchain...');
         final hiveResult = await _logToHiveBlockchain(
           fileName: fileDetails['fileName']!,
@@ -740,7 +863,7 @@ class FileUploadService {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB',
+                            'Size: ${formatFileSize(fileSize)}',
                             style: const TextStyle(color: darkGray, fontSize: 13),
                           ),
                         ],

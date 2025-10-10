@@ -1,12 +1,13 @@
+// Add to pubspec.yaml:
+// dependencies:
+//   webcrypto: ^0.5.3
+
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
-import 'package:pointycastle/export.dart';
-import 'package:asn1lib/asn1lib.dart';
+import 'package:webcrypto/webcrypto.dart';
+// Import crypto ONLY for sha256, with prefix to avoid conflicts
+import 'package:crypto/crypto.dart' as crypto;
 
 class SignupResult {
   final bool success;
@@ -76,10 +77,8 @@ class SignupService {
     return remaining > 0 ? remaining : 0;
   }
 
-  // Check if email already exists
   static Future<bool> checkEmailExists(String email) async {
     try {
-      // Check in User table
       final userCheck = await _supabase
           .from('User')
           .select('id')
@@ -87,505 +86,419 @@ class SignupService {
           .maybeSingle();
       
       if (userCheck != null) {
-        return true; // Email exists
+        return true;
       }
-
-      // Also check pending signups in auth (users who haven't completed registration)
-      // Note: This requires RPC function or admin access
-      // For now, we'll rely on Supabase auth error handling
       
       return false;
     } catch (e) {
       print('Error checking email: $e');
-      // If there's an error checking, we'll let the signup process handle it
       return false;
     }
   }
 
-  // Send OTP to email
-  // COMPLETE UPDATED METHODS FOR OTP FLOW
-// Replace these methods in signup_service.dart:
-
-// 1. Send OTP (creates pending auth user)
-static Future<OTPVerificationResult> sendOTPToEmail(String email) async {
-  try {
-    if (!canResendOTP()) {
-      final remainingTime = getRemainingOTPCooldownTime();
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Please wait $remainingTime seconds before resending OTP',
-      );
-    }
-
-    // Validate email format
-    if (!isValidEmail(email)) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Please enter a valid email address',
-      );
-    }
-
-    // Check if email already exists
-    final emailExists = await checkEmailExists(email);
-    if (emailExists) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'An account with this email already exists',
-      );
-    }
-
-    print('Sending OTP to email: $email');
-    
-    // For NEW users, use signInWithOtp WITH shouldCreateUser: true
-    // This will send OTP and allow signup flow
-    await _supabase.auth.signInWithOtp(
-      email: email.toLowerCase().trim(),
-      shouldCreateUser: true, // Changed to true for new signups
-    );
-
-    _pendingEmail = email.toLowerCase().trim();
-    _otpSentTime = DateTime.now();
-
-    return OTPVerificationResult(
-      success: true,
-      message: 'Verification code sent to your email',
-    );
-  } on AuthException catch (e) {
-    print('OTP send error: ${e.message}');
-    
-    if (e.message.contains('already registered') || 
-        e.message.contains('already exists')) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'An account with this email already exists',
-      );
-    }
-    
-    // Handle the specific "Signups not allowed" error
-    if (e.message.contains('Signups not allowed')) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Email signup is not enabled. Please contact your administrator.',
-      );
-    }
-    
-    return OTPVerificationResult(
-      success: false,
-      errorMessage: 'Failed to send verification code: ${e.message}',
-    );
-  } catch (e) {
-    print('OTP send error: $e');
-    return OTPVerificationResult(
-      success: false,
-      errorMessage: 'Failed to send verification code. Please try again.',
-    );
-  }
-}
-
-// BETTER APPROACH: Set password during OTP verification, not during signup
-// This avoids the complexity and potential timeout issues
-
-// Replace the verifyOTP method in signup_service.dart with this version:
-
-// This should go where your current verifyOTP method is located
-
-static Future<OTPVerificationResult> verifyOTP(
-  String email, 
-  String otp, 
-  String password, // Added password parameter
-) async {
-  try {
-    if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Please request a new verification code',
-      );
-    }
-
-    // Validate password before proceeding
-    if (!isValidPassword(password)) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Password must be 8+ chars with uppercase, lowercase, and numbers',
-      );
-    }
-
-    print('Verifying OTP for email: $email');
-    
-    // Verify OTP - this creates the auth user and signs them in
-    final response = await _supabase.auth.verifyOTP(
-      email: email.toLowerCase().trim(),
-      token: otp.trim(),
-      type: OtpType.email,
-    );
-
-    if (response.session != null && response.user != null) {
-      print('OTP verified, auth user created: ${response.user!.id}');
-      
-      // Immediately set the password while we have the session
-      print('Setting password...');
-      try {
-        final updateResponse = await _supabase.auth.updateUser(
-          UserAttributes(password: password),
-        );
-        
-        if (updateResponse.user != null) {
-          print('Password set successfully');
-          
-          return OTPVerificationResult(
-            success: true,
-            message: 'Email verified and password set successfully',
-          );
-        } else {
-          // If update failed, sign out and return error
-          await _supabase.auth.signOut();
-          return OTPVerificationResult(
-            success: false,
-            errorMessage: 'Failed to set password. Please try again.',
-          );
-        }
-      } catch (e) {
-        print('Error setting password: $e');
-        // Clean up - sign out the user
-        try {
-          await _supabase.auth.signOut();
-        } catch (signOutError) {
-          print('Error signing out after password failure: $signOutError');
-        }
-        return OTPVerificationResult(
-          success: false,
-          errorMessage: 'Failed to set password: ${e.toString()}',
-        );
-      }
-    } else {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Invalid or expired verification code',
-      );
-    }
-  } on AuthException catch (e) {
-    print('OTP verification error: ${e.message}');
-    
-    if (e.message.contains('invalid') || e.message.contains('expired')) {
-      return OTPVerificationResult(
-        success: false,
-        errorMessage: 'Invalid or expired verification code',
-      );
-    }
-    
-    return OTPVerificationResult(
-      success: false,
-      errorMessage: 'Verification failed: ${e.message}',
-    );
-  } catch (e) {
-    print('OTP verification error: $e');
-    return OTPVerificationResult(
-      success: false,
-      errorMessage: 'Verification failed. Please try again.',
-    );
-  }
-}
-
-// 2. SIMPLIFY signup() method - Remove password setting since it's done in verifyOTP
-static Future<SignupResult> signup({
-  required String email,
-  required String password, // Still needed for validation, but not used for setting
-  required String firstName,
-  required String lastName,
-  String? middleName,
-  required String address,
-  required String contactNumber,
-  required String position,
-  required String department,
-  required String organizationId,
-  required bool emailVerified,
-}) async {
-  final stopwatch = Stopwatch()..start();
-  
-  try {
-    // Verify email was verified
-    if (!emailVerified) {
-      return SignupResult(
-        success: false,
-        errorMessage: 'Please verify your email before signing up',
-      );
-    }
-
-    // Check if user is currently authenticated (from OTP verification)
-    final currentUser = _supabase.auth.currentUser;
-    if (currentUser == null || currentUser.email?.toLowerCase() != email.toLowerCase().trim()) {
-      return SignupResult(
-        success: false,
-        errorMessage: 'Session expired. Please verify your email again.',
-      );
-    }
-
-    print('Starting user registration for existing auth user...');
-    _lastSignupAttempt = DateTime.now();
-
-    final authUserId = currentUser.id;
-    print('Using authenticated user: $authUserId');
-
-    // Verify organization exists
-    final orgCheck = await _supabase
-        .from('Organization')
-        .select('id')
-        .eq('id', organizationId)
-        .maybeSingle();
-    
-    if (orgCheck == null) {
-      throw Exception('Invalid organization selected');
-    }
-
-    // Generate RSA keys
-    final keyPair = await _generateRSAKeyPair();
-    final publicPem = keyPair['publicKey']!;
-    final privatePem = keyPair['privateKey']!;
-    final fingerprint = keyPair['fingerprint']!;
-    
-    print('RSA-2048 keys generated successfully (${stopwatch.elapsedMilliseconds}ms)');
-    print('Key fingerprint: $fingerprint');
-
-    print('Creating database records...');
-    
-    String? personId;
-    bool userCreated = false;
-    bool orgUserCreated = false;
-    
-    try {
-      // Create Person record
-      print('Inserting Person record...');
-      final personInsertResponse = await _supabase
-          .from('Person')
-          .insert({
-            'first_name': firstName,
-            'middle_name': middleName?.isNotEmpty == true ? middleName : null,
-            'last_name': lastName,
-            'address': address,
-            'contact_number': contactNumber,
-            'created_at': DateTime.now().toUtc().toIso8601String(),
-            'auth_user_id': authUserId,
-          })
-          .select('id')
-          .single();
-
-      personId = personInsertResponse['id'];
-      print('Person record created: $personId');
-
-      // Create User record
-      print('Inserting User record...');
-      await _supabase.from('User').insert({
-        'id': authUserId,
-        'email': email.toLowerCase().trim(),
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'rsa_public_key': publicPem,
-        'rsa_private_key': privatePem,
-        'key_created_at': DateTime.now().toUtc().toIso8601String(),
-        'person_id': personId,
-      });
-      userCreated = true;
-      print('User record created successfully');
-        
-      // Create Organization_User record
-      print('Inserting Organization_User record...');
-      await _supabase.from('Organization_User').insert({
-        'user_id': authUserId,
-        'organization_id': organizationId,
-        'position': position,
-        'department': department,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      orgUserCreated = true;
-      print('Organization_User record created successfully');
-
-      print('All database records created successfully');
-
-    } catch (dbError) {
-      print('Database error: $dbError');
-      
-      // Cleanup on error
-      if (orgUserCreated) {
-        try {
-          await _supabase.from('Organization_User').delete().eq('user_id', authUserId);
-        } catch (e) {
-          print('Failed to clean up Organization_User record: $e');
-        }
-      }
-      
-      if (userCreated) {
-        try {
-          await _supabase.from('User').delete().eq('id', authUserId);
-        } catch (e) {
-          print('Failed to clean up User record: $e');
-        }
-      }
-      
-      if (personId != null) {
-        try {
-          await _supabase.from('Person').delete().eq('id', personId);
-        } catch (e) {
-          print('Failed to clean up Person record: $e');
-        }
-      }
-      
-      rethrow;
-    }
-
-    // Clear pending email after successful signup
-    _pendingEmail = null;
-    _otpSentTime = null;
-
-    stopwatch.stop();
-    print('User registration completed in ${stopwatch.elapsedMilliseconds}ms!');
-
-    return SignupResult(
-      success: true,
-      message: 'Account created successfully with 2048-bit RSA encryption!',
-      userId: authUserId,
-    );
-
-  } on PostgrestException catch (e) {
-    stopwatch.stop();
-    print('Database error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
-    return SignupResult(
-      success: false,
-      errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
-    );
-  } catch (e) {
-    stopwatch.stop();
-    print('Registration error after ${stopwatch.elapsedMilliseconds}ms: $e');
-    return SignupResult(
-      success: false,
-      errorMessage: 'Failed to register user: $e',
-    );
-  }
-}
-
-  // RSA key generation using PointyCastle (works on all platforms)
+  // RSA key generation using Web Crypto API (FAST! ~50-200ms)
   static Future<Map<String, String>> _generateRSAKeyPair() async {
     try {
-      print('Generating RSA-2048 keys using PointyCastle...');
-      return await compute(_generateRSAKeyPairSync, null);
+      print('Generating RSA-2048 keys using Web Crypto API...');
+      final stopwatch = Stopwatch()..start();
+      
+      // Generate RSA-OAEP key pair using native browser crypto
+      final keyPair = await RsaOaepPrivateKey.generateKey(
+        2048, // modulus length
+        BigInt.from(65537), // public exponent
+        Hash.sha256,
+      );
+      
+      // Export keys to PKCS#8/SPKI format
+      final privateKeyBytes = await keyPair.privateKey.exportPkcs8Key();
+      final publicKeyBytes = await keyPair.publicKey.exportSpkiKey();
+      
+      // Convert to PEM format
+      final publicPem = _bytesToPem(publicKeyBytes, 'PUBLIC KEY');
+      final privatePem = _bytesToPem(privateKeyBytes, 'PRIVATE KEY');
+      
+      // Generate fingerprint
+      final fingerprint = _generateKeyFingerprint(publicPem);
+      
+      stopwatch.stop();
+      print('RSA-2048 keys generated in ${stopwatch.elapsedMilliseconds}ms!');
+      print('Key fingerprint: $fingerprint');
+      
+      return {
+        'publicKey': publicPem,
+        'privateKey': privatePem,
+        'fingerprint': fingerprint,
+      };
     } catch (e) {
       print('Error generating RSA keys: $e');
       rethrow;
     }
   }
 
-  /// RSA generation using PointyCastle (cross-platform)
-  static Map<String, String> _generateRSAKeyPairSync(void _) {
-    final keyGen = RSAKeyGenerator();
-    final secureRandom = FortunaRandom();
-
-    _seedSecureRandom(secureRandom);
-
-    keyGen.init(ParametersWithRandom(
-      RSAKeyGeneratorParameters(
-          BigInt.parse('65537'),
-          2048,
-          12
-          ),
-      secureRandom,
-    ));
-
-    final keyPair = keyGen.generateKeyPair();
-    final publicKey = keyPair.publicKey as RSAPublicKey;
-    final privateKey = keyPair.privateKey as RSAPrivateKey;
-
-    final publicKeyPem = _rsaPublicKeyToPem(publicKey);
-    final privateKeyPem = _rsaPrivateKeyToPem(privateKey);
-
-    return {
-      'publicKey': publicKeyPem,
-      'privateKey': privateKeyPem,
-      'fingerprint': _generateKeyFingerprint(publicKeyPem),
-    };
-  }
-
-  static void _seedSecureRandom(FortunaRandom secureRandom) {
-    final seedSource = Random.secure();
-    final seed = Uint8List(32);
-    for (int i = 0; i < 32; i++) {
-      seed[i] = seedSource.nextInt(256);
-    }
-    secureRandom.seed(KeyParameter(seed));
-    
-    for (int i = 0; i < 100; i++) {
-      secureRandom.nextUint8();
-    }
-  }
-
-  static String _rsaPublicKeyToPem(RSAPublicKey publicKey) {
-    try {
-      final publicKeySeq = ASN1Sequence();
-      publicKeySeq.add(ASN1Integer(publicKey.modulus!));
-      publicKeySeq.add(ASN1Integer(publicKey.exponent!));
-
-      final algorithmSeq = ASN1Sequence();
-      final rsaOid = ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]);
-      algorithmSeq.add(rsaOid);
-      algorithmSeq.add(ASN1Null());
-
-      final publicKeyBitString = ASN1BitString(Uint8List.fromList(publicKeySeq.encodedBytes));
-
-      final topLevelSeq = ASN1Sequence();
-      topLevelSeq.add(algorithmSeq);
-      topLevelSeq.add(publicKeyBitString);
-
-      final dataBase64 = base64Encode(topLevelSeq.encodedBytes);
-      return _formatPem(dataBase64, 'PUBLIC KEY');
-    } catch (e) {
-      throw Exception('Failed to convert RSA public key to PEM: $e');
-    }
-  }
-
-  static String _rsaPrivateKeyToPem(RSAPrivateKey privateKey) {
-    try {
-      final privateKeySeq = ASN1Sequence()
-        ..add(ASN1Integer(BigInt.from(0)))
-        ..add(ASN1Integer(privateKey.modulus!))
-        ..add(ASN1Integer(privateKey.exponent!))
-        ..add(ASN1Integer(privateKey.privateExponent!))
-        ..add(ASN1Integer(privateKey.p!))
-        ..add(ASN1Integer(privateKey.q!))
-        ..add(ASN1Integer(privateKey.privateExponent! % (privateKey.p! - BigInt.one)))
-        ..add(ASN1Integer(privateKey.privateExponent! % (privateKey.q! - BigInt.one)))
-        ..add(ASN1Integer(privateKey.q!.modInverse(privateKey.p!)));
-
-      final algorithmSeq = ASN1Sequence();
-      final rsaOid = ASN1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]);
-      algorithmSeq.add(rsaOid);
-      algorithmSeq.add(ASN1Null());
-
-      final privateKeyOctetString = ASN1OctetString(
-        Uint8List.fromList(privateKeySeq.encodedBytes),
-      );
-
-      final topLevelSeq = ASN1Sequence()
-        ..add(ASN1Integer(BigInt.from(0)))
-        ..add(algorithmSeq)
-        ..add(privateKeyOctetString);
-
-      final dataBase64 = base64Encode(topLevelSeq.encodedBytes);
-      return _formatPem(dataBase64, 'PRIVATE KEY');
-    } catch (e) {
-      throw Exception('Failed to convert RSA private key to PEM: $e');
-    }
-  }
-
-  static String _formatPem(String base64Data, String keyType) {
+  static String _bytesToPem(List<int> bytes, String type) {
+    final base64Data = base64Encode(bytes);
     final chunks = <String>[];
     for (int i = 0; i < base64Data.length; i += 64) {
       chunks.add(base64Data.substring(
           i, i + 64 > base64Data.length ? base64Data.length : i + 64));
     }
-    return '-----BEGIN $keyType-----\n${chunks.join('\n')}\n-----END $keyType-----';
+    return '-----BEGIN $type-----\n${chunks.join('\n')}\n-----END $type-----';
   }
 
   static String _generateKeyFingerprint(String publicKeyPem) {
     final keyBytes = utf8.encode(publicKeyPem);
-    final digest = sha256.convert(keyBytes);
+    final digest = crypto.sha256.convert(keyBytes);
     return digest.toString().substring(0, 16);
+  }
+
+  static Future<OTPVerificationResult> sendOTPToEmail(String email) async {
+    try {
+      if (!canResendOTP()) {
+        final remainingTime = getRemainingOTPCooldownTime();
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Please wait $remainingTime seconds before resending OTP',
+        );
+      }
+
+      if (!isValidEmail(email)) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Please enter a valid email address',
+        );
+      }
+
+      final emailExists = await checkEmailExists(email);
+      if (emailExists) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'An account with this email already exists',
+        );
+      }
+
+      print('Sending OTP to email: $email');
+      
+      await _supabase.auth.signInWithOtp(
+        email: email.toLowerCase().trim(),
+        shouldCreateUser: true,
+      );
+
+      _pendingEmail = email.toLowerCase().trim();
+      _otpSentTime = DateTime.now();
+
+      return OTPVerificationResult(
+        success: true,
+        message: 'Verification code sent to your email',
+      );
+    } on AuthException catch (e) {
+      print('OTP send error: ${e.message}');
+      
+      if (e.message.contains('already registered') || 
+          e.message.contains('already exists')) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'An account with this email already exists',
+        );
+      }
+      
+      if (e.message.contains('Signups not allowed')) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Email signup is not enabled. Please contact your administrator.',
+        );
+      }
+      
+      return OTPVerificationResult(
+        success: false,
+        errorMessage: 'Failed to send verification code: ${e.message}',
+      );
+    } catch (e) {
+      print('OTP send error: $e');
+      return OTPVerificationResult(
+        success: false,
+        errorMessage: 'Failed to send verification code. Please try again.',
+      );
+    }
+  }
+
+  static Future<OTPVerificationResult> verifyOTP(
+    String email, 
+    String otp, 
+    String password,
+  ) async {
+    try {
+      if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Please request a new verification code',
+        );
+      }
+
+      if (!isValidPassword(password)) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Password must be 8+ chars with uppercase, lowercase, and numbers',
+        );
+      }
+
+      print('Verifying OTP for email: $email');
+      
+      final response = await _supabase.auth.verifyOTP(
+        email: email.toLowerCase().trim(),
+        token: otp.trim(),
+        type: OtpType.email,
+      );
+
+      if (response.session != null && response.user != null) {
+        print('OTP verified, auth user created: ${response.user!.id}');
+        
+        print('Setting password...');
+        try {
+          final updateResponse = await _supabase.auth.updateUser(
+            UserAttributes(password: password),
+          );
+          
+          if (updateResponse.user != null) {
+            print('Password set successfully');
+            
+            return OTPVerificationResult(
+              success: true,
+              message: 'Email verified and password set successfully',
+            );
+          } else {
+            await _supabase.auth.signOut();
+            return OTPVerificationResult(
+              success: false,
+              errorMessage: 'Failed to set password. Please try again.',
+            );
+          }
+        } catch (e) {
+          print('Error setting password: $e');
+          try {
+            await _supabase.auth.signOut();
+          } catch (signOutError) {
+            print('Error signing out after password failure: $signOutError');
+          }
+          return OTPVerificationResult(
+            success: false,
+            errorMessage: 'Failed to set password: ${e.toString()}',
+          );
+        }
+      } else {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Invalid or expired verification code',
+        );
+      }
+    } on AuthException catch (e) {
+      print('OTP verification error: ${e.message}');
+      
+      if (e.message.contains('invalid') || e.message.contains('expired')) {
+        return OTPVerificationResult(
+          success: false,
+          errorMessage: 'Invalid or expired verification code',
+        );
+      }
+      
+      return OTPVerificationResult(
+        success: false,
+        errorMessage: 'Verification failed: ${e.message}',
+      );
+    } catch (e) {
+      print('OTP verification error: $e');
+      return OTPVerificationResult(
+        success: false,
+        errorMessage: 'Verification failed. Please try again.',
+      );
+    }
+  }
+
+  static Future<SignupResult> signup({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    String? middleName,
+    required String address,
+    required String contactNumber,
+    required String position,
+    required String department,
+    required String organizationId,
+    required bool emailVerified,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    
+    try {
+      if (!emailVerified) {
+        return SignupResult(
+          success: false,
+          errorMessage: 'Please verify your email before signing up',
+        );
+      }
+
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null || currentUser.email?.toLowerCase() != email.toLowerCase().trim()) {
+        return SignupResult(
+          success: false,
+          errorMessage: 'Session expired. Please verify your email again.',
+        );
+      }
+
+      print('Starting user registration for existing auth user...');
+      _lastSignupAttempt = DateTime.now();
+
+      final authUserId = currentUser.id;
+      print('Using authenticated user: $authUserId');
+
+      final orgCheck = await _supabase
+          .from('Organization')
+          .select('id')
+          .eq('id', organizationId)
+          .maybeSingle();
+      
+      if (orgCheck == null) {
+        throw Exception('Invalid organization selected');
+      }
+
+      // Generate RSA keys using Web Crypto API (SUPER FAST!)
+      final keyPair = await _generateRSAKeyPair();
+      final publicPem = keyPair['publicKey']!;
+      final privatePem = keyPair['privateKey']!;
+      final fingerprint = keyPair['fingerprint']!;
+      
+      print('Keys generated successfully (${stopwatch.elapsedMilliseconds}ms)');
+
+      print('Creating database records...');
+      
+      String? personId;
+      bool userCreated = false;
+      bool orgUserCreated = false;
+      
+      try {
+        print('Inserting Person record...');
+        final personInsertResponse = await _supabase
+            .from('Person')
+            .insert({
+              'first_name': firstName,
+              'middle_name': middleName?.isNotEmpty == true ? middleName : null,
+              'last_name': lastName,
+              'address': address,
+              'contact_number': contactNumber,
+              'created_at': DateTime.now().toUtc().toIso8601String(),
+              'auth_user_id': authUserId,
+            })
+            .select('id')
+            .single();
+
+        personId = personInsertResponse['id'];
+        print('Person record created: $personId');
+
+        print('Inserting User record...');
+        await _supabase.from('User').insert({
+          'id': authUserId,
+          'email': email.toLowerCase().trim(),
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'rsa_public_key': publicPem,
+          'rsa_private_key': privatePem,
+          'key_created_at': DateTime.now().toUtc().toIso8601String(),
+          'person_id': personId,
+        });
+        userCreated = true;
+        print('User record created successfully');
+          
+        print('Inserting Organization_User record...');
+        await _supabase.from('Organization_User').insert({
+          'user_id': authUserId,
+          'organization_id': organizationId,
+          'position': position,
+          'department': department,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        orgUserCreated = true;
+        print('Organization_User record created successfully');
+
+      } catch (dbError) {
+        print('Database error: $dbError');
+        
+        if (orgUserCreated) {
+          try {
+            await _supabase.from('Organization_User').delete().eq('user_id', authUserId);
+          } catch (e) {
+            print('Failed to clean up Organization_User: $e');
+          }
+        }
+        
+        if (userCreated) {
+          try {
+            await _supabase.from('User').delete().eq('id', authUserId);
+          } catch (e) {
+            print('Failed to clean up User: $e');
+          }
+        }
+        
+        if (personId != null) {
+          try {
+            await _supabase.from('Person').delete().eq('id', personId);
+          } catch (e) {
+            print('Failed to clean up Person: $e');
+          }
+        }
+        
+        rethrow;
+      }
+
+      _pendingEmail = null;
+      _otpSentTime = null;
+
+      stopwatch.stop();
+      print('User registration completed in ${stopwatch.elapsedMilliseconds}ms!');
+
+      return SignupResult(
+        success: true,
+        message: 'Account created successfully with 2048-bit RSA encryption!',
+        userId: authUserId,
+      );
+
+    } on PostgrestException catch (e) {
+      stopwatch.stop();
+      print('Database error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
+      return SignupResult(
+        success: false,
+        errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
+      );
+    } catch (e) {
+      stopwatch.stop();
+      print('Registration error after ${stopwatch.elapsedMilliseconds}ms: $e');
+      return SignupResult(
+        success: false,
+        errorMessage: 'Failed to register user: $e',
+      );
+    }
+  }
+
+  static String _getDatabaseErrorMessage(String? message, String? details, String? hint) {
+    final fullMessage = message ?? '';
+    final fullDetails = details ?? '';
+    
+    if (fullMessage.contains('unique constraint') || 
+        fullMessage.contains('duplicate key') ||
+        fullDetails.contains('unique constraint') ||
+        fullDetails.contains('duplicate key')) {
+      return 'An account with this information already exists';
+    } else if (fullMessage.contains('foreign key') ||
+               fullDetails.contains('foreign key')) {
+      return 'Invalid organization selected';
+    } else if (fullMessage.contains('not-null') ||
+               fullDetails.contains('not-null') ||
+               fullMessage.contains('null value')) {
+      return 'Required information is missing';
+    } else if (fullMessage.contains('check constraint')) {
+      return 'Invalid data format provided';
+    } else if (fullMessage.contains('permission denied')) {
+      return 'Permission denied - please contact support';
+    }
+    
+    return 'Database error occurred - please try again';
   }
 
   static List<Map<String, dynamic>>? _cachedOrganizations;
@@ -617,183 +530,11 @@ static Future<SignupResult> signup({
     }
   }
 
-  static String _getAuthErrorMessage(String message) {
-    if (message.contains('already registered') || 
-        message.contains('already exists')) {
-      return 'An account with this email already exists';
-    } else if (message.contains('password')) {
-      return 'Password does not meet requirements';
-    } else if (message.contains('email')) {
-      return 'Invalid email address';
-    }
-    return 'Authentication failed: $message';
-  }
-
-  static String _getDatabaseErrorMessage(String? message, String? details, String? hint) {
-    final fullMessage = message ?? '';
-    final fullDetails = details ?? '';
-    
-    if (fullMessage.contains('unique constraint') || 
-        fullMessage.contains('duplicate key') ||
-        fullDetails.contains('unique constraint') ||
-        fullDetails.contains('duplicate key')) {
-      return 'An account with this information already exists';
-    } else if (fullMessage.contains('foreign key') ||
-               fullDetails.contains('foreign key')) {
-      return 'Invalid organization selected';
-    } else if (fullMessage.contains('not-null') ||
-               fullDetails.contains('not-null') ||
-               fullMessage.contains('null value')) {
-      return 'Required information is missing';
-    } else if (fullMessage.contains('check constraint')) {
-      return 'Invalid data format provided';
-    } else if (fullMessage.contains('permission denied')) {
-      return 'Permission denied - please contact support';
-    }
-    
-    return 'Database error occurred - please try again';
-  }
-
-  static Map<String, String>? _cachedUserKeys;
-  static String? _cachedUserId;
-
-  static Future<Map<String, String>?> getUserRSAKeys() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return null;
-
-      if (_cachedUserKeys != null && _cachedUserId == user.id) {
-        return _cachedUserKeys;
-      }
-
-      final response = await _supabase
-          .from('User')
-          .select('rsa_public_key, rsa_private_key')
-          .eq('id', user.id)
-          .single();
-
-      final keys = <String, String>{
-        'publicKey': response['rsa_public_key'] as String,
-        'privateKey': response['rsa_private_key'] as String,
-      };
-
-      _cachedUserKeys = keys;
-      _cachedUserId = user.id;
-
-      return keys;
-    } catch (e) {
-      print('Error fetching RSA keys: $e');
-      return null;
-    }
-  }
-
   static void clearCaches() {
     _cachedOrganizations = null;
     _organizationsCacheTime = null;
-    _cachedUserKeys = null;
-    _cachedUserId = null;
     _pendingEmail = null;
     _otpSentTime = null;
-  }
-
-  static Future<String?> encryptData(String data) async {
-    try {
-      final keys = await getUserRSAKeys();
-      if (keys == null) {
-        print('No RSA keys available for encryption');
-        return null;
-      }
-      
-      return await compute(_encryptWithPointyCastle, {
-        'data': data,
-        'publicKeyPem': keys['publicKey']!,
-      });
-    } catch (e) {
-      print('Encryption error: $e');
-      return null;
-    }
-  }
-
-  static Future<String?> decryptData(String encryptedData) async {
-    try {
-      final keys = await getUserRSAKeys();
-      if (keys == null) {
-        print('No RSA keys available for decryption');
-        return null;
-      }
-
-      return await compute(_decryptWithPointyCastle, {
-        'encryptedData': encryptedData,
-        'privateKeyPem': keys['privateKey']!,
-      });
-    } catch (e) {
-      print('Decryption error: $e');
-      return null;
-    }
-  }
-
-  static String? _encryptWithPointyCastle(Map<String, String> params) {
-    try {
-      final data = params['data']!;
-      final publicKeyPem = params['publicKeyPem']!;
-      
-      final publicKey = _parsePublicKeyFromPem(publicKeyPem);
-      final encryptor = OAEPEncoding(RSAEngine())
-        ..init(true, PublicKeyParameter<RSAPublicKey>(publicKey));
-      
-      final dataBytes = utf8.encode(data);
-      final encryptedBytes = encryptor.process(Uint8List.fromList(dataBytes));
-      return base64Encode(encryptedBytes);
-    } catch (e) {
-      print('PointyCastle encryption error: $e');
-      return null;
-    }
-  }
-
-  static String? _decryptWithPointyCastle(Map<String, String> params) {
-    try {
-      final encryptedData = params['encryptedData']!;
-      final privateKeyPem = params['privateKeyPem']!;
-      
-      final privateKey = _parsePrivateKeyFromPem(privateKeyPem);
-      final decryptor = OAEPEncoding(RSAEngine())
-        ..init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
-      
-      final encryptedBytes = base64Decode(encryptedData);
-      final decryptedBytes = decryptor.process(encryptedBytes);
-      return utf8.decode(decryptedBytes);
-    } catch (e) {
-      print('PointyCastle decryption error: $e');
-      return null;
-    }
-  }
-
-  static RSAPublicKey _parsePublicKeyFromPem(String pem) {
-    final lines = pem.split('\n').where((line) => !line.startsWith('-----')).join('');
-    final keyBytes = base64Decode(lines);
-    final asn1Parser = ASN1Parser(keyBytes);
-    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
-    final publicKeyBitString = topLevelSeq.elements[1] as ASN1BitString;
-    final publicKeyAsn = ASN1Parser(publicKeyBitString.contentBytes());
-    final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
-    final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
-    final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
-    return RSAPublicKey(modulus, exponent);
-  }
-
-  static RSAPrivateKey _parsePrivateKeyFromPem(String pem) {
-    final lines = pem.split('\n').where((line) => !line.startsWith('-----')).join('');
-    final keyBytes = base64Decode(lines);
-    final asn1Parser = ASN1Parser(keyBytes);
-    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
-    final privateKeyOctetString = topLevelSeq.elements[2] as ASN1OctetString;
-    final privateKeyAsn = ASN1Parser(privateKeyOctetString.contentBytes());
-    final privateKeySeq = privateKeyAsn.nextObject() as ASN1Sequence;
-    final modulus = (privateKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
-    final privateExponent = (privateKeySeq.elements[3] as ASN1Integer).valueAsBigInteger;
-    final p = (privateKeySeq.elements[4] as ASN1Integer).valueAsBigInteger;
-    final q = (privateKeySeq.elements[5] as ASN1Integer).valueAsBigInteger;
-    return RSAPrivateKey(modulus, privateExponent, p, q);
   }
 
   static bool isValidEmail(String email) {
