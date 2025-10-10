@@ -5,15 +5,18 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:fast_rsa/fast_rsa.dart';
-import 'package:health_share_org/services/aes_helper.dart';
 import 'package:health_share_org/services/hive/compare.dart';
 import 'dart:async';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:pointycastle/export.dart' hide Mac;
 import 'package:asn1lib/asn1lib.dart';
 import 'package:cryptography/cryptography.dart';
+import 'file_preview.dart';
 
 class FileDecryptionService {
+  // PERFORMANCE FIX: Use cryptography package for fast AES-GCM decryption
+  static final _aesGcm = AesGcm.with256bits();
+
   static Future<void> previewFile(
     BuildContext context,
     Map<String, dynamic> file,
@@ -122,6 +125,8 @@ class FileDecryptionService {
     required String rsaPrivateKeyPem,
     required Function(String) showSnackBar,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    
     try {
       final allFileKeys = await Supabase.instance.client
           .from('File_Keys')
@@ -146,24 +151,14 @@ class FileDecryptionService {
         return;
       }
 
-      // RSA Decryption with PointyCastle fallback
+      // RSA Decryption with PointyCastle (fast on web)
       print('\n--- ATTEMPTING RSA DECRYPTION ---');
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
       
-      String decryptedKeyDataJson;
-      
-      // FOR WEB: Use PointyCastle directly (fast_rsa has timeout issues on web)
-      print('WEB PLATFORM: Using PointyCastle for RSA decryption...');
       showSnackBar('Decrypting encryption key...');
       
-      try {
-        decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
-        print('✓ PointyCastle RSA decryption successful!');
-      } catch (pointyCastleError) {
-        print('PointyCastle decryption failed: $pointyCastleError');
-        showSnackBar('RSA decryption failed: ${pointyCastleError.toString()}');
-        return;
-      }
+      final decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
+      print('✓ PointyCastle RSA decryption successful!');
 
       final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
       final aesKeyBase64 = keyData['key'] as String?;
@@ -173,26 +168,28 @@ class FileDecryptionService {
         throw Exception('Missing AES key in decrypted data');
       }
 
-      // Convert base64 to hex for AESHelper
+      // PERFORMANCE FIX: Convert to bytes directly (no hex conversion needed)
       final aesKeyBytes = base64Decode(aesKeyBase64);
-      final aesKeyHex = aesKeyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       
-      String aesNonceHex;
+      Uint8List nonceBytes;
       if (aesNonceBase64 != null) {
-        final aesNonceBytes = base64Decode(aesNonceBase64);
-        aesNonceHex = aesNonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        nonceBytes = base64Decode(aesNonceBase64);
       } else {
-        aesNonceHex = usableKey['nonce_hex'] as String? ?? '';
+        // Fallback to nonce_hex if nonce not in JSON
+        final nonceHex = usableKey['nonce_hex'] as String?;
+        if (nonceHex == null || nonceHex.isEmpty) {
+          throw Exception('Missing AES nonce');
+        }
+        nonceBytes = _hexToBytes(nonceHex);
       }
 
-      if (aesNonceHex.isEmpty) {
-        throw Exception('Missing AES nonce');
-      }
-
-      print('AES key and nonce extracted successfully');
+      print('✓ AES key (${aesKeyBytes.length} bytes) and nonce (${nonceBytes.length} bytes) extracted');
+      print('  RSA decryption took: ${stopwatch.elapsedMilliseconds}ms');
 
       // Download file from IPFS
       showSnackBar('Downloading encrypted file from IPFS...');
+      final downloadStart = stopwatch.elapsedMilliseconds;
+      
       final ipfsUrl = 'https://apricot-delicate-vole-342.mypinata.cloud/ipfs/$ipfsCid';
       final response = await http.get(Uri.parse(ipfsUrl));
 
@@ -201,53 +198,156 @@ class FileDecryptionService {
       }
 
       final encryptedFileBytes = response.bodyBytes;
-      print('Downloaded ${encryptedFileBytes.length} bytes from IPFS');
+      final downloadTime = stopwatch.elapsedMilliseconds - downloadStart;
+      print('✓ Downloaded ${encryptedFileBytes.length} bytes from IPFS in ${downloadTime}ms');
 
-      // Decrypt the file
+      // PERFORMANCE FIX: Use native cryptography package for AES-GCM (SUPER FAST!)
       showSnackBar('Decrypting file...');
-      final aesHelper = AESHelper(aesKeyHex, aesNonceHex);
-      final decryptedBytes = aesHelper.decryptData(encryptedFileBytes);
+      final decryptStart = stopwatch.elapsedMilliseconds;
+      
+      final decryptedBytes = await _fastDecryptFile(
+        encryptedFileBytes,
+        aesKeyBytes,
+        nonceBytes,
+      );
 
-      print('File decrypted successfully: ${decryptedBytes.length} bytes');
+      final decryptTime = stopwatch.elapsedMilliseconds - decryptStart;
+      stopwatch.stop();
+      
+      print('✅ File decrypted successfully!');
+      print('  Decrypted size: ${decryptedBytes.length} bytes');
+      print('  Decryption took: ${decryptTime}ms');
+      print('  Total time: ${stopwatch.elapsedMilliseconds}ms');
 
       // Show preview
-      showSnackBar('✓ File decrypted successfully!');
+      showSnackBar('✓ File decrypted in ${stopwatch.elapsedMilliseconds}ms!');
       await _showFilePreview(context, filename, mimeType, decryptedBytes);
 
     } catch (e, stackTrace) {
-      print('Error in _performDecryption: $e');
+      stopwatch.stop();
+      print('Error in _performDecryption after ${stopwatch.elapsedMilliseconds}ms: $e');
       print('Stack trace: $stackTrace');
-      throw e;
+      showSnackBar('Decryption failed: ${e.toString()}');
+      rethrow;
     }
   }
 
   // =====================================================
-  // PointyCastle RSA Decryption Methods (Fallback)
+  // PERFORMANCE FIX: Fast AES-GCM Decryption
+  // =====================================================
+  
+  /// Fast decryption using native cryptography package (same as mobile app)
+  /// This is MUCH faster than custom AESHelper implementation
+  static Future<Uint8List> _fastDecryptFile(
+    Uint8List combinedData,
+    List<int> aesKeyBytes,
+    List<int> nonceBytes,
+  ) async {
+    try {
+      print('Fast AES-GCM decryption starting...');
+      print('  Combined data: ${combinedData.length} bytes');
+      print('  AES key: ${aesKeyBytes.length} bytes');
+      print('  Nonce: ${nonceBytes.length} bytes');
+
+      // Check minimum size (at least 16 bytes for MAC)
+      if (combinedData.length < 16) {
+        throw Exception('Combined data too short (${combinedData.length} bytes)');
+      }
+
+      // Separate ciphertext and MAC
+      // Format: [ciphertext][16-byte MAC]
+      final cipherText = combinedData.sublist(0, combinedData.length - 16);
+      final macBytes = combinedData.sublist(combinedData.length - 16);
+
+      print('  Separated: ciphertext=${cipherText.length}B, MAC=${macBytes.length}B');
+
+      // Create SecretKey and SecretBox
+      final secretKey = SecretKey(aesKeyBytes);
+      final secretBox = SecretBox(
+        cipherText,
+        nonce: nonceBytes,
+        mac: Mac(macBytes),
+      );
+
+      // Decrypt using native AES-GCM (FAST!)
+      final decryptedData = await _aesGcm.decrypt(
+        secretBox,
+        secretKey: secretKey,
+      );
+
+      print('✓ Fast decryption successful!');
+      return Uint8List.fromList(decryptedData);
+      
+    } catch (e) {
+      print('❌ Fast decryption failed: $e');
+      
+      // Try fallback methods for backward compatibility
+      print('Attempting fallback decryption methods...');
+      return await _fallbackDecryption(combinedData, aesKeyBytes, nonceBytes);
+    }
+  }
+
+  /// Fallback decryption for backward compatibility
+  static Future<Uint8List> _fallbackDecryption(
+    Uint8List encryptedData,
+    List<int> aesKeyBytes,
+    List<int> nonceBytes,
+  ) async {
+    final secretKey = SecretKey(aesKeyBytes);
+
+    // Method 1: Try with Mac.empty (for old data without proper MAC)
+    try {
+      print('Trying Mac.empty fallback...');
+      final secretBox = SecretBox(encryptedData, nonce: nonceBytes, mac: Mac.empty);
+      final decryptedData = await _aesGcm.decrypt(secretBox, secretKey: secretKey);
+      print('✓ Mac.empty fallback successful!');
+      return Uint8List.fromList(decryptedData);
+    } catch (e) {
+      print('Mac.empty failed: $e');
+    }
+
+    // Method 2: Try assuming MAC is at the beginning
+    try {
+      if (encryptedData.length > 16) {
+        print('Trying MAC-at-beginning fallback...');
+        final macBytes = encryptedData.sublist(0, 16);
+        final cipherText = encryptedData.sublist(16);
+        
+        final secretBox = SecretBox(cipherText, nonce: nonceBytes, mac: Mac(macBytes));
+        final decryptedData = await _aesGcm.decrypt(secretBox, secretKey: secretKey);
+        print('✓ MAC-at-beginning fallback successful!');
+        return Uint8List.fromList(decryptedData);
+      }
+    } catch (e) {
+      print('MAC-at-beginning failed: $e');
+    }
+
+    throw Exception('All decryption methods failed');
+  }
+
+  // =====================================================
+  // PointyCastle RSA Decryption Methods
   // =====================================================
   
   static RSAPrivateKey _parseRSAPrivateKeyFromPem(String pem) {
     try {
-      print('Parsing RSA private key from PEM...');
-      
       final cleanPem = pem.trim();
       
       bool isPkcs1 = cleanPem.contains('-----BEGIN RSA PRIVATE KEY-----');
       bool isPkcs8 = cleanPem.contains('-----BEGIN PRIVATE KEY-----');
       
       if (!isPkcs1 && !isPkcs8) {
-        throw FormatException('Invalid PEM format - missing proper headers');
+        throw FormatException('Invalid PEM format');
       }
       
       String lines;
       if (isPkcs1) {
-        print('Detected PKCS#1 format');
         lines = cleanPem
             .replaceAll('-----BEGIN RSA PRIVATE KEY-----', '')
             .replaceAll('-----END RSA PRIVATE KEY-----', '')
             .replaceAll(RegExp(r'\s+'), '')
             .trim();
       } else {
-        print('Detected PKCS#8 format');
         lines = cleanPem
             .replaceAll('-----BEGIN PRIVATE KEY-----', '')
             .replaceAll('-----END PRIVATE KEY-----', '')
@@ -263,7 +363,7 @@ class FileDecryptionService {
         return _parsePKCS8PrivateKey(keyBytes);
       }
     } catch (e) {
-      print('Error parsing RSA private key from PEM: $e');
+      print('Error parsing RSA private key: $e');
       rethrow;
     }
   }
@@ -285,7 +385,6 @@ class FileDecryptionService {
       throw FormatException('Failed to extract RSA key components');
     }
     
-    print('PKCS#1 RSA private key parsed - Modulus bits: ${modulus.bitLength}');
     return RSAPrivateKey(modulus, privateExponent, p, q);
   }
 
@@ -305,26 +404,20 @@ class FileDecryptionService {
 
   static String _decryptWithRSAOAEP(String encryptedData, String privateKeyPem) {
     try {
-      print('Starting RSA-OAEP decryption with PointyCastle...');
-      
       final privateKey = _parseRSAPrivateKeyFromPem(privateKeyPem);
       
       // Try SHA-256 first (modern standard)
       try {
-        print('Attempting RSA-OAEP with SHA-256...');
-        
         final cipher = OAEPEncoding.withCustomDigest(
           () => SHA256Digest(),
           RSAEngine(),
         );
-        
         cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
         
         final encryptedBytes = base64Decode(encryptedData);
         final decryptedBytes = cipher.process(encryptedBytes);
         final decryptedString = utf8.decode(decryptedBytes);
         
-        print('✓ RSA-OAEP SHA-256 decryption successful!');
         return decryptedString;
         
       } catch (sha256Error) {
@@ -334,14 +427,12 @@ class FileDecryptionService {
           () => SHA1Digest(),
           RSAEngine(),
         );
-        
         cipher.init(false, PrivateKeyParameter<RSAPrivateKey>(privateKey));
         
         final encryptedBytes = base64Decode(encryptedData);
         final decryptedBytes = cipher.process(encryptedBytes);
         final decryptedString = utf8.decode(decryptedBytes);
         
-        print('✓ RSA-OAEP SHA-1 decryption successful!');
         return decryptedString;
       }
     } catch (e) {
@@ -360,12 +451,55 @@ class FileDecryptionService {
       final decryptedBytes = cipher.process(encryptedBytes);
       final decryptedString = utf8.decode(decryptedBytes);
       
-      print('✓ PKCS1v15 decryption successful!');
       return decryptedString;
     } catch (e) {
       print('PKCS1v15 decryption error: $e');
       rethrow;
     }
+  }
+
+  // =====================================================
+  // Helper Methods
+  // =====================================================
+
+  static Uint8List _hexToBytes(String hex) {
+    final result = <int>[];
+    for (int i = 0; i < hex.length; i += 2) {
+      result.add(int.parse(hex.substring(i, i + 2), radix: 16));
+    }
+    return Uint8List.fromList(result);
+  }
+
+  static Future<String> _getHiveUsername(String userId) async {
+    final envUsername = dotenv.env['HIVE_ACCOUNT_NAME'];
+    
+    if (envUsername == null || envUsername.isEmpty) {
+      throw Exception('HIVE_ACCOUNT_NAME not found in .env file');
+    }
+    
+    return envUsername;
+  }
+
+  // =====================================================
+  // File Preview Method
+  // =====================================================
+
+  static Future<void> _showFilePreview(
+    BuildContext context,
+    String filename,
+    String mimeType,
+    Uint8List decryptedBytes,
+  ) async {
+    // Use fullscreen preview for better viewing experience
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenFilePreviewWeb(
+          fileName: filename,
+          bytes: decryptedBytes,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
   }
 
   // =====================================================
@@ -494,244 +628,5 @@ class FileDecryptionService {
         ],
       ),
     );
-  }
-
-  // =====================================================
-  // Helper Methods
-  // =====================================================
-
-  static Future<String> _getHiveUsername(String userId) async {
-    final envUsername = dotenv.env['HIVE_ACCOUNT_NAME'];
-    
-    if (envUsername == null || envUsername.isEmpty) {
-      throw Exception('HIVE_ACCOUNT_NAME not found in .env file');
-    }
-    
-    print('Using Hive username: $envUsername');
-    return envUsername;
-  }
-  
-  static Future<void> _showFilePreview(
-    BuildContext context,
-    String filename,
-    String mimeType,
-    Uint8List decryptedBytes,
-  ) async {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            height: MediaQuery.of(context).size.height * 0.9,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        filename,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Expanded(
-                  child: _buildPreviewContent(mimeType, decryptedBytes, filename),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  static Widget _buildPreviewContent(String mimeType, Uint8List bytes, String filename) {
-    final extension = filename.toLowerCase().split('.').last;
-    
-    if (mimeType.startsWith('image/') || 
-        ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension)) {
-      return _buildImagePreview(bytes);
-    }
-    
-    if (mimeType.startsWith('text/') || 
-        ['txt', 'md', 'json', 'xml', 'csv', 'log'].contains(extension)) {
-      return _buildTextPreview(bytes);
-    }
-    
-    if (mimeType == 'application/pdf' || extension == 'pdf') {
-      return _buildPdfPreview(bytes);
-    }
-    
-    if (['dart', 'js', 'html', 'css', 'py', 'java', 'cpp', 'c', 'h'].contains(extension)) {
-      return _buildCodePreview(bytes, extension);
-    }
-    
-    return _buildDefaultPreview(bytes, mimeType, filename);
-  }
-
-  static Widget _buildImagePreview(Uint8List bytes) {
-    return Center(
-      child: SingleChildScrollView(
-        child: Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error, size: 64, color: Colors.red),
-                SizedBox(height: 16),
-                Text('Failed to load image'),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  static Widget _buildTextPreview(Uint8List bytes) {
-    try {
-      final text = utf8.decode(bytes);
-      return SingleChildScrollView(
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SelectableText(
-            text,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 14,
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      return _buildErrorPreview('Failed to decode text: $e');
-    }
-  }
-
-  static Widget _buildCodePreview(Uint8List bytes, String extension) {
-    try {
-      final code = utf8.decode(bytes);
-      return SingleChildScrollView(
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SelectableText(
-            code,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 14,
-              color: Colors.green,
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      return _buildErrorPreview('Failed to decode code: $e');
-    }
-  }
-
-  static Widget _buildPdfPreview(Uint8List bytes) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
-        const SizedBox(height: 16),
-        const Text(
-          'PDF Preview',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text('Size: ${_formatFileSize(bytes.length)}'),
-        const SizedBox(height: 16),
-        const Text(
-          'PDF preview is not available in this interface.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey),
-        ),
-      ],
-    );
-  }
-
-  static Widget _buildDefaultPreview(Uint8List bytes, String mimeType, String filename) {
-    final extension = filename.split('.').last.toUpperCase();
-    
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          Icon(Icons.insert_drive_file, size: 64, color: Colors.grey[600]),
-          const SizedBox(height: 16),
-          Text(
-            extension,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            filename,
-            style: const TextStyle(fontSize: 16),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text('Type: $mimeType'),
-          Text('Size: ${_formatFileSize(bytes.length)}'),
-          const SizedBox(height: 16),
-          const Text(
-            'Preview not available for this file type.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _buildErrorPreview(String error) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.error, size: 64, color: Colors.red),
-        const SizedBox(height: 16),
-        const Text(
-          'Preview Error',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          error,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.red),
-        ),
-      ],
-    );
-  }
-
-  static String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }

@@ -51,6 +51,8 @@ dependencies:
   worker_manager: ^5.0.0
   fast_rsa: ^3.8.5
   webcrypto: ^0.5.3
+  bs58: ^1.0.2
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,34 +1,39 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
+
+import 'package:convert/convert.dart' show hex;
+import 'package:bs58/bs58.dart' as bs58;
 import 'package:pointycastle/export.dart';
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class HiveTransactionSignerWeb {
-  static const String _base58Alphabet =
-      '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
+  // Hive chain ID (mainnet)
   static const String _hiveChainId =
       'beeab0de00000000000000000000000000000000000000000000000000000000';
 
+  /// Signs a Hive transaction using the posting private key from environment
   static Future<Map<String, dynamic>> signTransaction(
     Map<String, dynamic> transaction,
   ) async {
     try {
+      // Get posting WIF from environment
       final postingWif = dotenv.env['HIVE_POSTING_WIF'] ?? '';
       if (postingWif.isEmpty) {
         throw Exception('HIVE_POSTING_WIF not found in environment variables');
       }
 
-      print('🔐 Starting Hive transaction signing...');
+      print('🔐 Starting transaction signing...');
 
-      final privateKey = _wifToPrivateKey(postingWif);
-      print('✓ Private key decoded from WIF');
+      // 1. Convert WIF to private key (32 bytes)
+      final privateKeyBytes = _wifToPrivateKey(postingWif);
+      print('✓ WIF decoded successfully');
 
+      // 2. Serialize the transaction
       final serializedTransaction = _serializeTransaction(transaction);
       print('✓ Transaction serialized (${serializedTransaction.length} bytes)');
 
+      // 3. Create signing buffer (chain ID + serialized transaction)
       final chainIdBytes = _hexToBytes(_hiveChainId);
       final signingBuffer = Uint8List.fromList([
         ...chainIdBytes,
@@ -36,131 +41,228 @@ class HiveTransactionSignerWeb {
       ]);
       print('✓ Signing buffer created (${signingBuffer.length} bytes)');
 
-      final hash = sha256.convert(signingBuffer).bytes;
-      print('✓ SHA-256 hash computed');
+      // 4. Hash the signing buffer
+      final hashBytes = sha256.convert(signingBuffer).bytes;
+      final hash = Uint8List.fromList(hashBytes);
+      print('✓ Hash computed: ${hex.encode(hash)}');
 
-      final signature = _signHash(Uint8List.fromList(hash), privateKey);
-      print('✓ Signature generated: ${signature.substring(0, 20)}...');
+      // 5. Sign the hash (returns Hive compact hex string)
+      final signature = _signHash(hash, privateKeyBytes);
+      print('✓ Signature created: ${signature.substring(0, 20)}...');
 
+      // 6. Attach signature and return
       final signedTransaction = Map<String, dynamic>.from(transaction);
       signedTransaction['signatures'] = [signature];
 
       print('✅ Transaction signed successfully!');
       return signedTransaction;
     } catch (e, stackTrace) {
-      print('❌ Failed to sign transaction: $e');
+      print('❌ Signing failed: $e');
       print('Stack trace: $stackTrace');
       throw Exception('Failed to sign transaction: $e');
     }
   }
 
+  // ---------------- WIF decoding ----------------
   static Uint8List _wifToPrivateKey(String wif) {
     try {
-      final decoded = _base58Decode(wif);
-      if (decoded.length != 37) {
-        throw Exception('Invalid WIF length: ${decoded.length} (expected 37)');
-      }
-      final privateKey = decoded.sublist(1, 33);
+      // Use the top-level decode function which handles Base58
+      final decoded = bs58.base58.decode(wif);
 
-      final payload = decoded.sublist(0, 33);
-      final checksum = decoded.sublist(33);
-      final hash = sha256.convert(sha256.convert(payload).bytes).bytes;
-      if (!_listEquals(checksum, hash.sublist(0, 4))) {
+      if (decoded.length != 37 && decoded.length != 38) {
+        throw Exception('Invalid WIF length: ${decoded.length}');
+      }
+
+      final payloadLen = decoded.length - 4;
+      final payload = decoded.sublist(0, payloadLen);
+      final checksum = decoded.sublist(payloadLen);
+
+      final hash1 = sha256.convert(payload).bytes;
+      final hash2 = sha256.convert(hash1).bytes;
+      final expected = hash2.sublist(0, 4);
+      if (!_listEquals(checksum, expected)) {
         throw Exception('Invalid WIF checksum');
       }
 
-      return Uint8List.fromList(privateKey);
+      if (payload[0] != 0x80) {
+        throw Exception('Invalid WIF version byte: ${payload[0]}');
+      }
+
+      final priv = payload.sublist(1, 33);
+
+      if (payloadLen == 34 && payload[33] != 0x01) {
+        throw Exception('Invalid compressed flag in WIF');
+      }
+
+      return Uint8List.fromList(priv);
     } catch (e) {
       throw Exception('Failed to decode WIF: $e');
     }
   }
 
-  static Uint8List _base58Decode(String input) {
-    final alphabet = _base58Alphabet;
-    final base = BigInt.from(58);
-    BigInt decoded = BigInt.zero;
-    BigInt multi = BigInt.one;
+  // ---------------- Signing (secp256k1 + recovery ID 0..3) ----------------
+  static String _signHash(Uint8List hash, Uint8List privateKeyBytes) {
+    try {
+      final params = ECDomainParameters('secp256k1');
+      final d = _bytesToBigInt(privateKeyBytes);
+      final privKey = ECPrivateKey(d, params);
+      final Q = (params.G * d)!;
+      final pubKeyBytes = _encodePublicKey(Q, true);
+      print('🔑 Public key: ${hex.encode(pubKeyBytes)}');
 
-    for (int i = input.length - 1; i >= 0; i--) {
-      final char = input[i];
-      final index = alphabet.indexOf(char);
-      if (index == -1) {
-        throw Exception('Invalid base58 character: $char');
+      // Use a deterministic signer (RFC 6979) with HMAC-SHA256
+      final signer = ECDSASigner(null, HMac(SHA256Digest(), 64));
+      signer.init(true, PrivateKeyParameter(privKey));
+
+      // Loop to find a canonical signature that produces a valid recovery ID
+      int recoveryId = -1;
+      ECSignature signature;
+
+      for (int i = 0; i < 4; i++) {
+        // Note: In a real deterministic signer, k is fixed. Here we regenerate
+        // to find a suitable signature, which is a common practice for recovery.
+        signature = signer.generateSignature(hash) as ECSignature;
+
+        // Normalize s to low-S form
+        if (signature.s.compareTo(params.n >> 1) > 0) {
+          signature = ECSignature(signature.r, params.n - signature.s);
+          print('📝 Normalized s to low-S form');
+        }
+
+        // Try to recover the public key with the current signature
+        for (int j = 0; j < 4; j++) {
+          final recoveredPubKey = _recoverPublicKey(
+            hash,
+            signature.r,
+            signature.s,
+            j,
+            params,
+          );
+          if (recoveredPubKey != null) {
+            print(
+              '🔍 Recovery attempt (sig $i, recId $j): ${hex.encode(recoveredPubKey).substring(0, 20)}...',
+            );
+            if (_listEquals(recoveredPubKey, pubKeyBytes)) {
+              recoveryId = j;
+              print('✅ Found matching recovery ID: $j');
+              break;
+            }
+          }
+        }
+        if (recoveryId != -1) {
+          // We found the right signature and recovery ID, break the outer loop
+          final rBytes = _bigIntToBytes(signature.r, 32);
+          final sBytes = _bigIntToBytes(signature.s, 32);
+
+          print(
+            '📊 Final Signature r: ${hex.encode(rBytes).substring(0, 16)}...',
+          );
+          print(
+            '📊 Final Signature s: ${hex.encode(sBytes).substring(0, 16)}...',
+          );
+
+          final compactSig = Uint8List(65);
+          compactSig[0] = (31 + recoveryId);
+          compactSig.setRange(1, 33, rBytes);
+          compactSig.setRange(33, 65, sBytes);
+
+          return hex.encode(compactSig);
+        }
       }
-      decoded += BigInt.from(index) * multi;
-      multi *= base;
-    }
 
-    final bytes = <int>[];
-    while (decoded > BigInt.zero) {
-      bytes.insert(0, (decoded % BigInt.from(256)).toInt());
-      decoded ~/= BigInt.from(256);
+      throw Exception('Failed to compute a valid signature and recovery ID');
+    } catch (e, stackTrace) {
+      print('💥 Sign hash error: $e');
+      print('Stack: $stackTrace');
+      throw Exception('Failed to sign hash: $e');
     }
-
-    for (int i = 0; i < input.length && input[i] == '1'; i++) {
-      bytes.insert(0, 0);
-    }
-    return Uint8List.fromList(bytes);
   }
 
+  // Recover public key from signature - SIMPLIFIED & CORRECTED
+  static Uint8List? _recoverPublicKey(
+    Uint8List hash,
+    BigInt r,
+    BigInt s,
+    int recoveryId,
+    ECDomainParameters params,
+  ) {
+    try {
+      final n = params.n;
+      final G = params.G;
+      final curve = params.curve;
+
+      // 1. Calculate x coordinate from r
+      final i = BigInt.from(recoveryId >> 1);
+      final x = r + (i * n);
+
+      // 2. Decompress point R from x
+      final R = curve.decompressPoint(recoveryId & 1, x);
+      if (R == null || !(R * n)!.isInfinity) return null;
+
+      // 3. Calculate message hash 'e'
+      final e = _bytesToBigInt(hash);
+
+      // 4. Calculate Q = r^-1 * (s*R - e*G)
+      final rInv = r.modInverse(n);
+      final Q = ((R * s)! - (G * e)!)! * rInv;
+
+      if (Q == null || Q.isInfinity) return null;
+
+      return _encodePublicKey(Q, true);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Encode public key to compressed format
+  static Uint8List _encodePublicKey(ECPoint point, bool compressed) {
+    return point.getEncoded(compressed);
+  }
+
+  // ---------------- Serialization helpers (Unchanged) ----------------
   static Uint8List _serializeTransaction(Map<String, dynamic> transaction) {
     final buffer = <int>[];
-
-    final refBlockNum = transaction['ref_block_num'] as int;
-    buffer.addAll(_serializeUint16(refBlockNum));
-
-    final refBlockPrefix = transaction['ref_block_prefix'] as int;
-    buffer.addAll(_serializeUint32(refBlockPrefix));
-
-    final expiration = transaction['expiration'] as String;
+    buffer.addAll(_serializeUint16(transaction['ref_block_num'] as int));
+    buffer.addAll(_serializeUint32(transaction['ref_block_prefix'] as int));
     final expirationTimestamp =
-        DateTime.parse(expiration + 'Z').millisecondsSinceEpoch ~/ 1000;
+        DateTime.parse(
+          (transaction['expiration'] as String) + 'Z',
+        ).millisecondsSinceEpoch ~/
+        1000;
     buffer.addAll(_serializeUint32(expirationTimestamp));
-
-    final operations = transaction['operations'] as List;
-    buffer.addAll(_serializeOperations(operations));
-
+    buffer.addAll(_serializeOperations(transaction['operations'] as List));
     buffer.addAll(_serializeVarint(0));
-
     return Uint8List.fromList(buffer);
   }
 
   static List<int> _serializeOperations(List operations) {
     final buffer = <int>[];
     buffer.addAll(_serializeVarint(operations.length));
-
     for (final operation in operations) {
       final opList = operation as List;
-      final opData = opList[1] as Map<String, dynamic>;
-
-      buffer.addAll(_serializeVarint(18));
-      buffer.addAll(_serializeCustomJsonOperation(opData));
+      buffer.addAll(_serializeVarint(18)); // custom_json op id
+      buffer.addAll(
+        _serializeCustomJsonOperation(opList[1] as Map<String, dynamic>),
+      );
     }
     return buffer;
   }
 
   static List<int> _serializeCustomJsonOperation(Map<String, dynamic> opData) {
     final buffer = <int>[];
-
     final requiredAuths = opData['required_auths'] as List<dynamic>;
     buffer.addAll(_serializeVarint(requiredAuths.length));
     for (final auth in requiredAuths) {
       buffer.addAll(_serializeString(auth as String));
     }
-
     final requiredPostingAuths =
         opData['required_posting_auths'] as List<dynamic>;
     buffer.addAll(_serializeVarint(requiredPostingAuths.length));
     for (final auth in requiredPostingAuths) {
       buffer.addAll(_serializeString(auth as String));
     }
-
-    final id = opData['id'] as String;
-    buffer.addAll(_serializeString(id));
-
-    final json = opData['json'] as String;
-    buffer.addAll(_serializeString(json));
-
+    buffer.addAll(_serializeString(opData['id'] as String));
+    buffer.addAll(_serializeString(opData['json'] as String));
     return buffer;
   }
 
@@ -182,217 +284,27 @@ class HiveTransactionSignerWeb {
     return buffer;
   }
 
-  static List<int> _serializeUint16(int value) => [
-        value & 0xFF,
-        (value >> 8) & 0xFF,
-      ];
+  static List<int> _serializeUint16(int value) =>
+      Uint8List(2)..buffer.asByteData().setUint16(0, value, Endian.little);
 
-  static List<int> _serializeUint32(int value) => [
-        value & 0xFF,
-        (value >> 8) & 0xFF,
-        (value >> 16) & 0xFF,
-        (value >> 24) & 0xFF,
-      ];
+  static List<int> _serializeUint32(int value) =>
+      Uint8List(4)..buffer.asByteData().setUint32(0, value, Endian.little);
 
-  /// Sign using deterministic ECDSA (RFC 6979) - Hive compatible
-  static String _signHash(Uint8List hash, Uint8List privateKey) {
-    try {
-      final secp256k1 = ECDomainParameters('secp256k1');
-      final privKey = ECPrivateKey(_bytesToBigInt(privateKey), secp256k1);
+  // ---------------- Utility helpers ----------------
+  static Uint8List _hexToBytes(String hexStr) =>
+      Uint8List.fromList(hex.decode(hexStr));
 
-      // Use deterministic ECDSA with SHA-256 (RFC 6979)
-      final signer = ECDSASigner(null, HMac(SHA256Digest(), 64));
-      final params = PrivateKeyParameter(privKey);
-      signer.init(true, params);
-
-      final ECSignature ecSig = signer.generateSignature(hash) as ECSignature;
-
-      var r = ecSig.r;
-      var s = ecSig.s;
-      
-      // Normalize to low-S form (required by Hive)
-      final halfCurveOrder = secp256k1.n >> 1;
-      if (s.compareTo(halfCurveOrder) > 0) {
-        s = secp256k1.n - s;
-      }
-
-      // Calculate recovery ID by trying all 4 possibilities and checking which recovers our public key
-      final publicKeyPoint = secp256k1.G * privKey.d;
-      final publicKeyBytes = _encodePublicKeyUncompressed(publicKeyPoint!);
-      
-      int recoveryId = 0;
-      bool foundRecoveryId = false;
-      
-      for (int i = 0; i < 4; i++) {
-        try {
-          final recovered = _recoverPublicKeyFromSignature(hash, r, s, i, secp256k1);
-          if (recovered != null) {
-            final recoveredBytes = _encodePublicKeyUncompressed(recovered);
-            if (_listEquals(publicKeyBytes, recoveredBytes)) {
-              recoveryId = i;
-              foundRecoveryId = true;
-              print('✓ Recovery ID found: $recoveryId');
-              break;
-            }
-          }
-        } catch (e) {
-          print('Recovery attempt $i failed: $e');
-          continue;
-        }
-      }
-      
-      if (!foundRecoveryId) {
-        print('⚠️  Warning: Could not find recovery ID, defaulting to 0');
-      }
-
-      // Build compact signature (65 bytes)
-      final rBytes = _bigIntToBytes(r, 32);
-      final sBytes = _bigIntToBytes(s, 32);
-      
-      final compactSig = Uint8List(65);
-      compactSig[0] = recoveryId + 31; // Recovery flag for compressed key
-      compactSig.setRange(1, 33, rBytes);
-      compactSig.setRange(33, 65, sBytes);
-
-      return compactSig.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    } catch (e) {
-      throw Exception('Failed to sign hash: $e');
+  static Uint8List _bigIntToBytes(BigInt value, int length) {
+    String hexStr = value.toRadixString(16);
+    if (hexStr.length > length * 2) {
+      throw Exception('BigInt is too large for the specified length');
     }
-  }
-
-  /// Recover public key from signature components
-  static ECPoint? _recoverPublicKeyFromSignature(
-    Uint8List hash,
-    BigInt r,
-    BigInt s,
-    int recoveryId,
-    ECDomainParameters curve,
-  ) {
-    try {
-      final n = curve.n;
-      final i = BigInt.from(recoveryId ~/ 2);
-      final x = r + (i * n);
-      
-      final p = curve.curve as ECCurve;
-      final fieldSize = BigInt.from(p.fieldSize);
-      
-      if (x.compareTo(fieldSize) >= 0) {
-        return null;
-      }
-      
-      // Decompress point from x coordinate
-      final R = _decompressPoint(x, (recoveryId & 1) == 1, curve);
-      if (R == null) {
-        return null;
-      }
-      
-      // Verify R*n = infinity (point is on curve)
-      final Rn = R * n;
-      if (Rn == null || !Rn.isInfinity) {
-        return null;
-      }
-      
-      // Recover: Q = r^-1 * (s*R - e*G)
-      final e = _bytesToBigInt(hash);
-      final rInv = r.modInverse(n);
-      
-      // Calculate s*R
-      final sR = R * s;
-      if (sR == null) {
-        return null;
-      }
-      
-      // Calculate -e*G = (n-e)*G
-      final minusE = (n - (e % n)) % n;
-      final negEG = curve.G * minusE;
-      if (negEG == null) {
-        return null;
-      }
-      
-      // Calculate (s*R - e*G) = (s*R) + (-e*G)
-      final sRMinusEG = sR + negEG;
-      if (sRMinusEG == null) {
-        return null;
-      }
-      
-      // Multiply by r^-1
-      final Q = sRMinusEG * rInv;
-      
-      return Q;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Decompress EC point from x coordinate
-  static ECPoint? _decompressPoint(
-    BigInt x,
-    bool yBit,
-    ECDomainParameters curve,
-  ) {
-    try {
-      final p = curve.curve as ECCurve;
-      final fieldSize = BigInt.from(p.fieldSize);
-      
-      // For secp256k1: y² = x³ + 7
-      final x3 = x.modPow(BigInt.from(3), fieldSize);
-      final seven = BigInt.from(7);
-      final y2 = (x3 + seven) % fieldSize;
-      
-      // y = y²^((p+1)/4) mod p (since p ≡ 3 mod 4)
-      final exponent = (fieldSize + BigInt.one) ~/ BigInt.from(4);
-      var y = y2.modPow(exponent, fieldSize);
-      
-      // Ensure correct parity
-      if (y.isEven != !yBit) {
-        y = fieldSize - y;
-      }
-      
-      return curve.curve.createPoint(x, y);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Encode public key in uncompressed format for comparison
-  static Uint8List _encodePublicKeyUncompressed(ECPoint point) {
-    final x = point.x!.toBigInteger()!;
-    final y = point.y!.toBigInteger()!;
-    
-    final xBytes = _bigIntToBytes(x, 32);
-    final yBytes = _bigIntToBytes(y, 32);
-    
-    final result = Uint8List(65);
-    result[0] = 0x04; // Uncompressed format marker
-    result.setRange(1, 33, xBytes);
-    result.setRange(33, 65, yBytes);
-    
-    return result;
+    hexStr = hexStr.padLeft(length * 2, '0');
+    return _hexToBytes(hexStr);
   }
 
   static BigInt _bytesToBigInt(Uint8List bytes) {
-    BigInt result = BigInt.zero;
-    for (int i = 0; i < bytes.length; i++) {
-      result = (result << 8) + BigInt.from(bytes[i]);
-    }
-    return result;
-  }
-
-  static Uint8List _bigIntToBytes(BigInt value, int length) {
-    final bytes = Uint8List(length);
-    for (int i = length - 1; i >= 0; i--) {
-      bytes[i] = (value & BigInt.from(0xFF)).toInt();
-      value >>= 8;
-    }
-    return bytes;
-  }
-
-  static Uint8List _hexToBytes(String hex) {
-    final bytes = <int>[];
-    for (int i = 0; i < hex.length; i += 2) {
-      bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
-    }
-    return Uint8List.fromList(bytes);
+    return BigInt.parse(hex.encode(bytes), radix: 16);
   }
 
   static bool _listEquals(List<int> a, List<int> b) {
@@ -414,92 +326,5 @@ class HiveTransactionSignerWeb {
 
   static String getPostingWif() {
     return dotenv.env['HIVE_POSTING_WIF'] ?? '';
-  }
-
-  /// DEBUG: Derive and print public key from WIF
-  static String debugGetPublicKeyFromWif(String wif) {
-    try {
-      print('\n=== DEBUG: Deriving public key from WIF ===');
-      
-      final privateKey = _wifToPrivateKey(wif);
-      print('✓ Private key extracted from WIF');
-      print('  Private key (hex): ${privateKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      
-      final secp256k1 = ECDomainParameters('secp256k1');
-      final privKeyObj = ECPrivateKey(_bytesToBigInt(privateKey), secp256k1);
-      final publicKeyPoint = secp256k1.G * privKeyObj.d;
-      
-      if (publicKeyPoint == null) {
-        throw Exception('Failed to derive public key point');
-      }
-      
-      print('✓ Public key point derived');
-      
-      // Uncompressed format (for internal use)
-      final uncompressedBytes = _encodePublicKeyUncompressed(publicKeyPoint);
-      final uncompressedHex = uncompressedBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      print('  Uncompressed (hex): $uncompressedHex');
-      
-      // Compressed format (what Hive typically uses)
-      final x = publicKeyPoint.x!.toBigInteger()!;
-      final y = publicKeyPoint.y!.toBigInteger()!;
-      final isYEven = y.isEven;
-      
-      final xBytes = _bigIntToBytes(x, 32);
-      final compressedPrefix = isYEven ? '02' : '03';
-      final compressedHex = compressedPrefix + xBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      print('  Compressed (hex): $compressedHex');
-      
-      // Convert to Hive public key format (STM prefix)
-      // This is a simplified version - actual implementation may vary
-      final publicKeyForHive = 'STM' + compressedHex;
-      print('  Hive format (approx): $publicKeyForHive');
-      print('  Note: Actual format may differ - compare with Hive posting key\n');
-      
-      return compressedHex;
-    } catch (e, stackTrace) {
-      print('Error deriving public key: $e');
-      print('Stack trace: $stackTrace');
-      return '';
-    }
-  }
-
-  /// DEBUG: Run all diagnostic checks
-  static Future<void> runDiagnostics() async {
-    print('\n╔════════════════════════════════════════════════════════╗');
-    print('║        HIVE SIGNING DIAGNOSTICS                        ║');
-    print('╚════════════════════════════════════════════════════════╝\n');
-    
-    await dotenv.load();
-    
-    final wif = dotenv.env['HIVE_POSTING_WIF'] ?? '';
-    final accountName = dotenv.env['HIVE_ACCOUNT_NAME'] ?? '';
-    
-    print('Environment variables:');
-    print('  HIVE_ACCOUNT_NAME: ${accountName.isNotEmpty ? '✓ Set' : '✗ Missing'}');
-    print('  HIVE_POSTING_WIF: ${wif.isNotEmpty ? '✓ Set' : '✗ Missing'}\n');
-    
-    if (wif.isEmpty) {
-      print('✗ HIVE_POSTING_WIF is not set. Cannot proceed.\n');
-      return;
-    }
-    
-    print('WIF Validation:');
-    final isValid = isValidWif(wif);
-    if (isValid) {
-      print('  ✓ WIF format is valid');
-      debugGetPublicKeyFromWif(wif);
-    } else {
-      print('  ✗ WIF format is invalid\n');
-    }
-    
-    print('Expected Hive account posting key:');
-    print('  STM5VqN4yjdZGCeLTkkXyfTWnYzgQN5VjwvW3HF5hHhWXDhtZnKpc');
-    print('\n  ^ Compare the key above with the one derived from your WIF\n');
-    
-    print('╔════════════════════════════════════════════════════════╗');
-    print('║        If the keys do not match, your WIF is           ║');
-    print('║        for a different account. Update .env file.      ║');
-    print('╚════════════════════════════════════════════════════════╝\n');
   }
 }
