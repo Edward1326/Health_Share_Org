@@ -6,14 +6,76 @@ class AdminPatientListFunctions {
   final SupabaseClient supabase = Supabase.instance.client;
   String? currentOrganizationId;
 
-  // Helper function to get current organization ID
+  /// Initialize with organization ID (call this immediately after login)
+  void setOrganizationId(String? organizationId) {
+    currentOrganizationId = organizationId;
+    print('✅ Organization ID set to: $currentOrganizationId');
+  }
+
+  /// Get current organization ID with proper auth chain
+  Future<String?> getCurrentOrganizationId() async {
+    try {
+      // If already set, return it
+      if (currentOrganizationId != null) {
+        print('✅ Using cached organization ID: $currentOrganizationId');
+        return currentOrganizationId;
+      }
+
+      final authUser = supabase.auth.currentUser;
+      if (authUser == null) {
+        print('❌ No authenticated user found');
+        return null;
+      }
+
+      print('🔍 Fetching organization for auth user: ${authUser.id}');
+
+      // Step 1: Get Person record from auth user
+      final personResponse = await supabase
+          .from('Person')
+          .select('id')
+          .eq('auth_user_id', authUser.id)
+          .single();
+
+      final personId = personResponse['id'] as String;
+      print('✅ Person ID: $personId');
+
+      // Step 2: Get User record from Person
+      final userResponse = await supabase
+          .from('User')
+          .select('id')
+          .eq('person_id', personId)
+          .single();
+
+      final userId = userResponse['id'] as String;
+      print('✅ User ID: $userId');
+
+      // Step 3: Get organization from Organization_User
+      final orgUserResponse = await supabase
+          .from('Organization_User')
+          .select('organization_id, position, department')
+          .eq('user_id', userId)
+          .single();
+
+      currentOrganizationId = orgUserResponse['organization_id'] as String?;
+      print('✅ Organization ID: $currentOrganizationId');
+      print('   Position: ${orgUserResponse['position']}');
+      print('   Department: ${orgUserResponse['department']}');
+
+      return currentOrganizationId;
+    } catch (e, stackTrace) {
+      print('❌ Error getting organization ID: $e');
+      print('Stack trace: $stackTrace');
+      return null;
+    }
+  }
+
+  /// Get patient by user ID
   Future<Map<String, dynamic>?> getPatientByUserId(String userId) async {
     try {
       final response = await supabase
           .from('Patient')
           .select('id')
-          .eq('user_id',
-              userId) // This assumes Patient table has a user_id field
+          .eq('user_id', userId)
           .maybeSingle();
 
       return response;
@@ -23,71 +85,25 @@ class AdminPatientListFunctions {
     }
   }
 
-  Future<String?> getCurrentOrganizationId() async {
-    try {
-      if (currentOrganizationId != null) {
-        return currentOrganizationId;
-      }
-
-      final user = supabase.auth.currentUser;
-      if (user == null) {
-        print('❌ No authenticated user found');
-        return null;
-      }
-
-      print('🔍 ADMIN LOGIN DEBUG - Current authenticated user ID: ${user.id}');
-      print('📧 Admin email: ${user.email}');
-
-      final adminOrgResponse = await supabase
-          .from('Organization_User')
-          .select('organization_id, department, id, position')
-          .eq('user_id', user.id);
-
-      print('🎯 Organization query result for admin user: $adminOrgResponse');
-
-      if (adminOrgResponse.isEmpty) {
-        print(
-            '❌ PROBLEM FOUND: Admin user ${user.id} is NOT in Organization_User table');
-
-        // TEMPORARY FIX: Get any organization if admin not properly linked
-        final allOrgUsers = await supabase
-            .from('Organization_User')
-            .select('organization_id')
-            .limit(1);
-
-        if (allOrgUsers.isNotEmpty) {
-          final firstOrgId = allOrgUsers.first['organization_id']?.toString();
-          print(
-              '🚨 TEMPORARY FIX: Using first available organization: $firstOrgId');
-          currentOrganizationId = firstOrgId;
-          return currentOrganizationId;
-        }
-        return null;
-      }
-
-      final organizationId =
-          adminOrgResponse.first['organization_id']?.toString();
-      if (organizationId == null) {
-        print('❌ Organization ID is null in the response');
-        return null;
-      }
-
-      currentOrganizationId = organizationId;
-      print('✅ Admin organization ID found: $currentOrganizationId');
-      return currentOrganizationId;
-    } catch (e) {
-      print('❌ Error getting current organization ID: $e');
-      return null;
-    }
-  }
-
-  // Load users from Supabase
+  /// Load patients from Supabase (filtered by organization)
   Future<List<Map<String, dynamic>>> loadUsersFromSupabase() async {
     try {
       print('=== DEBUG: Starting patient loading process ===');
-      print('Current organization ID: $currentOrganizationId');
+      
+      // Ensure we have organization ID
+      if (currentOrganizationId == null) {
+        print('⚠️ No organization ID set, fetching...');
+        await getCurrentOrganizationId();
+        
+        if (currentOrganizationId == null) {
+          print('❌ Failed to get organization ID');
+          return [];
+        }
+      }
+      
+      print('✅ Current organization ID: $currentOrganizationId');
 
-      // Fetch patients from the organization with proper joins
+      // Fetch patients ONLY from the current organization
       print('Step 1: Fetching Patient records for organization...');
       final patientsResponse = await supabase.from('Patient').select('''
           *,
@@ -97,14 +113,14 @@ class AdminPatientListFunctions {
           )
         ''').eq('organization_id', currentOrganizationId!);
 
-      print('Patient records found: ${patientsResponse.length}');
+      print('📋 Patient records found: ${patientsResponse.length}');
 
       if (patientsResponse.isEmpty) {
-        print('No Patient records found for organization!');
+        print('ℹ️ No Patient records found for organization: $currentOrganizationId');
         return [];
       }
 
-      // Build the users list from patients
+      // Build the patients list
       print('\nStep 2: Building final patient list...');
       final List<Map<String, dynamic>> loadedUsers = [];
 
@@ -137,6 +153,7 @@ class AdminPatientListFunctions {
             'patientId': patient['id'].toString(),
             'personId': person['id'].toString(),
             'userId': user['id'].toString(),
+            'organizationId': currentOrganizationId,
           };
 
           loadedUsers.add(userMap);
@@ -144,6 +161,7 @@ class AdminPatientListFunctions {
       }
 
       print('\n=== DEBUG: Patient Loading Results ===');
+      print('Organization: $currentOrganizationId');
       print('Total patients loaded: ${loadedUsers.length}');
       print('Status breakdown:');
       final statusCounts = <String, int>{};
@@ -163,22 +181,29 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Add this method to your AdminPatientListFunctions class
-
-  // Load doctors from Supabase
+  /// Load doctors from Supabase (filtered by organization)
   Future<List<Map<String, dynamic>>> loadDoctorsFromSupabase() async {
     try {
       print('=== DEBUG: Fetching Doctor/Employee records ===');
+      
+      // Ensure we have organization ID
+      if (currentOrganizationId == null) {
+        await getCurrentOrganizationId();
+        if (currentOrganizationId == null) {
+          print('❌ No organization ID available');
+          return [];
+        }
+      }
+      
       print('Current organization ID: $currentOrganizationId');
 
-      // Fetch employees from Organization_User table filtered by current organization
+      // Fetch employees ONLY from current organization
       final orgUsersResponse = await supabase
           .from('Organization_User')
           .select('*, User!inner(*, Person!inner(*))')
           .eq('organization_id', currentOrganizationId!);
 
-      print(
-          'Organization_User records found for current org: ${orgUsersResponse.length}');
+      print('Organization_User records found: ${orgUsersResponse.length}');
 
       if (orgUsersResponse.isEmpty) {
         return [];
@@ -193,21 +218,12 @@ class AdminPatientListFunctions {
         final user = orgUser['User'];
         final person = user?['Person'];
 
-        // IMPORTANT: Verify this record belongs to current organization
-        if (orgUser['organization_id']?.toString() != currentOrganizationId) {
-          print(
-              '  - SKIPPING: Wrong organization ${orgUser['organization_id']}');
-          continue;
-        }
-
         final position = orgUser['position']?.toString().toLowerCase() ?? '';
-        final department =
-            orgUser['department']?.toString().toLowerCase() ?? '';
+        final department = orgUser['department']?.toString().toLowerCase() ?? '';
 
         print('Processing employee from org $currentOrganizationId:');
         print('  - Position: ${orgUser['position']}');
         print('  - Department: ${orgUser['department']}');
-        print('  - Organization ID: ${orgUser['organization_id']}');
 
         // Doctor identification
         bool isDoctor = false;
@@ -232,6 +248,7 @@ class AdminPatientListFunctions {
             department.contains('cardiology') ||
             department.contains('neurology') ||
             department.contains('pediatrics') ||
+            department.contains('obgyn') ||
             department.contains('internal medicine') ||
             department.contains('emergency')) {
           isDoctor = true;
@@ -263,13 +280,13 @@ class AdminPatientListFunctions {
           };
 
           loadedDoctors.add(doctorMap);
-          print('  - ADDED as doctor: $doctorMap');
+          print('  - ✅ ADDED as doctor: $doctorName');
         }
       }
 
       print('\n=== DEBUG: Doctor Loading Results ===');
-      print(
-          'Total doctors identified for org $currentOrganizationId: ${loadedDoctors.length}');
+      print('Organization: $currentOrganizationId');
+      print('Total doctors identified: ${loadedDoctors.length}');
 
       return loadedDoctors;
     } catch (e, stackTrace) {
@@ -280,127 +297,132 @@ class AdminPatientListFunctions {
     }
   }
 
+  /// Load assignments from database
   Future<void> loadAssignmentsFromDatabase(
-    List<Map<String, dynamic>> users) async {
-  try {
-    print('=== DEBUG: Loading assignments ===');
+      List<Map<String, dynamic>> users) async {
+    try {
+      print('=== DEBUG: Loading assignments ===');
 
-    // Extract patient IDs from users (these are Patient table IDs)
-    // FIX: Explicitly cast to Set<String> to avoid type issues
-    final Set<String> patientIds = users
-        .map((user) => user['id'].toString())
-        .toSet()
-        .cast<String>();
+      // Extract patient IDs from users (these are Patient table IDs)
+      final Set<String> patientIds = users
+          .map((user) => user['id'].toString())
+          .toSet()
+          .cast<String>();
 
-    if (patientIds.isEmpty) {
-      print('No patient IDs found');
-      return;
-    }
-
-    print('Looking for assignments for Patient IDs: $patientIds');
-
-    // Query assignments using Patient IDs directly
-    final response = await supabase.from('Doctor_User_Assignment').select('''
-        patient_id,
-        doctor_id,
-        status,
-        assigned_at
-      ''').in_('patient_id', patientIds.toList()).eq('status', 'active');
-
-    print('Found ${response.length} active assignments');
-
-    // Get doctor details for all assigned doctors
-    // FIX: Explicitly cast to Set<String>
-    final Set<String> doctorIds = response
-        .map((assignment) => assignment['doctor_id'].toString())
-        .toSet()
-        .cast<String>();
-
-    if (doctorIds.isNotEmpty) {
-      final doctorResponse =
-          await supabase.from('Organization_User').select('''
-          id,
-          User!inner(
-            Person!inner(
-              first_name,
-              last_name
-            )
-          ),
-          position,
-          department
-        ''').in_('id', doctorIds.toList());
-
-      // Create doctor lookup map
-      final doctorMap = <String, Map<String, dynamic>>{};
-      for (final doctor in doctorResponse) {
-        final person = doctor['User']['Person'];
-        final doctorName = person != null &&
-                person['first_name'] != null &&
-                person['last_name'] != null
-            ? '${person['first_name']} ${person['last_name']}'
-            : 'Dr. ${doctor['position'] ?? 'Unknown'}';
-
-        doctorMap[doctor['id'].toString()] = {
-          'id': doctor['id'],
-          'name': doctorName,
-          'position': doctor['position'],
-          'department': doctor['department'],
-        };
+      if (patientIds.isEmpty) {
+        print('No patient IDs found');
+        return;
       }
 
-      // Process assignments and update users
-      for (final assignment in response) {
-        final patientId = assignment['patient_id'].toString();
-        final doctorId = assignment['doctor_id'].toString();
-        final doctorInfo = doctorMap[doctorId];
+      print('Looking for assignments for Patient IDs: $patientIds');
 
-        print(
-            '  Patient ID: $patientId -> Doctor ID: $doctorId (${doctorInfo?['name']})');
+      // Query assignments using Patient IDs directly
+      final response = await supabase.from('Doctor_User_Assignment').select('''
+          patient_id,
+          doctor_id,
+          status,
+          assigned_at
+        ''').in_('patient_id', patientIds.toList()).eq('status', 'active');
 
-        // Find and update the user
-        final userIndex = users.indexWhere((user) => user['id'] == patientId);
-        if (userIndex != -1) {
-          final doctorName = doctorInfo?['name'] ?? 'Unknown Doctor';
-          
-          users[userIndex]['doctor_id'] = doctorId;
-          users[userIndex]['doctor_name'] = doctorName;
-          users[userIndex]['assignedDoctor'] = doctorName;
-          users[userIndex]['assignedDoctorId'] = doctorId;
-          users[userIndex]['assignmentId'] = assignment['patient_id'];
+      print('Found ${response.length} active assignments');
 
-          print('    -> ✅ Updated user ${users[userIndex]['name']}:');
-          print('       - assignedDoctor: ${users[userIndex]['assignedDoctor']}');
-          print('       - doctor_name: ${users[userIndex]['doctor_name']}');
-          print('       - assignedDoctorId: ${users[userIndex]['assignedDoctorId']}');
-        } else {
-          print('    -> ❌ WARNING: Could not find user with Patient ID $patientId');
+      // Get doctor details for all assigned doctors
+      final Set<String> doctorIds = response
+          .map((assignment) => assignment['doctor_id'].toString())
+          .toSet()
+          .cast<String>();
+
+      if (doctorIds.isNotEmpty) {
+        final doctorResponse =
+            await supabase.from('Organization_User').select('''
+            id,
+            User!inner(
+              Person!inner(
+                first_name,
+                last_name
+              )
+            ),
+            position,
+            department
+          ''').in_('id', doctorIds.toList());
+
+        // Create doctor lookup map
+        final doctorMap = <String, Map<String, dynamic>>{};
+        for (final doctor in doctorResponse) {
+          final person = doctor['User']['Person'];
+          final doctorName = person != null &&
+                  person['first_name'] != null &&
+                  person['last_name'] != null
+              ? '${person['first_name']} ${person['last_name']}'
+              : 'Dr. ${doctor['position'] ?? 'Unknown'}';
+
+          doctorMap[doctor['id'].toString()] = {
+            'id': doctor['id'],
+            'name': doctorName,
+            'position': doctor['position'],
+            'department': doctor['department'],
+          };
+        }
+
+        // Process assignments and update users
+        for (final assignment in response) {
+          final patientId = assignment['patient_id'].toString();
+          final doctorId = assignment['doctor_id'].toString();
+          final doctorInfo = doctorMap[doctorId];
+
+          print(
+              '  Patient ID: $patientId -> Doctor ID: $doctorId (${doctorInfo?['name']})');
+
+          // Find and update the user
+          final userIndex = users.indexWhere((user) => user['id'] == patientId);
+          if (userIndex != -1) {
+            final doctorName = doctorInfo?['name'] ?? 'Unknown Doctor';
+
+            users[userIndex]['doctor_id'] = doctorId;
+            users[userIndex]['doctor_name'] = doctorName;
+            users[userIndex]['assignedDoctor'] = doctorName;
+            users[userIndex]['assignedDoctorId'] = doctorId;
+            users[userIndex]['assignmentId'] = assignment['patient_id'];
+
+            print('    -> ✅ Updated user ${users[userIndex]['name']}');
+          } else {
+            print(
+                '    -> ⚠️ WARNING: Could not find user with Patient ID $patientId');
+          }
         }
       }
+
+      print('=== Assignment loading complete ===');
+    } catch (e) {
+      print('Error loading assignments: $e');
+      throw e;
     }
-
-    print('=== Assignment loading complete ===');
-  } catch (e) {
-    print('Error loading assignments: $e');
-    throw e;
   }
-}
 
-  // Search users to invite
+  /// Search users to invite (excludes users already in this organization)
   Future<List<Map<String, dynamic>>> searchUsersToInvite(String query) async {
     if (query.isEmpty) {
       return [];
     }
 
     try {
+      // Ensure we have organization ID
+      if (currentOrganizationId == null) {
+        await getCurrentOrganizationId();
+        if (currentOrganizationId == null) {
+          return [];
+        }
+      }
+
       print('=== DEBUG: Searching for users to invite ===');
       print('Search query: $query');
       print('Current organization ID: $currentOrganizationId');
 
       // Get users that match the EMAIL search query
       final searchResponse = await supabase.from('User').select('''
-      *,
-      Person(*)
-    ''').like('email', '$query%');
+        *,
+        Person(*)
+      ''').like('email', '$query%');
 
       print('Search response: ${searchResponse.length} users found');
 
@@ -469,10 +491,18 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Invite user to organization
+  /// Invite user to organization
   Future<Map<String, dynamic>> inviteUser(
       Map<String, dynamic> userToInvite) async {
     try {
+      // Ensure we have organization ID
+      if (currentOrganizationId == null) {
+        await getCurrentOrganizationId();
+        if (currentOrganizationId == null) {
+          throw Exception('No organization ID available');
+        }
+      }
+
       print('=== DEBUG: Inviting user to organization ===');
       print('User to invite: ${userToInvite['name']}');
       print('User ID: ${userToInvite['user_id']}');
@@ -522,6 +552,7 @@ class AdminPatientListFunctions {
         'patientId': result['id'].toString(),
         'personId': userToInvite['person']['id'].toString(),
         'userId': userToInvite['user_id'],
+        'organizationId': currentOrganizationId,
       };
     } catch (e, stackTrace) {
       print('=== DEBUG: Error inviting user ===');
@@ -531,7 +562,7 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Approve pending patient
+  /// Approve pending patient
   Future<void> approvePendingPatient(String patientId) async {
     try {
       await supabase
@@ -542,7 +573,7 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Reject pending patient
+  /// Reject pending patient
   Future<void> rejectPendingPatient(String patientId) async {
     try {
       await supabase.from('Patient').update(
@@ -552,7 +583,7 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Save assignment to database
+  /// Save assignment to database
   Future<void> saveAssignmentToDatabase(
       String patientId, String doctorId) async {
     try {
@@ -560,19 +591,16 @@ class AdminPatientListFunctions {
       print("Patient ID (from Patient table): $patientId");
       print("Doctor Organization_User ID: $doctorId");
 
-      // Since you've already corrected the FK to reference Patient.id directly,
-      // we can insert the patientId directly without any resolution
       final assignmentData = {
-        'patient_id': patientId, // This is now the Patient table's id
-        'doctor_id': doctorId, // Organization_User table's id
+        'patient_id': patientId,
+        'doctor_id': doctorId,
         'status': 'active',
         'assigned_at': DateTime.now().toIso8601String(),
       };
 
       print("=== DEBUG: Creating assignment with data: $assignmentData ===");
 
-      final response =
-          await supabase.from('Doctor_User_Assignment').insert(assignmentData);
+      await supabase.from('Doctor_User_Assignment').insert(assignmentData);
 
       print("=== DEBUG: Assignment saved successfully ===");
     } catch (e) {
@@ -582,17 +610,14 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Remove assignment
+  /// Remove assignment
   Future<void> removeAssignment(Map<String, dynamic> user) async {
     try {
-      // Get the correct patient user ID
       String patientUserId = user['userId'] ?? user['id'];
 
-      // Check if this is a Patient table ID that needs to be converted to User ID
       if (user['userId'] != null) {
         patientUserId = user['userId'];
       } else {
-        // Check if the ID is from Patient table
         final patientCheck = await supabase
             .from('Patient')
             .select('user_id')
@@ -607,7 +632,6 @@ class AdminPatientListFunctions {
 
       print('=== DEBUG: Removing assignment for patient: $patientUserId ===');
 
-      // Remove from database
       final result = await supabase
           .from('Doctor_User_Assignment')
           .update({'status': 'inactive'})
@@ -617,7 +641,6 @@ class AdminPatientListFunctions {
 
       print('Updated ${result.length} assignment records to inactive');
 
-      // Update patient status back to unassigned
       try {
         final originalPatientId = user['patientId'] ?? user['id'];
         await supabase
@@ -633,7 +656,7 @@ class AdminPatientListFunctions {
     }
   }
 
-  // Validate user data before assignment
+  /// Validate user data before assignment
   bool validateUserForAssignment(Map<String, dynamic> user) {
     if (user['id'] == null || user['id'].toString().isEmpty) {
       print('User validation failed: Missing user ID');

@@ -4,7 +4,7 @@ import 'signup.dart';
 import '../pages/admin/admin_dashboard.dart';
 import '../pages/staff/staff_dashboard.dart';
 import '../pages/reset_password.dart';
-import 'login_service.dart'; // Import your new service
+import 'login_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -28,11 +28,9 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _setupAuthListener() {
-    // Listen for auth state changes (like password reset)
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       if (event == AuthChangeEvent.passwordRecovery) {
-        // Navigate to reset password page when recovery link is clicked
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             Navigator.push(
@@ -76,22 +74,51 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (result.success) {
+        // Get organization ID directly from the login result
+        String? organizationId;
+        
+        if (result.userDetails != null && 
+            result.userDetails!['organization_users'] != null &&
+            result.userDetails!['organization_users'].isNotEmpty) {
+          organizationId = result.userDetails!['organization_users'][0]['organization_id'] as String?;
+        }
+        
+        if (organizationId == null) {
+          _showErrorSnackBar('Failed to fetch organization data. Please try again.');
+          await Supabase.instance.client.auth.signOut();
+          return;
+        }
+
+        print('✅ Login successful for organization: $organizationId');
+
         // Navigate based on user position
         if (mounted) {
           if (result.userPosition == 'administrator') {
-            // Navigate to admin dashboard
+            // Navigate to admin dashboard and pass organization ID
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => const Dashboard(), // Your admin dashboard
+                builder: (context) => const Dashboard(),
+                settings: RouteSettings(
+                  arguments: {
+                    'organizationId': organizationId,
+                    'userDetails': result.userDetails,
+                  },
+                ),
               ),
             );
           } else {
-            // Navigate to staff dashboard for all other positions
+            // Navigate to staff dashboard
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
                 builder: (context) => const StaffDashboard(),
+                settings: RouteSettings(
+                  arguments: {
+                    'organizationId': organizationId,
+                    'userDetails': result.userDetails,
+                  },
+                ),
               ),
             );
           }
@@ -99,6 +126,9 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         _showErrorSnackBar(result.errorMessage ?? 'Login failed');
       }
+    } catch (e) {
+      print('Login error: $e');
+      _showErrorSnackBar('An error occurred during login. Please try again.');
     } finally {
       if (mounted) {
         setState(() {
@@ -134,14 +164,12 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final result = await LoginService.resetPassword(
         emailOrUsername: input,
-        redirectTo:
-            'your-app-scheme://reset-password', // Replace with your app's deep link scheme
+        redirectTo: 'your-app-scheme://reset-password',
       );
 
       Navigator.of(context).pop(); // Close loading dialog
 
       if (result.success) {
-        // Show success dialog with instructions
         _showPasswordResetDialog(result.email!);
       } else {
         _showErrorSnackBar(result.errorMessage ?? 'Failed to send reset email');
@@ -226,7 +254,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Get screen size for responsive design
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 800;
 
@@ -234,24 +261,20 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: isSmallScreen 
-          ? _buildMobileLayout() // Mobile layout (stacked)
-          : _buildDesktopLayout(), // Desktop layout (side by side)
+          ? _buildMobileLayout()
+          : _buildDesktopLayout(),
       ),
     );
   }
 
-  // Mobile layout - stacked vertically
   Widget _buildMobileLayout() {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Left illustration section (top on mobile)
           Container(
             height: 300,
             child: _buildIllustrationSection(),
           ),
-          
-          // Right login form section (bottom on mobile)
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: _buildLoginFormSection(),
@@ -261,17 +284,13 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Desktop layout - side by side
   Widget _buildDesktopLayout() {
     return Row(
       children: [
-        // Left side - Illustration with green background and decorative elements
         Expanded(
           flex: 3,
           child: _buildIllustrationSection(),
         ),
-        
-        // Right side - Login form
         Expanded(
           flex: 2,
           child: Container(
@@ -291,7 +310,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Left illustration section with green background
   Widget _buildIllustrationSection() {
     return Container(
       width: double.infinity,
@@ -300,28 +318,21 @@ class _LoginPageState extends State<LoginPage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF6B8E5A), // Dark green
-            Color(0xFF8FAD7A), // Medium green  
-            Color(0xFFA3C28F), // Light green
+            Color(0xFF6B8E5A),
+            Color(0xFF8FAD7A),
+            Color(0xFFA3C28F),
           ],
         ),
       ),
       child: Stack(
         children: [
-          // Background decorative elements
           _buildBackgroundDecorations(),
-          
-          // Main illustration content
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Doctor illustration
                 _buildDoctorIllustration(),
-                
                 const SizedBox(height: 40),
-                
-                // Main heading
                 const Text(
                   'Turn your ideas into reality.',
                   style: TextStyle(
@@ -331,10 +342,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                
                 const SizedBox(height: 16),
-                
-                // Subheading
                 const Text(
                   'Start for free and get attractive offers from the community',
                   style: TextStyle(
@@ -351,11 +359,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Background decorative elements (circles and shapes)
   Widget _buildBackgroundDecorations() {
     return Stack(
       children: [
-        // Top left large circle (red-orange)
         Positioned(
           top: -50,
           left: -100,
@@ -368,8 +374,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Top right circle (pink)
         Positioned(
           top: 80,
           right: -30,
@@ -382,8 +386,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Bottom right large circle (pink)
         Positioned(
           bottom: -80,
           right: -120,
@@ -396,8 +398,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Bottom left circle (darker pink)
         Positioned(
           bottom: 60,
           left: -20,
@@ -410,8 +410,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Small floating elements
         Positioned(
           top: 120,
           left: 80,
@@ -424,8 +422,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Diagonal lines/dashes
         Positioned(
           top: 100,
           left: 200,
@@ -441,7 +437,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
         Positioned(
           top: 200,
           right: 150,
@@ -457,7 +452,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
         Positioned(
           bottom: 150,
           left: 100,
@@ -477,12 +471,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Doctor illustration with speech bubbles
   Widget _buildDoctorIllustration() {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Left speech bubble with dots
         Positioned(
           left: 20,
           top: 20,
@@ -517,8 +509,6 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Right speech bubble with dots
         Positioned(
           right: 20,
           top: 40,
@@ -553,24 +543,18 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
-        // Main doctor figure
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Doctor's head
             Container(
               width: 60,
               height: 60,
               decoration: const BoxDecoration(
-                color: Color(0xFFDDBEA9), // Skin tone
+                color: Color(0xFFDDBEA9),
                 shape: BoxShape.circle,
               ),
             ),
-            
             const SizedBox(height: 8),
-            
-            // Doctor's coat
             Container(
               width: 100,
               height: 120,
@@ -585,7 +569,6 @@ class _LoginPageState extends State<LoginPage> {
               ),
               child: Stack(
                 children: [
-                  // Stethoscope
                   Positioned(
                     top: 20,
                     left: 20,
@@ -601,10 +584,7 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
-            
             const SizedBox(height: 8),
-            
-            // Doctor's legs/pants
             Container(
               width: 80,
               height: 60,
@@ -616,8 +596,6 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
             ),
-            
-            // Shadow
             Container(
               width: 120,
               height: 20,
@@ -633,13 +611,11 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Right login form section
   Widget _buildLoginFormSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Logo/Icon section
         Center(
           child: Container(
             width: 60,
@@ -655,10 +631,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
         const SizedBox(height: 32),
-        
-        // Login to your Account heading
         const Center(
           child: Text(
             'Login to your Account',
@@ -669,10 +642,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
         const SizedBox(height: 8),
-        
-        // Subtext
         const Center(
           child: Text(
             'See what is going on with your business',
@@ -682,16 +652,12 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-        
         const SizedBox(height: 40),
-        
-        // Login Form
         Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Email label
               const Text(
                 'Email',
                 style: TextStyle(
@@ -700,10 +666,7 @@ class _LoginPageState extends State<LoginPage> {
                   color: Color(0xFF2C3E50),
                 ),
               ),
-              
               const SizedBox(height: 8),
-              
-              // Email/Username Field
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -737,10 +700,7 @@ class _LoginPageState extends State<LoginPage> {
                   },
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Password label and forgot password link
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -770,10 +730,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ],
               ),
-              
               const SizedBox(height: 8),
-              
-              // Password Field
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -824,10 +781,7 @@ class _LoginPageState extends State<LoginPage> {
                   },
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Remember Me checkbox
               Row(
                 children: [
                   Container(
@@ -853,10 +807,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 32),
-
-              // Login Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -864,7 +815,6 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: _isLoading
                       ? null
                       : () {
-                          // Check cooldown before attempting login
                           if (!LoginService.canAttemptLogin()) {
                             final remainingTime = LoginService
                                 .getRemainingCooldownTime();
@@ -901,10 +851,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                 ),
               ),
-
               const SizedBox(height: 32),
-
-              // Sign Up Link
               Center(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,

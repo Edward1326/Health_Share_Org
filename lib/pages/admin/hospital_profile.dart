@@ -6,7 +6,12 @@ import 'admin_dashboard.dart'; // Import for DashboardTheme
 
 // Modern Hospital Profile Content Widget
 class HospitalProfileContentWidget extends StatefulWidget {
-  const HospitalProfileContentWidget({Key? key}) : super(key: key);
+  final String? organizationId;
+  
+  const HospitalProfileContentWidget({
+    Key? key,
+    this.organizationId,
+  }) : super(key: key);
 
   @override
   State<HospitalProfileContentWidget> createState() => _HospitalProfileContentWidgetState();
@@ -25,6 +30,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   Map<String, dynamic>? organizationData;
   bool isLoading = true;
   bool isUploadingImage = false;
+  String? currentOrganizationId;
 
   // Controllers for editing
   final TextEditingController _nameController = TextEditingController();
@@ -37,7 +43,32 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   @override
   void initState() {
     super.initState();
-    _loadOrganizationData();
+    currentOrganizationId = widget.organizationId;
+    _initializeAndLoad();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Get organization ID from route if not already set
+    if (currentOrganizationId == null) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      if (args != null && args['organizationId'] != null) {
+        currentOrganizationId = args['organizationId'];
+        _initializeAndLoad();
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(HospitalProfileContentWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload if organization ID changes
+    if (oldWidget.organizationId != widget.organizationId) {
+      currentOrganizationId = widget.organizationId;
+      _initializeAndLoad();
+    }
   }
 
   @override
@@ -51,11 +82,79 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
     super.dispose();
   }
 
+  Future<void> _initializeAndLoad() async {
+    await _fetchOrganizationId();
+    await _loadOrganizationData();
+  }
+
+  Future<void> _fetchOrganizationId() async {
+    try {
+      // If already set, skip
+      if (currentOrganizationId != null) {
+        print('✅ Using organization ID: $currentOrganizationId');
+        return;
+      }
+
+      final authUser = supabase.auth.currentUser;
+      if (authUser == null) {
+        throw Exception("No user logged in");
+      }
+
+      print('🔍 Fetching organization for auth user: ${authUser.id}');
+
+      // Step 1: Get Person record from auth user
+      final personResponse = await supabase
+          .from('Person')
+          .select('id')
+          .eq('auth_user_id', authUser.id)
+          .single();
+
+      final personId = personResponse['id'] as String;
+      print('✅ Person ID: $personId');
+
+      // Step 2: Get User record from Person
+      final userResponse = await supabase
+          .from('User')
+          .select('id')
+          .eq('person_id', personId)
+          .single();
+
+      final userId = userResponse['id'] as String;
+      print('✅ User ID: $userId');
+
+      // Step 3: Get organization from Organization_User
+      final orgUserResponse = await supabase
+          .from('Organization_User')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .single();
+
+      currentOrganizationId = orgUserResponse['organization_id'] as String?;
+      print('✅ Organization ID fetched: $currentOrganizationId');
+    } catch (e) {
+      print('❌ Error fetching organization ID: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _loadOrganizationData() async {
     try {
       setState(() { isLoading = true; });
 
-      final response = await supabase.from('Organization').select().single();
+      if (currentOrganizationId == null) {
+        throw Exception('No organization ID available');
+      }
+
+      print('📋 Loading organization data for: $currentOrganizationId');
+
+      // Load the SPECIFIC organization by ID
+      final response = await supabase
+          .from('Organization')
+          .select()
+          .eq('id', currentOrganizationId!)
+          .single();
+
+      print('✅ Organization loaded: ${response['name']}');
 
       setState(() {
         organizationData = response;
@@ -70,6 +169,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
         _contactController.text = response['contact_number'] ?? '';
       });
     } catch (error) {
+      print('❌ Error loading organization: $error');
       setState(() { isLoading = false; });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -97,7 +197,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 
       setState(() { isUploadingImage = true; });
 
-      final fileName = 'organization_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = 'organization_${currentOrganizationId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final bytes = await image.readAsBytes();
       await _uploadImageBytes(bytes, fileName);
     } catch (error) {
@@ -125,7 +225,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   Future<void> _updateOrganizationImage(String imageUrl) async {
     await supabase
         .from('Organization')
-        .update({'image': imageUrl}).eq('id', organizationData!['id']);
+        .update({'image': imageUrl})
+        .eq('id', currentOrganizationId!);
 
     await _loadOrganizationData();
 
@@ -156,7 +257,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
         'location': _locationController.text.trim(),
         'email': _emailController.text.trim(),
         'contact_number': _contactController.text.trim(),
-      }).eq('id', organizationData!['id']);
+      }).eq('id', currentOrganizationId!);
 
       await _loadOrganizationData();
 
@@ -236,13 +337,33 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               ),
             ),
             const SizedBox(height: 8),
+            Text(
+              currentOrganizationId != null 
+                  ? 'Organization ID: $currentOrganizationId'
+                  : 'No organization ID available',
+              style: const TextStyle(
+                fontSize: 12,
+                color: textGray,
+              ),
+            ),
+            const SizedBox(height: 8),
             const Text(
-              'Please check your database connection or create a profile.',
+              'Please check your database or contact support.',
               style: TextStyle(
                 fontSize: 14,
                 color: textGray,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _initializeAndLoad,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryGreen,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
@@ -258,13 +379,26 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Hospital Profile',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Hospital Profile',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (currentOrganizationId != null)
+                    Text(
+                      'ID: $currentOrganizationId',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: textGray,
+                      ),
+                    ),
+                ],
               ),
               ElevatedButton.icon(
                 onPressed: () => _showEditDialog(context),
@@ -787,15 +921,24 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 
 // Updated Hospital Profile Page using modular layout
 class ModernAdminProfilePage extends StatelessWidget {
-  const ModernAdminProfilePage({Key? key}) : super(key: key);
+  final String? organizationId;
+  
+  const ModernAdminProfilePage({
+    Key? key,
+    this.organizationId,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Try to get organizationId from route if not provided
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final orgId = organizationId ?? args?['organizationId'];
+
     // Always use modular layout with sidebar
-    return const MainDashboardLayout(
+    return MainDashboardLayout(
       title: 'Hospital Profile',
       selectedNavIndex: 3,
-      content: HospitalProfileContentWidget(),
+      content: HospitalProfileContentWidget(organizationId: orgId),
     );
   }
 }
