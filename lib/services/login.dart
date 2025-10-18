@@ -150,12 +150,17 @@ class _LoginPageState extends State<LoginPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         content: Row(
           children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Sending reset email...'),
+            const CircularProgressIndicator(
+              color: Color(0xFF6B8E5A),
+            ),
+            const SizedBox(width: 20),
+            const Text('Sending reset email...'),
           ],
         ),
       ),
@@ -184,51 +189,206 @@ class _LoginPageState extends State<LoginPage> {
   void _showPasswordResetDialog(String email) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.email, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Reset Email Sent'),
-          ],
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('A password reset email has been sent to:'),
-            const SizedBox(height: 8),
-            Text(
-              email,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            const Text('Please follow these steps:'),
-            const SizedBox(height: 8),
-            const Text('1. Check your email inbox (and spam folder)'),
-            const Text('2. Click the reset link in the email'),
-            const Text('3. Return to the app to set your new password'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ResetPasswordPage(),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Success icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6B8E5A).withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-              );
-            },
-            child: const Text('Reset Password'),
+                child: const Icon(
+                  Icons.mark_email_read_rounded,
+                  color: Color(0xFF6B8E5A),
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Title
+              const Text(
+                'Check Your Email',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2C3E50),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              
+              // Subtitle
+              const Text(
+                'We\'ve sent a password reset link to',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF6C757D),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              
+              // Email
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FA),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  email,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2C3E50),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Instructions
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFE1E5E9),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInstructionItem(
+                      '1',
+                      'Check your email inbox and spam folder',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildInstructionItem(
+                      '2',
+                      'Click the password reset link',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildInstructionItem(
+                      '3',
+                      'Create a new password for your account',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(
+                          color: Color(0xFFE1E5E9),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Got it',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6C757D),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ResetPasswordPage(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6B8E5A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Reset Now',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildInstructionItem(String number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: const Color(0xFF6B8E5A),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF495057),
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -331,12 +491,12 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildDoctorIllustration(),
+                _buildHealthShareLogo(),
                 const SizedBox(height: 40),
                 const Text(
-                  'Turn your ideas into reality.',
+                  'Welcome to HealthShare',
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -344,7 +504,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Start for free and get attractive offers from the community',
+                  'Your comprehensive healthcare management solution',
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.white70,
@@ -471,143 +631,26 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildDoctorIllustration() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned(
-          left: 20,
-          top: 20,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-              ],
-            ),
+  Widget _buildHealthShareLogo() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
-        ),
-        Positioned(
-          right: 20,
-          top: 40,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-                SizedBox(width: 4),
-                CircleAvatar(radius: 3, backgroundColor: Color(0xFF95A5A6)),
-              ],
-            ),
-          ),
-        ),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Color(0xFFDDBEA9),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: 100,
-              height: 120,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(50),
-                  topRight: Radius.circular(50),
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 20,
-                    left: 20,
-                    right: 20,
-                    child: Container(
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3498DB),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: 80,
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2C3E50),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-            ),
-            Container(
-              width: 120,
-              height: 20,
-              margin: const EdgeInsets.only(top: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(60),
-              ),
-            ),
-          ],
-        ),
-      ],
+        ],
+      ),
+      child: Image.asset(
+        'assets/images/healthshare_logo.png',
+        width: 200,
+        height: 200,
+        fit: BoxFit.contain,
+      ),
     );
   }
 
@@ -617,18 +660,9 @@ class _LoginPageState extends State<LoginPage> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Center(
-          child: Container(
-            width: 60,
-            height: 60,
-            decoration: const BoxDecoration(
-              color: Color(0xFF6B8E5A),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.add,
-              color: Colors.white,
-              size: 30,
-            ),
+          child: CustomPaint(
+            size: const Size(60, 60),
+            painter: HealthShareLogoPainter(),
           ),
         ),
         const SizedBox(height: 32),
@@ -781,32 +815,6 @@ class _LoginPageState extends State<LoginPage> {
                   },
                 ),
               ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6B8E5A),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Remember Me',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6C757D),
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -895,4 +903,50 @@ class _LoginPageState extends State<LoginPage> {
       ],
     );
   }
+}
+
+// Custom painter for HealthShare logo
+class HealthShareLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.055 // Thinner stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final cornerRadius = size.width * 0.04;
+    
+    // Dimensions for the cross
+    final innerGap = size.width * 0.08;
+    final armExtension = size.width * 0.38;
+
+    // Teal/cyan color for left/bottom L-shape
+    paint.color = const Color(0xFF17A2B8);
+    
+    // Draw left-bottom L shape
+    final leftBottomPath = Path();
+    // Start from top-left, go down and right
+    leftBottomPath.moveTo(center.dx - innerGap, center.dy - armExtension);
+    leftBottomPath.lineTo(center.dx - innerGap, center.dy - innerGap);
+    leftBottomPath.lineTo(center.dx - armExtension, center.dy - innerGap);
+    
+    canvas.drawPath(leftBottomPath, paint);
+
+    // Gray color for right/top L-shape
+    paint.color = const Color(0xFF9E9E9E);
+    
+    // Draw right-top L shape
+    final rightTopPath = Path();
+    // Start from bottom-right, go up and left
+    rightTopPath.moveTo(center.dx + innerGap, center.dy + armExtension);
+    rightTopPath.lineTo(center.dx + innerGap, center.dy + innerGap);
+    rightTopPath.lineTo(center.dx + armExtension, center.dy + innerGap);
+    
+    canvas.drawPath(rightTopPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

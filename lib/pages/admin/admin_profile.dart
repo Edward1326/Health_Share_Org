@@ -64,12 +64,27 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       print('DEBUG: Loading data for admin user: ${user.id}');
       print('DEBUG: Admin email: ${user.email}');
 
-      // Query User table by user ID
-      final userResponse = await supabase
+      // First, try to find User record by auth user ID
+      final userListResponse = await supabase
           .from('User')
           .select('id, email, person_id')
-          .eq('id', user.id)
-          .single();
+          .eq('id', user.id);
+
+      print('DEBUG: User query results: $userListResponse');
+
+      Map<String, dynamic> userResponse;
+      
+      // If no user found by ID, try by email
+      if (userListResponse.isEmpty) {
+        print('DEBUG: No user found by ID, trying by email: ${user.email}');
+        userResponse = await supabase
+            .from('User')
+            .select('id, email, person_id')
+            .eq('email', user.email)
+            .single();
+      } else {
+        userResponse = userListResponse.first;
+      }
 
       print('DEBUG: User data: $userResponse');
       final personId = userResponse['person_id'];
