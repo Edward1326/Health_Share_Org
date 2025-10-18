@@ -328,11 +328,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             const SizedBox(height: 24),
             const Text('No patients found', style: TextStyle(fontSize: 18)),
             const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _showInviteDialog,
-              style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
-              child: const Text('Invite First Patient'),
-            ),
           ],
         ),
       ),

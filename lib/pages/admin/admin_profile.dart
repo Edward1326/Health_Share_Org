@@ -2,25 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
-import 'staff_dashboard.dart';
+import 'admin_dashboard.dart';
 
-// staff_profile.dart
-class StaffProfilePage extends StatefulWidget {
-  static const String routeName = '/staff_profile';
+// admin_profile.dart
+class AdminProfilePage extends StatefulWidget {
+  static const String routeName = '/admin_profile';
 
-  const StaffProfilePage({super.key});
+  const AdminProfilePage({super.key});
 
   @override
-  State<StaffProfilePage> createState() => _StaffProfilePageState();
+  State<AdminProfilePage> createState() => _AdminProfilePageState();
 }
 
-class _StaffProfilePageState extends State<StaffProfilePage> {
+class _AdminProfilePageState extends State<AdminProfilePage> {
   final supabase = Supabase.instance.client;
   final ImagePicker _picker = ImagePicker();
 
-  // Staff data
-  Map<String, dynamic>? staffData;
-  Map<String, dynamic>? organizationUserData;
+  // Admin data
+  Map<String, dynamic>? adminData;
   bool isLoading = true;
   bool isUploadingImage = false;
 
@@ -39,7 +38,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
   @override
   void initState() {
     super.initState();
-    _loadStaffData();
+    _loadAdminData();
   }
 
   @override
@@ -57,33 +56,24 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
     super.dispose();
   }
 
-  Future<void> _loadStaffData() async {
+  Future<void> _loadAdminData() async {
     try {
       final user = supabase.auth.currentUser;
       if (user == null) throw 'No authenticated user';
 
-      print('DEBUG: Loading data for user: ${user.id}');
+      print('DEBUG: Loading data for admin user: ${user.id}');
+      print('DEBUG: Admin email: ${user.email}');
 
-      // Get User data first (contains email) - using email like login service
+      // Query User table by user ID
       final userResponse = await supabase
           .from('User')
           .select('id, email, person_id')
-          .eq('email', user.email)
+          .eq('id', user.id)
           .single();
 
       print('DEBUG: User data: $userResponse');
-      final userId = userResponse['id'];
       final personId = userResponse['person_id'];
       final userEmail = userResponse['email'];
-
-      // Get Organization_User data with position
-      final orgUserResponse = await supabase
-          .from('Organization_User')
-          .select()
-          .eq('user_id', userId)
-          .single();
-
-      print('DEBUG: Organization_User data: $orgUserResponse');
 
       // Get Person data for personal information
       final personResponse = await supabase
@@ -95,23 +85,22 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       print('DEBUG: Person data: $personResponse');
 
       setState(() {
-        organizationUserData = orgUserResponse;
-        staffData = personResponse;
+        adminData = personResponse;
         // Store email separately since it comes from User table
-        staffData!['email'] = userEmail;
+        adminData!['email'] = userEmail;
         isLoading = false;
 
         // Initialize controllers with existing data
-        _firstNameController.text = staffData!['first_name'] ?? '';
-        _middleNameController.text = staffData!['middle_name'] ?? '';
-        _lastNameController.text = staffData!['last_name'] ?? '';
+        _firstNameController.text = adminData!['first_name'] ?? '';
+        _middleNameController.text = adminData!['middle_name'] ?? '';
+        _lastNameController.text = adminData!['last_name'] ?? '';
         _emailController.text = userEmail ?? '';
-        _addressController.text = staffData!['address'] ?? '';
-        _contactNumberController.text = staffData!['contact_number'] ?? '';
-        _bloodTypeController.text = staffData!['blood_type'] ?? '';
-        _allergiesController.text = staffData!['allergies'] ?? '';
-        _medicalConditionsController.text = staffData!['medical_conditions'] ?? '';
-        _disabilitiesController.text = staffData!['disabilities'] ?? '';
+        _addressController.text = adminData!['address'] ?? '';
+        _contactNumberController.text = adminData!['contact_number'] ?? '';
+        _bloodTypeController.text = adminData!['blood_type'] ?? '';
+        _allergiesController.text = adminData!['allergies'] ?? '';
+        _medicalConditionsController.text = adminData!['medical_conditions'] ?? '';
+        _disabilitiesController.text = adminData!['disabilities'] ?? '';
       });
 
       print('DEBUG: Data loaded successfully with email: $userEmail');
@@ -123,7 +112,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading staff data: $error'),
+            content: Text('Error loading admin data: $error'),
             backgroundColor: Colors.red,
           ),
         );
@@ -148,7 +137,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
       // Generate unique filename
       final fileName =
-          'staff_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'admin_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       // Read image as bytes (works for both web and mobile)
       final bytes = await image.readAsBytes();
@@ -178,16 +167,16 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
         supabase.storage.from('profile-images').getPublicUrl(fileName);
 
     // Update person record (image is stored in Person table)
-    await _updateStaffImage(imageUrl);
+    await _updateAdminImage(imageUrl);
   }
 
-  Future<void> _updateStaffImage(String imageUrl) async {
+  Future<void> _updateAdminImage(String imageUrl) async {
     await supabase
         .from('Person')
-        .update({'image': imageUrl}).eq('id', staffData!['id']);
+        .update({'image': imageUrl}).eq('id', adminData!['id']);
 
     // Reload data to show updated image
-    await _loadStaffData();
+    await _loadAdminData();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,7 +188,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
     }
   }
 
-  Future<void> _updateStaffData() async {
+  Future<void> _updateAdminData() async {
     try {
       // Update Person table - removed current_medications
       await supabase.from('Person').update({
@@ -212,9 +201,9 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
         'allergies': _allergiesController.text.trim(),
         'medical_conditions': _medicalConditionsController.text.trim(),
         'disabilities': _disabilitiesController.text.trim(),
-      }).eq('id', staffData!['id']);
+      }).eq('id', adminData!['id']);
 
-      await _loadStaffData();
+      await _loadAdminData();
 
       if (mounted) {
         Navigator.of(context).pop(); // Close dialog
@@ -249,20 +238,20 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
   }
 
   String _getFullName() {
-    if (staffData == null) return 'Unknown Staff';
+    if (adminData == null) return 'Unknown Admin';
     
-    final firstName = staffData!['first_name'] ?? '';
-    final middleName = staffData!['middle_name'] ?? '';
-    final lastName = staffData!['last_name'] ?? '';
+    final firstName = adminData!['first_name'] ?? '';
+    final middleName = adminData!['middle_name'] ?? '';
+    final lastName = adminData!['last_name'] ?? '';
     
     return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MainStaffDashboardLayout(
+    return MainDashboardLayout(
       title: 'My Profile',
-      selectedNavIndex: 1,  // Changed from 4 to 1
+      selectedNavIndex: 3,
       content: _buildProfileContent(),
     );
   }
@@ -276,10 +265,10 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       );
     }
 
-    if (staffData == null || organizationUserData == null) {
+    if (adminData == null) {
       return const Center(
         child: Text(
-          'No staff data found',
+          'No admin data found',
           style: TextStyle(fontSize: 16, color: Color(0xFF6C757D)),
         ),
       );
@@ -322,10 +311,10 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                         radius: 50,
                         backgroundColor: const Color(0xFF4A8B3A),
                         backgroundImage:
-                            staffData!['image'] != null
-                                ? NetworkImage(staffData!['image'])
+                            adminData!['image'] != null
+                                ? NetworkImage(adminData!['image'])
                                 : null,
-                        child: staffData!['image'] == null
+                        child: adminData!['image'] == null
                             ? const Icon(
                                 Icons.person,
                                 size: 40,
@@ -394,9 +383,9 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                     color: const Color(0xFF4A8B3A).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(
-                    organizationUserData!['position'] ?? 'Staff',
-                    style: const TextStyle(
+                  child: const Text(
+                    'Administrator',
+                    style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF4A8B3A),
                       fontWeight: FontWeight.w500,
@@ -432,7 +421,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Email Address',
-            staffData!['email'] ?? 'Not specified',
+            adminData!['email'] ?? 'Not specified',
             Icons.email,
             const Color(0xFF6BA85A),
           ),
@@ -441,7 +430,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Contact Number',
-            staffData!['contact_number'] ?? 'Not specified',
+            adminData!['contact_number'] ?? 'Not specified',
             Icons.phone,
             Colors.blue,
           ),
@@ -450,7 +439,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Address',
-            staffData!['address'] ?? 'Not specified',
+            adminData!['address'] ?? 'Not specified',
             Icons.location_on,
             Colors.orange,
           ),
@@ -470,7 +459,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Blood Type',
-            staffData!['blood_type'] ?? 'Not specified',
+            adminData!['blood_type'] ?? 'Not specified',
             Icons.bloodtype,
             Colors.red,
           ),
@@ -479,7 +468,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Allergies',
-            staffData!['allergies'] ?? 'None specified',
+            adminData!['allergies'] ?? 'None specified',
             Icons.warning,
             Colors.orange,
             isMultiline: true,
@@ -489,7 +478,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Medical Conditions',
-            staffData!['medical_conditions'] ?? 'None specified',
+            adminData!['medical_conditions'] ?? 'None specified',
             Icons.medical_services,
             Colors.purple,
             isMultiline: true,
@@ -499,7 +488,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Disabilities',
-            staffData!['disabilities'] ?? 'None specified',
+            adminData!['disabilities'] ?? 'None specified',
             Icons.accessibility,
             Colors.blue,
             isMultiline: true,
@@ -509,7 +498,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
           _buildInfoCard(
             'Member Since',
-            _formatDateTime(staffData!['created_at']),
+            _formatDateTime(adminData!['created_at']),
             Icons.calendar_today,
             const Color(0xFF6C757D),
           ),
@@ -617,16 +606,16 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
 
   void _showEditDialog(BuildContext context) {
     // Reset controllers with current data
-    _firstNameController.text = staffData!['first_name'] ?? '';
-    _middleNameController.text = staffData!['middle_name'] ?? '';
-    _lastNameController.text = staffData!['last_name'] ?? '';
-    _emailController.text = staffData!['email'] ?? '';
-    _addressController.text = staffData!['address'] ?? '';
-    _contactNumberController.text = staffData!['contact_number'] ?? '';
-    _bloodTypeController.text = staffData!['blood_type'] ?? '';
-    _allergiesController.text = staffData!['allergies'] ?? '';
-    _medicalConditionsController.text = staffData!['medical_conditions'] ?? '';
-    _disabilitiesController.text = staffData!['disabilities'] ?? '';
+    _firstNameController.text = adminData!['first_name'] ?? '';
+    _middleNameController.text = adminData!['middle_name'] ?? '';
+    _lastNameController.text = adminData!['last_name'] ?? '';
+    _emailController.text = adminData!['email'] ?? '';
+    _addressController.text = adminData!['address'] ?? '';
+    _contactNumberController.text = adminData!['contact_number'] ?? '';
+    _bloodTypeController.text = adminData!['blood_type'] ?? '';
+    _allergiesController.text = adminData!['allergies'] ?? '';
+    _medicalConditionsController.text = adminData!['medical_conditions'] ?? '';
+    _disabilitiesController.text = adminData!['disabilities'] ?? '';
 
     showDialog(
       context: context,
@@ -764,7 +753,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
               ),
             ),
             ElevatedButton(
-              onPressed: _updateStaffData,
+              onPressed: _updateAdminData,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,

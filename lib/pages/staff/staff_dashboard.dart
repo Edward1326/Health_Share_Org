@@ -157,7 +157,7 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
         Expanded(
           child: Column(
             children: [
-              // Top Header Bar (Green) - No hamburger menu
+              // Top Header Bar (Green)
               _buildTopHeader(),
               
               // Main Content
@@ -192,12 +192,9 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
             ),
           ),
           
-          // Navigation Items
-          _buildNavItem(Icons.home, 'Dashboard', 0, widget.selectedNavIndex == 0),
-          _buildNavItem(Icons.people, 'Patients', 1, widget.selectedNavIndex == 1),
-          _buildNavItem(Icons.science, 'Laboratories', 2, widget.selectedNavIndex == 2),
-          _buildNavItem(Icons.assignment, 'Reports', 3, widget.selectedNavIndex == 3),
-          _buildNavItem(Icons.person, 'Profile', 4, widget.selectedNavIndex == 4),
+          // Navigation Items - Only Patients and Profile
+          _buildNavItem(Icons.people, 'Patients', 0, widget.selectedNavIndex == 0),
+          _buildNavItem(Icons.person, 'Profile', 1, widget.selectedNavIndex == 1),
           
           const Spacer(),
           
@@ -235,37 +232,18 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
       ),
       child: InkWell(
         onTap: () {
-          switch (index) {
-            case 0: // Dashboard
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const StaffDashboard()),
-              );
-              break;
-            case 1: // Patients
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MainStaffDashboardLayout(
-                    title: 'Patient Management',
-                    selectedNavIndex: 1,
-                    content: ModernPatientsContentWidget(),
-                  ),
-                ),
-              );
-              break;
-            case 2: // Laboratories
-              _showSnackBar('Laboratories coming soon!');
-              break;
-            case 3: // Reports
-              _showSnackBar('Reports coming soon!');
-              break;
-            case 4: // Profile
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const StaffProfilePage()),
-              );
-              break;
+          if (index == 0) {
+            // Patients
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const StaffDashboard()),
+            );
+          } else if (index == 1) {
+            // Profile
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const StaffProfilePage()),
+            );
           }
         },
         child: Padding(
@@ -346,335 +324,13 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
 
 }
 
-// Staff Dashboard Content Widget (matching admin dashboard style)
-class StaffDashboardContentWidget extends StatefulWidget {
-  const StaffDashboardContentWidget({Key? key}) : super(key: key);
-
-  @override
-  State<StaffDashboardContentWidget> createState() => _StaffDashboardContentWidgetState();
-}
-
-class _StaffDashboardContentWidgetState extends State<StaffDashboardContentWidget> {
-  String _userName = '';
-  String _userPosition = '';
-  String _userDepartment = '';
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _userName = prefs.getString('user_name') ?? 'Staff Member';
-        _userPosition = prefs.getString('user_position') ?? 'Staff';
-        _userDepartment = prefs.getString('user_department') ?? '';
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: StaffDashboardTheme.primaryGreen),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with title and action button
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome back, ${_userName.split(' ').first}!',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$_userPosition • $_userDepartment',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: StaffDashboardTheme.textGray,
-                    ),
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MainStaffDashboardLayout(
-                        title: 'Patient Management',
-                        selectedNavIndex: 1,
-                        content: ModernPatientsContentWidget(),
-                      ),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: StaffDashboardTheme.primaryGreen,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                icon: const Icon(Icons.people, size: 18),
-                label: const Text('Manage Patients'),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Quick stats cards
-          _buildQuickStatsRow(),
-          
-          const SizedBox(height: 24),
-          
-          // Recent activity
-          _buildRecentActivity(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStatCard(
-            'My Patients',
-            '24',
-            Icons.people,
-            StaffDashboardTheme.primaryGreen,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Today\'s Appointments',
-            '8',
-            Icons.calendar_today,
-            Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Lab Results',
-            '12',
-            Icons.science,
-            Colors.orange,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'Pending Tasks',
-            '5',
-            Icons.pending_actions,
-            Colors.red,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              Icon(Icons.trending_up, color: Colors.green, size: 16),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              color: StaffDashboardTheme.textGray,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentActivity() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recent Activity',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-          ),
-          _buildActivityItem(
-            'Patient Consultation',
-            'Completed consultation with Sarah Wilson',
-            Icons.medical_services,
-            StaffDashboardTheme.primaryGreen,
-          ),
-          _buildActivityItem(
-            'Lab Results Received',
-            'Blood test results for Patient #1234',
-            Icons.science,
-            Colors.blue,
-          ),
-          _buildActivityItem(
-            'Prescription Updated',
-            'Updated medication for John Doe',
-            Icons.medication,
-            Colors.orange,
-          ),
-          _buildActivityItem(
-            'File Uploaded',
-            'Uploaded X-ray results for Patient #5678',
-            Icons.upload_file,
-            Colors.purple,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(String title, String subtitle, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: StaffDashboardTheme.textGray,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: StaffDashboardTheme.textGray, size: 16),
-        ],
-      ),
-    );
-  }
-}
-
-// Updated Staff Dashboard - now uses the modular layout
+// Updated Staff Dashboard - now defaults to Patients tab
 class StaffDashboard extends StatelessWidget {
   const StaffDashboard({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Mobile layout - original design
+    // Mobile layout
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 800;
     
@@ -682,11 +338,11 @@ class StaffDashboard extends StatelessWidget {
       return _buildMobileLayout(context);
     }
 
-    // Desktop layout - use modular approach
+    // Desktop layout - Default to Patients tab (selectedNavIndex: 0)
     return const MainStaffDashboardLayout(
-      title: 'Staff Dashboard',
+      title: 'Patient Management',
       selectedNavIndex: 0,
-      content: StaffDashboardContentWidget(),
+      content: ModernPatientsContentWidget(),
     );
   }
 
@@ -697,7 +353,7 @@ class StaffDashboard extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Dashboard',
+          'Patients',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -730,7 +386,7 @@ class StaffDashboard extends StatelessWidget {
                   );
                   break;
                 case 'signout':
-                  // Add sign out functionality
+                  _signOut(context);
                   break;
               }
             },
@@ -757,48 +413,54 @@ class StaffDashboard extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: const StaffDashboardContentWidget(),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 4,
-              offset: Offset(0, -2),
-            )
-          ],
-        ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: StaffDashboardTheme.primaryGreen,
-          unselectedItemColor: StaffDashboardTheme.darkGray,
-          currentIndex: 0,
-          onTap: (index) {
-            if (index == 1) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ModernPatientsContentWidget(),
-                ),
-              );
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline),
-              activeIcon: Icon(Icons.people),
-              label: 'Patients',
-            ),
-          ],
-        ),
-      ),
+      body: const ModernPatientsContentWidget(),
     );
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    try {
+      final shouldSignOut = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Sign Out'),
+          content: const Text('Are you sure you want to sign out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: StaffDashboardTheme.textGray)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Sign Out'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldSignOut == true) {
+        await Supabase.instance.client.auth.signOut();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        if (context.mounted) {
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+      }
+    } catch (e) {
+      print('Error signing out: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Error signing out. Please try again.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
   }
 }

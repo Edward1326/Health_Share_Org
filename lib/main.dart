@@ -12,6 +12,7 @@ import 'pages/staff/staff_profile.dart';
 import 'pages/reset_password.dart';
 import 'pages/admin/hospital_profile.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'pages/admin/admin_profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +51,7 @@ class MyApp extends StatelessWidget {
         '/reset_password': (context) => const ResetPasswordPage(),
         '/profile': (context) => const HospitalProfileContentWidget(),
         '/staff_profile': (context) => const StaffProfilePage(),
+        '/admin_profile': (context) => const AdminProfilePage(),
       },
       // Handle unknown routes
     );
