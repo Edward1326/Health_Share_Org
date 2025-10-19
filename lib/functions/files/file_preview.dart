@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'dart:html' as html;
-import 'dart:ui' as ui;
+import 'dart:ui_web' as ui_web;
 import 'package:mime/mime.dart';
 
 class FullscreenFilePreviewWeb extends StatefulWidget {
@@ -77,8 +77,7 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     _iframeViewId = 'iframe-${DateTime.now().millisecondsSinceEpoch}';
     
     // Register iframe view factory
-    // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(
+    ui_web.platformViewRegistry.registerViewFactory(
       _iframeViewId!,
       (int viewId) {
         final iframe = html.IFrameElement()
