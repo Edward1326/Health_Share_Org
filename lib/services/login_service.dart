@@ -291,6 +291,26 @@ class SignupService {
   static const int _signupCooldownSeconds = 45;
   static DateTime? _lastSignupAttempt;
 
+  /// Validate password strength
+  static String? validatePassword(String password) {
+    if (password.isEmpty) {
+      return 'Please enter a password';
+    }
+    if (password.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!password.contains(RegExp(r'[0-9]'))) {
+      return 'Password must contain at least one number';
+    }
+    if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+      return 'Password must contain at least one special character';
+    }
+    return null; // Password is valid
+  }
+
   /// Main signup function
   static Future<SignupResult> signup({
     required String email,
@@ -304,6 +324,12 @@ class SignupService {
     required String department,
     required String organizationId,
   }) async {
+    // Validate password before proceeding
+    final passwordError = validatePassword(password);
+    if (passwordError != null) {
+      return SignupResult.failure(passwordError);
+    }
+
     // Check rate limiting
     if (_lastSignupAttempt != null) {
       final timeSinceLastAttempt =
@@ -493,7 +519,7 @@ class SignupService {
       return 'Too many signup attempts. Please wait a moment before trying again.';
     } else if (errorString.contains('weak password') ||
         errorString.contains('password')) {
-      return 'Password is too weak. Please use a stronger password with at least 6 characters.';
+      return 'Password is too weak. Please use a stronger password with at least 8 characters, one uppercase letter, one number, and one special character.';
     } else if (errorString.contains('invalid email') ||
         errorString.contains('email')) {
       return 'Invalid email address. Please check your email and try again.';
