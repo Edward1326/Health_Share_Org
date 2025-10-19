@@ -328,6 +328,9 @@ class SignupService {
   }) async {
     final stopwatch = Stopwatch()..start();
     
+    String? authUserId;
+    bool shouldCleanupAuth = false;
+    
     try {
       if (!emailVerified) {
         return SignupResult(
@@ -347,7 +350,8 @@ class SignupService {
       print('Starting user registration for existing auth user...');
       _lastSignupAttempt = DateTime.now();
 
-      final authUserId = currentUser.id;
+      authUserId = currentUser.id;
+      shouldCleanupAuth = true; // Mark for cleanup if anything fails
       print('Using authenticated user: $authUserId');
 
       final orgCheck = await _supabase
@@ -420,9 +424,11 @@ class SignupService {
       } catch (dbError) {
         print('Database error: $dbError');
         
+        // Cleanup database records
         if (orgUserCreated) {
           try {
-            await _supabase.from('Organization_User').delete().eq('user_id', authUserId);
+            await _supabase.from('Organization_User').delete().eq('user_id', authUserId!);
+            print('Cleaned up Organization_User');
           } catch (e) {
             print('Failed to clean up Organization_User: $e');
           }
@@ -430,7 +436,8 @@ class SignupService {
         
         if (userCreated) {
           try {
-            await _supabase.from('User').delete().eq('id', authUserId);
+            await _supabase.from('User').delete().eq('id', authUserId!);
+            print('Cleaned up User');
           } catch (e) {
             print('Failed to clean up User: $e');
           }
@@ -439,6 +446,7 @@ class SignupService {
         if (personId != null) {
           try {
             await _supabase.from('Person').delete().eq('id', personId);
+            print('Cleaned up Person');
           } catch (e) {
             print('Failed to clean up Person: $e');
           }
@@ -447,6 +455,8 @@ class SignupService {
         rethrow;
       }
 
+      // If we got here, everything succeeded - don't cleanup auth
+      shouldCleanupAuth = false;
       _pendingEmail = null;
       _otpSentTime = null;
 
@@ -462,6 +472,12 @@ class SignupService {
     } on PostgrestException catch (e) {
       stopwatch.stop();
       print('Database error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
+      
+      // Cleanup auth user if registration failed
+      if (shouldCleanupAuth && authUserId != null) {
+        await _cleanupAuthUser(authUserId, email);
+      }
+      
       return SignupResult(
         success: false,
         errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
@@ -469,10 +485,37 @@ class SignupService {
     } catch (e) {
       stopwatch.stop();
       print('Registration error after ${stopwatch.elapsedMilliseconds}ms: $e');
+      
+      // Cleanup auth user if registration failed
+      if (shouldCleanupAuth && authUserId != null) {
+        await _cleanupAuthUser(authUserId, email);
+      }
+      
       return SignupResult(
         success: false,
         errorMessage: 'Failed to register user: $e',
       );
+    }
+  }
+
+  /// Cleanup auth user if registration fails
+  static Future<void> _cleanupAuthUser(String authUserId, String email) async {
+    print('Registration failed - cleaning up auth user...');
+    try {
+      // Try to delete using admin API (requires service role or proper permissions)
+      // If this fails, we'll fall back to signOut
+      try {
+        await _supabase.auth.admin.deleteUser(authUserId);
+        print('Auth user deleted successfully');
+      } catch (adminError) {
+        print('Admin delete not available, signing out instead: $adminError');
+        // Fallback: Sign out the user (leaves auth record but prevents login without proper data)
+        await _supabase.auth.signOut();
+        print('User signed out - auth record remains but cannot login without completing registration');
+      }
+    } catch (cleanupError) {
+      print('Failed to cleanup auth user: $cleanupError');
+      print('⚠️ WARNING: Orphaned auth user may exist for email: $email');
     }
   }
 

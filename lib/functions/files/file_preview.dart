@@ -22,7 +22,6 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
   String? _mimeType;
   late String _extension;
   String? _iframeViewId;
-  bool _isLoading = false;
 
   @override
   void initState() {
@@ -80,8 +79,11 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     ui_web.platformViewRegistry.registerViewFactory(
       _iframeViewId!,
       (int viewId) {
+        // For PDFs, append #toolbar=0 to hide browser's PDF toolbar
+        final finalUrl = _extension == 'pdf' ? '$url#toolbar=0' : url;
+        
         final iframe = html.IFrameElement()
-          ..src = url
+          ..src = finalUrl
           ..style.border = 'none'
           ..style.width = '100%'
           ..style.height = '100%';
@@ -97,45 +99,7 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     super.dispose();
   }
 
-  /// Download file to user's computer
-  void _downloadFile() {
-    setState(() => _isLoading = true);
-
-    try {
-      final blob = html.Blob([widget.bytes], _mimeType);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute('download', widget.fileName)
-        ..click();
-      
-      // Cleanup
-      html.Url.revokeObjectUrl(url);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Downloading ${widget.fileName}...'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error downloading file: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  /// Open file in new tab
+  /// Open file in new tab for better viewing
   void _openInNewTab() {
     try {
       final blob = html.Blob([widget.bytes], _mimeType);
@@ -178,16 +142,6 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: _downloadFile,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download PDF'),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white24,
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _openInNewTab,
@@ -269,9 +223,9 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     else if (_isTextFile(_extension)) {
       content = _buildTextPreview();
     }
-    // Document files that should be downloaded
+    // Document files that cannot be previewed
     else if (_isDocumentFile(_extension)) {
-      content = _buildDocumentDownloadView();
+      content = _buildDocumentPreviewUnavailable();
     }
     // Unsupported preview
     else {
@@ -288,11 +242,6 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: _downloadFile,
-            tooltip: 'Download',
-          ),
           if (_extension == 'pdf' || 
               _mimeType?.startsWith('video/') == true ||
               _mimeType?.startsWith('audio/') == true)
@@ -303,11 +252,7 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          : content,
+      body: content,
     );
   }
 
@@ -321,7 +266,7 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     return textExtensions.contains(extension);
   }
 
-  /// Check if file is a document that should be downloaded
+  /// Check if file is a document that cannot be previewed in browser
   bool _isDocumentFile(String extension) {
     const docExtensions = [
       'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
@@ -359,8 +304,8 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     }
   }
 
-  /// Build document download view
-  Widget _buildDocumentDownloadView() {
+  /// Build document preview unavailable view
+  Widget _buildDocumentPreviewUnavailable() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -385,28 +330,31 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
             ),
           ),
           const SizedBox(height: 32),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            decoration: BoxDecoration(
+              color: Colors.white12,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white24),
             ),
-            onPressed: _downloadFile,
-            icon: const Icon(Icons.download),
-            label: Text('Download ${_getAppTypeName()}'),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Preview not available in browser',
-            style: const TextStyle(color: Colors.white60, fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Download and open with appropriate app',
-            style: const TextStyle(color: Colors.white60, fontSize: 12),
+            child: Column(
+              children: [
+                const Icon(Icons.visibility_off, color: Colors.white70, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Preview not available for ${_getAppTypeName()} files',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Browser preview is not supported for this file type',
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -440,19 +388,25 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
             style: const TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 24),
-          Text(
-            'Preview not supported for .$_extension files',
-            style: const TextStyle(color: Colors.white70, fontSize: 16),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            decoration: BoxDecoration(
+              color: Colors.white12,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white24),
             ),
-            onPressed: _downloadFile,
-            icon: const Icon(Icons.download),
-            label: const Text('Download File'),
+            child: Column(
+              children: [
+                const Icon(Icons.visibility_off, color: Colors.white70, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Preview not supported for .$_extension files',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ],
       ),

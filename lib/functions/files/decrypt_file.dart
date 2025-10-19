@@ -23,7 +23,7 @@ class FileDecryptionService {
     Function(String) showSnackBar,
   ) async {
     try {
-      showSnackBar('Loading file preview...');
+      
 
       final fileId = file['id'];
       final ipfsCid = file['ipfs_cid'];
@@ -33,7 +33,6 @@ class FileDecryptionService {
       print('DEBUG: Starting preview for file: $filename');
 
       if (ipfsCid == null) {
-        showSnackBar('IPFS CID not found');
         return;
       }
 
@@ -53,13 +52,12 @@ class FileDecryptionService {
       final rsaPrivateKeyPem = userResponse['rsa_private_key'] as String?;
 
       if (actualUserId == null || rsaPrivateKeyPem == null) {
-        showSnackBar('User authentication error');
+        
         return;
       }
 
       // 🔐 MANDATORY BLOCKCHAIN VERIFICATION
       print('\n🔐 === MANDATORY BLOCKCHAIN VERIFICATION START ===');
-      showSnackBar('Verifying file integrity on blockchain...');
 
       final String hiveUsername = await _getHiveUsername(actualUserId);
 
@@ -86,7 +84,7 @@ class FileDecryptionService {
           verificationResult.supabaseFileHash ?? 'N/A',
           verificationResult.blockchainFileHash ?? 'N/A',
         );
-        showSnackBar('❌ File corrupted - hash mismatch detected');
+        
         return;
       }
 
@@ -95,7 +93,7 @@ class FileDecryptionService {
       print('Block Number: ${verificationResult.blockNumber}');
       print('=== BLOCKCHAIN VERIFICATION END ===\n');
       
-      showSnackBar('✓ Blockchain verification passed');
+      
 
       await _performDecryption(
         context: context,
@@ -111,7 +109,7 @@ class FileDecryptionService {
     } catch (e, stackTrace) {
       print('ERROR in previewFile: $e');
       print('Stack trace: $stackTrace');
-      showSnackBar('Error previewing file: $e');
+      
     }
   }
 
@@ -155,7 +153,7 @@ class FileDecryptionService {
       print('\n--- ATTEMPTING RSA DECRYPTION ---');
       final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
       
-      showSnackBar('Decrypting encryption key...');
+      
       
       final decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
       print('✓ PointyCastle RSA decryption successful!');
@@ -187,7 +185,7 @@ class FileDecryptionService {
       print('  RSA decryption took: ${stopwatch.elapsedMilliseconds}ms');
 
       // Download file from IPFS
-      showSnackBar('Downloading encrypted file from IPFS...');
+      
       final downloadStart = stopwatch.elapsedMilliseconds;
       
       final ipfsUrl = 'https://apricot-delicate-vole-342.mypinata.cloud/ipfs/$ipfsCid';
@@ -202,7 +200,7 @@ class FileDecryptionService {
       print('✓ Downloaded ${encryptedFileBytes.length} bytes from IPFS in ${downloadTime}ms');
 
       // PERFORMANCE FIX: Use native cryptography package for AES-GCM (SUPER FAST!)
-      showSnackBar('Decrypting file...');
+      
       final decryptStart = stopwatch.elapsedMilliseconds;
       
       final decryptedBytes = await _fastDecryptFile(
@@ -220,14 +218,14 @@ class FileDecryptionService {
       print('  Total time: ${stopwatch.elapsedMilliseconds}ms');
 
       // Show preview
-      showSnackBar('✓ File decrypted in ${stopwatch.elapsedMilliseconds}ms!');
+      
       await _showFilePreview(context, filename, mimeType, decryptedBytes);
 
     } catch (e, stackTrace) {
       stopwatch.stop();
       print('Error in _performDecryption after ${stopwatch.elapsedMilliseconds}ms: $e');
       print('Stack trace: $stackTrace');
-      showSnackBar('Decryption failed: ${e.toString()}');
+      
       rethrow;
     }
   }
@@ -511,122 +509,455 @@ class FileDecryptionService {
     String fileId,
     VerificationResult result,
   ) async {
+    // Theme colors - Green medical theme
+    const Color primaryGreen = Color(0xFF6B8E5A);
+    const Color lightGreen = Color(0xFFF5F8F3);
+    const Color darkText = Color(0xFF2C3E50);
+    const Color textGray = Color(0xFF6C757D);
+    const Color borderColor = Color(0xFFD5E1CF);
+    const Color errorRed = Color(0xFFDC2626);
+    const Color lightRed = Color(0xFFFEF2F2);
+
     return showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Row(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: errorRed.withOpacity(0.3), width: 2),
+        ),
+        title: Row(
           children: [
-            Icon(Icons.security, color: Colors.red, size: 32),
-            SizedBox(width: 12),
-            Text('Security Verification Failed'),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: lightRed,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.security,
+                color: errorRed,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Security Verification Failed',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: darkText,
+                ),
+              ),
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This file cannot be decrypted due to security verification failure.',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            const Text('Possible reasons:', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            const Text('• File data has been tampered with in database'),
-            const Text('• File was not properly logged to blockchain'),
-            const Text('• Blockchain record is missing or corrupted'),
-            const Text('• Network connectivity issues with blockchain'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.shade200),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: lightRed,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: errorRed.withOpacity(0.3), width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.block_rounded,
+                      color: errorRed,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'This file cannot be decrypted',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: errorRed,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('File ID: $fileId', style: const TextStyle(fontSize: 12)),
-                  if (result.error != null)
-                    Text('Error: ${result.error}', style: const TextStyle(fontSize: 12)),
-                  if (result.transactionId != null)
-                    Text('Tx ID: ${result.transactionId}', style: const TextStyle(fontSize: 12)),
-                ],
+              const SizedBox(height: 16),
+              Text(
+                'Security verification has failed. The file cannot be accessed due to integrity concerns.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: textGray,
+                  height: 1.5,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Text(
+                'Possible reasons:',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: darkText,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: lightGreen,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor, width: 1.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildReasonRow(Icons.storage_rounded, 'File data has been tampered with in database', textGray),
+                    const SizedBox(height: 10),
+                    _buildReasonRow(Icons.link_off_rounded, 'File was not properly logged to blockchain', textGray),
+                    const SizedBox(height: 10),
+                    _buildReasonRow(Icons.broken_image_rounded, 'Blockchain record is missing or corrupted', textGray),
+                    const SizedBox(height: 10),
+                    _buildReasonRow(Icons.wifi_off_rounded, 'Network connectivity issues with blockchain', textGray),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange[300]!, width: 1),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.orange[700],
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Contact your system administrator for assistance.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange[900],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Understood', style: TextStyle(color: Colors.red)),
+            style: TextButton.styleFrom(
+              foregroundColor: errorRed,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Understood',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  static Future<void> _showHashMismatchDialog(
-    BuildContext context,
-    String supabaseHash,
-    String blockchainHash,
-  ) async {
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 32),
-            SizedBox(width: 12),
-            Text('File Integrity Compromised'),
-          ],
+  static Widget _buildReasonRow(IconData icon, String text, Color textColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: textColor),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              height: 1.4,
+            ),
+          ),
         ),
-        content: Column(
+      ],
+    );
+  }
+
+  static Widget _buildDetailRow(String label, String value, Color textColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label:',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SelectableText(
+          value,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 11,
+            color: textColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Future<void> _showHashMismatchDialog(
+  BuildContext context,
+  String supabaseHash,
+  String blockchainHash,
+) async {
+  // Theme colors - Green medical theme
+  const Color primaryGreen = Color(0xFF6B8E5A);
+  const Color lightGreen = Color(0xFFF5F8F3);
+  const Color darkText = Color(0xFF2C3E50);
+  const Color textGray = Color(0xFF6C757D);
+  const Color borderColor = Color(0xFFD5E1CF);
+  const Color errorRed = Color(0xFFDC2626);
+  const Color lightRed = Color(0xFFFEF2F2);
+
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: errorRed.withOpacity(0.3), width: 2),
+      ),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: lightRed,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.error_outline_rounded,
+              color: errorRed,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'File Integrity Compromised',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: darkText,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'CRITICAL: File hash mismatch detected!',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.red,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: lightRed,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: errorRed.withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_rounded,
+                    color: errorRed,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'CRITICAL: Hash mismatch detected!',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: errorRed,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'The file hash stored in the database does not match the blockchain record.',
-              style: TextStyle(fontSize: 14),
+            Text(
+              'The file hash stored in the database does not match the blockchain record. This indicates potential tampering or corruption.',
+              style: TextStyle(
+                fontSize: 14,
+                color: textGray,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Hash Comparison:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: darkText,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: lightGreen,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 1.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.storage_rounded, color: primaryGreen, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Database Hash:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: darkText,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: SelectableText(
+                      supabaseHash,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: textGray,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Icon(Icons.link_rounded, color: primaryGreen, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Blockchain Hash:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: darkText,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: SelectableText(
+                      blockchainHash,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: textGray,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange[300]!, width: 1),
               ),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Database Hash:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  Text(supabaseHash, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
-                  const SizedBox(height: 8),
-                  const Text('Blockchain Hash:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  Text(blockchainHash, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: Colors.orange[700],
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Do not use this file. Contact your system administrator immediately.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[900],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
-    );
-  }
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: errorRed,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: const Text(
+            'Close',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 }
