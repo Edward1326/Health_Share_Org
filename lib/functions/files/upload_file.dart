@@ -813,166 +813,275 @@ class FileUploadService {
   }
 
   static Future<Map<String, String>?> _showFileDetailsDialog(
-      BuildContext context, String fileName, int fileSize) async {
-    final nameController = TextEditingController(text: fileName);
-    final descriptionController = TextEditingController();
-    String selectedCategory = 'medical_report';
+    BuildContext context, String fileName, int fileSize) async {
+  final nameController = TextEditingController(text: fileName);
+  final descriptionController = TextEditingController();
+  String selectedCategory = 'medical_report';
 
-    final categories = [
-      'medical_report',
-      'lab_result',
-      'prescription',
-      'x_ray',
-      'mri_scan',
-      'ct_scan',
-      'ultrasound',
-      'blood_test',
-      'discharge_summary',
-      'consultation_notes',
-      'other'
-    ];
+  // Theme colors to match your app
+  const Color primaryGreen = Color(0xFF6B8E5A);
+  const Color lightGreen = Color(0xFFF5F8F3);
+  const Color textGray = Color(0xFF6C757D);
+  const Color darkText = Color(0xFF2C3E50);
+  const Color borderColor = Color(0xFFD5E1CF);
 
-    return showDialog<Map<String, String>>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('File Upload Details',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: lightBlue,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, color: primaryBlue),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'File: $fileName',
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Size: ${formatFileSize(fileSize)}',
-                            style: const TextStyle(color: darkGray, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Display Name *',
-                  hintText: 'Enter a descriptive name for the file',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.grey),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: primaryBlue, width: 2),
-                  ),
-                  prefixIcon: const Icon(Icons.edit, color: primaryBlue),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Add notes about this file (optional)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.grey),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: primaryBlue, width: 2),
-                  ),
-                  prefixIcon: const Icon(Icons.notes, color: primaryBlue),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                decoration: InputDecoration(
-                  labelText: 'Medical Category *',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.grey),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: primaryBlue, width: 2),
-                  ),
-                  prefixIcon: const Icon(Icons.category, color: primaryBlue),
-                ),
-                items: categories.map((category) {
-                  return DropdownMenuItem(
-                    value: category,
-                    child: Text(category
-                        .replaceAll('_', ' ')
-                        .split(' ')
-                        .map((word) => word[0].toUpperCase() + word.substring(1))
-                        .join(' ')),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    selectedCategory = value;
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: darkGray)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Please enter a display name for the file')),
-                );
-                return;
-              }
-              Navigator.pop(context, {
-                'fileName': nameController.text.trim(),
-                'description': descriptionController.text.trim(),
-                'category': selectedCategory,
-              });
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+  final categories = [
+    'medical_report',
+    'lab_result',
+    'prescription',
+    'x_ray',
+    'mri_scan',
+    'ct_scan',
+    'ultrasound',
+    'blood_test',
+    'discharge_summary',
+    'consultation_notes',
+    'other'
+  ];
+
+  return showDialog<Map<String, String>>(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.5),
+    builder: (context) => AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      contentPadding: const EdgeInsets.all(24),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: lightGreen,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: const Text('Upload File'),
+            child: const Icon(Icons.cloud_upload, color: primaryGreen, size: 24),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'File Upload Details',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: darkText,
+              fontSize: 20,
+            ),
           ),
         ],
       ),
-    );
-  }
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: lightGreen,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.insert_drive_file, color: primaryGreen, size: 28),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fileName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: darkText,
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Size: ${formatFileSize(fileSize)}',
+                          style: TextStyle(
+                            color: textGray,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: darkText, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Display Name *',
+                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
+                hintText: 'Enter a descriptive name',
+                hintStyle: TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: primaryGreen, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                prefixIcon: const Icon(Icons.edit_outlined, color: primaryGreen, size: 20),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              style: const TextStyle(color: darkText, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Description (Optional)',
+                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
+                hintText: 'Add notes about this file',
+                hintStyle: TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: primaryGreen, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                prefixIcon: const Icon(Icons.notes_outlined, color: primaryGreen, size: 20),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: selectedCategory,
+              style: const TextStyle(color: darkText, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Medical Category *',
+                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: primaryGreen, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor, width: 1.5),
+                ),
+                prefixIcon: const Icon(Icons.category_outlined, color: primaryGreen, size: 20),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              dropdownColor: Colors.white,
+              items: categories.map((category) {
+                return DropdownMenuItem(
+                  value: category,
+                  child: Text(
+                    category
+                        .replaceAll('_', ' ')
+                        .split(' ')
+                        .map((word) => word[0].toUpperCase() + word.substring(1))
+                        .join(' '),
+                    style: const TextStyle(color: darkText, fontSize: 14),
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  selectedCategory = value;
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: textGray,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (nameController.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Please enter a display name for the file'),
+                  backgroundColor: Colors.red[600],
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              );
+              return;
+            }
+            Navigator.pop(context, {
+              'fileName': nameController.text.trim(),
+              'description': descriptionController.text.trim(),
+              'category': selectedCategory,
+            });
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryGreen,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+            elevation: 0,
+            shadowColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: const Text(
+            'Upload File',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   /// Test the complete Hive workflow without uploading a file
   /// Useful for debugging and testing the integration

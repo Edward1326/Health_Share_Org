@@ -46,30 +46,40 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
         throw Exception("User not in organization");
       }
 
-      // Get employees
+      // Get employees with proper nested query
       final employeesResponse = await supabase
           .from('Organization_User')
-          .select('*, User!inner(*, Person!inner(*))')
+          .select('''
+            position,
+            department,
+            User!inner(
+              email,
+              Person!inner(
+                first_name,
+                last_name,
+                contact_number
+              )
+            )
+          ''')
           .eq('organization_id', orgResponse['organization_id']);
 
       final loadedEmployees = <Map<String, dynamic>>[];
       for (var orgUser in employeesResponse) {
-        final person = orgUser['User']?['Person'];
-        if (person != null) {
+        final user = orgUser['User'];
+        final person = user?['Person'];
+        
+        if (person != null && user != null) {
           String name = 'Unknown';
           if (person['first_name'] != null && person['last_name'] != null) {
-            name = '${person['first_name']} ${person['last_name']}';
-          } else if (person['name'] != null) {
-            name = person['name'];
+            name = '${person['first_name']} ${person['last_name']}'.trim();
           }
 
           loadedEmployees.add({
-            'id': orgUser['id'].toString(),
             'name': name,
             'role': orgUser['position'] ?? 'Staff',
             'department': orgUser['department'] ?? 'General',
             'status': 'Active',
-            'email': person['email'] ?? '',
+            'email': user['email'] ?? '',
             'phone': person['contact_number'] ?? '',
           });
         }
@@ -77,18 +87,32 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
 
       setState(() { employees = loadedEmployees; isLoading = false; });
     } catch (e) {
+      print('Error loading employees: $e');
       setState(() { errorMessage = 'Error: $e'; isLoading = false; });
     }
   }
 
-  Future<void> _deleteEmployee(String id) async {
+  Future<void> _deleteEmployee(String email) async {
     try {
-      await supabase.from('Organization_User').delete().eq('id', id);
-      _loadEmployees();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Employee removed successfully!')),
-        );
+      // Find the user by email first
+      final userResponse = await supabase
+          .from('User')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+      
+      if (userResponse != null) {
+        await supabase
+            .from('Organization_User')
+            .delete()
+            .eq('user_id', userResponse['id']);
+        
+        _loadEmployees();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Employee removed successfully!')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -99,17 +123,27 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
     }
   }
 
-  Future<void> _updatePosition(String id, String newPosition) async {
+  Future<void> _updatePosition(String email, String newPosition) async {
     try {
-      await supabase
-          .from('Organization_User')
-          .update({'position': newPosition})
-          .eq('id', id);
-      _loadEmployees();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Position updated!')),
-        );
+      // Find the user by email first
+      final userResponse = await supabase
+          .from('User')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+      
+      if (userResponse != null) {
+        await supabase
+            .from('Organization_User')
+            .update({'position': newPosition})
+            .eq('user_id', userResponse['id']);
+        
+        _loadEmployees();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Position updated!')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -148,24 +182,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Add employee coming soon!')),
-                      );
-                    },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Employee'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
+                  
                 ],
               ),
             ],
@@ -262,8 +279,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
             child: const Row(
               children: [
                 Expanded(flex: 2, child: Text('Employee', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('ID', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(flex: 2, child: Text('Contact', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(flex: 2, child: Text('Email', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(flex: 2, child: Text('Phone', style: TextStyle(fontWeight: FontWeight.w500))),
                 Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.w500))),
                 Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 40),
@@ -303,25 +320,52 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(employee['name']!, style: const TextStyle(fontWeight: FontWeight.w500)),
-                              Text(employee['role']!, style: TextStyle(fontSize: 12, color: textGray)),
-                            ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  employee['name']!,
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  employee['role']!,
+                                  style: TextStyle(fontSize: 12, color: textGray),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
                     
-                    // ID
-                    Expanded(child: Text(employee['id']!)),
-                    
                     // Email
-                    Expanded(flex: 2, child: Text(employee['email']!)),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        employee['email']!,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    
+                    // Phone
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        employee['phone']!.isNotEmpty ? employee['phone']! : 'N/A',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     
                     // Department
-                    Expanded(child: Text(employee['department']!)),
+                    Expanded(
+                      child: Text(
+                        employee['department']!,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     
                     // Status
                     Expanded(
@@ -407,7 +451,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
           ElevatedButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                _updatePosition(employee['id'], controller.text.trim());
+                _updatePosition(employee['email'], controller.text.trim());
                 Navigator.pop(context);
               }
             },
@@ -431,7 +475,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
           ),
           ElevatedButton(
             onPressed: () {
-              _deleteEmployee(employee['id']);
+              _deleteEmployee(employee['email']);
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
