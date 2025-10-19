@@ -103,13 +103,16 @@ class AdminPatientListFunctions {
       
       print('✅ Current organization ID: $currentOrganizationId');
 
-      // Fetch patients ONLY from the current organization
+      // Fetch patients ONLY from the current organization (including image field)
       print('Step 1: Fetching Patient records for organization...');
       final patientsResponse = await supabase.from('Patient').select('''
           *,
           User!inner(
             *,
-            Person!inner(*)
+            Person!inner(
+              *,
+              image
+            )
           )
         ''').eq('organization_id', currentOrganizationId!);
 
@@ -143,6 +146,7 @@ class AdminPatientListFunctions {
             'email': user['email'] ?? '',
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
+            'image': person['image'], // Add profile image
             'lastVisit': patient['created_at'] != null
                 ? DateTime.parse(patient['created_at']).toString().split(' ')[0]
                 : '2024-01-01',
@@ -197,10 +201,19 @@ class AdminPatientListFunctions {
       
       print('Current organization ID: $currentOrganizationId');
 
-      // Fetch employees ONLY from current organization
+      // Fetch employees ONLY from current organization (including image field)
       final orgUsersResponse = await supabase
           .from('Organization_User')
-          .select('*, User!inner(*, Person!inner(*))')
+          .select('''
+            *, 
+            User!inner(
+              *, 
+              Person!inner(
+                *,
+                image
+              )
+            )
+          ''')
           .eq('organization_id', currentOrganizationId!);
 
       print('Organization_User records found: ${orgUsersResponse.length}');
@@ -277,6 +290,7 @@ class AdminPatientListFunctions {
             'department': orgUser['department'] ?? 'General',
             'organization_id': orgUser['organization_id'],
             'specialization': orgUser['position'] ?? 'General Practitioner',
+            'image': person?['image'], // Add profile image
           };
 
           loadedDoctors.add(doctorMap);
@@ -326,7 +340,7 @@ class AdminPatientListFunctions {
 
       print('Found ${response.length} active assignments');
 
-      // Get doctor details for all assigned doctors
+      // Get doctor details for all assigned doctors (including image)
       final Set<String> doctorIds = response
           .map((assignment) => assignment['doctor_id'].toString())
           .toSet()
@@ -339,7 +353,8 @@ class AdminPatientListFunctions {
             User!inner(
               Person!inner(
                 first_name,
-                last_name
+                last_name,
+                image
               )
             ),
             position,
@@ -361,6 +376,7 @@ class AdminPatientListFunctions {
             'name': doctorName,
             'position': doctor['position'],
             'department': doctor['department'],
+            'image': person?['image'], // Add profile image
           };
         }
 
@@ -383,6 +399,7 @@ class AdminPatientListFunctions {
             users[userIndex]['assignedDoctor'] = doctorName;
             users[userIndex]['assignedDoctorId'] = doctorId;
             users[userIndex]['assignmentId'] = assignment['patient_id'];
+            users[userIndex]['doctor_image'] = doctorInfo?['image']; // Add doctor's image
 
             print('    -> ✅ Updated user ${users[userIndex]['name']}');
           } else {
@@ -418,10 +435,13 @@ class AdminPatientListFunctions {
       print('Search query: $query');
       print('Current organization ID: $currentOrganizationId');
 
-      // Get users that match the EMAIL search query
+      // Get users that match the EMAIL search query (including image)
       final searchResponse = await supabase.from('User').select('''
         *,
-        Person(*)
+        Person(
+          *,
+          image
+        )
       ''').like('email', '$query%');
 
       print('Search response: ${searchResponse.length} users found');
@@ -474,6 +494,7 @@ class AdminPatientListFunctions {
             'email': email,
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
+            'image': person['image'], // Add profile image
             'person': person,
           });
 
@@ -544,6 +565,7 @@ class AdminPatientListFunctions {
         'email': userToInvite['email'],
         'phone': userToInvite['phone'],
         'address': userToInvite['address'],
+        'image': userToInvite['image'], // Preserve profile image
         'lastVisit': DateTime.now().toString().split(' ')[0],
         'status': 'invited',
         'assignedDoctor': null,
