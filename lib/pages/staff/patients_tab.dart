@@ -98,7 +98,8 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                 middle_name,
                 last_name,
                 address,
-                contact_number
+                contact_number,
+                image
               )
             )
           )
@@ -350,6 +351,60 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
     );
   }
 
+  Widget _buildPatientAvatar(Map<String, dynamic> person, {double radius = 16}) {
+    final imageUrl = person['image'] as String?;
+    final fullName = _buildFullName(person);
+    
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(imageUrl),
+        onBackgroundImageError: (_, __) {
+          // Fallback to initials if image fails to load
+        },
+        child: ClipOval(
+          child: Image.network(
+            imageUrl,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: radius * 2,
+                height: radius * 2,
+                color: PatientsTheme.primaryGreen,
+                child: Center(
+                  child: Text(
+                    _getPatientInitials(fullName),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: radius * 0.75,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      // Fallback to initials avatar
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: PatientsTheme.primaryGreen,
+        child: Text(
+          _getPatientInitials(fullName),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: radius * 0.75,
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _buildPatientsTable() {
     return Container(
       decoration: BoxDecoration(
@@ -403,14 +458,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                       flex: 2,
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: _getPatientAvatarColor(index),
-                            child: Text(
-                              _getPatientInitials(fullName),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                          ),
+                          _buildPatientAvatar(person, radius: 16),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -530,24 +578,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                     icon: const Icon(Icons.arrow_back),
                   ),
                   const SizedBox(width: 12),
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: PatientsTheme.primaryGreen,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        _getPatientInitials(fullName),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildPatientAvatar(person, radius: 20),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -874,7 +874,8 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
             User!inner(
               Person!inner(
                 first_name,
-                last_name
+                last_name,
+                image
               )
             )
           ''')
@@ -894,6 +895,7 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
           'name': doctorName,
           'position': doctor['position'] ?? 'Medical Staff',
           'department': doctor['department'] ?? 'General',
+          'image': person['image'],
         });
       }
 

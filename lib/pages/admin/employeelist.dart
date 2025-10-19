@@ -46,7 +46,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
         throw Exception("User not in organization");
       }
 
-      // Get employees with proper nested query
+      // Get employees with proper nested query including image
       final employeesResponse = await supabase
           .from('Organization_User')
           .select('''
@@ -57,7 +57,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
               Person!inner(
                 first_name,
                 last_name,
-                contact_number
+                contact_number,
+                image
               )
             )
           ''')
@@ -81,6 +82,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
             'status': 'Active',
             'email': user['email'] ?? '',
             'phone': person['contact_number'] ?? '',
+            'image': person['image'], // Add image field
           });
         }
       }
@@ -151,6 +153,60 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
           SnackBar(content: Text('Error: $e')),
         );
       }
+    }
+  }
+
+  Widget _buildEmployeeAvatar(Map<String, dynamic> employee, {double radius = 16}) {
+    final imageUrl = employee['image'] as String?;
+    final name = employee['name'] as String;
+    
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(imageUrl),
+        onBackgroundImageError: (_, __) {
+          // Fallback to initials if image fails to load
+        },
+        child: ClipOval(
+          child: Image.network(
+            imageUrl,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: radius * 2,
+                height: radius * 2,
+                color: primaryGreen,
+                child: Center(
+                  child: Text(
+                    name.isNotEmpty ? name[0] : '?',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: radius * 0.75,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      // Fallback to initials avatar
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: primaryGreen,
+        child: Text(
+          name.isNotEmpty ? name[0] : '?',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: radius * 0.75,
+          ),
+        ),
+      );
     }
   }
 
@@ -306,19 +362,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 ),
                 child: Row(
                   children: [
-                    // Name with avatar
+                    // Name with avatar (now with profile picture)
                     Expanded(
                       flex: 2,
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: primaryGreen,
-                            child: Text(
-                              employee['name']!.isNotEmpty ? employee['name']![0] : '?',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                          ),
+                          _buildEmployeeAvatar(employee, radius: 16),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
