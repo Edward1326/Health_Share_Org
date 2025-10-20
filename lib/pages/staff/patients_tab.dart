@@ -193,6 +193,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             sha256_hash,
             uploaded_by,
             uploader:User!uploaded_by(
+              email,
               Person!person_id(
                 first_name,
                 last_name
@@ -839,16 +840,18 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                                   ],
                                 ),
                               ),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.delete, color: Colors.red, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('Delete', style: TextStyle(color: Colors.red)),
-                                  ],
+                              // Only show delete option if current user uploaded the file
+                              if (_canDeleteFile(file))
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete, color: Colors.red, size: 16),
+                                      SizedBox(width: 8),
+                                      Text('Delete', style: TextStyle(color: Colors.red)),
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
                             onSelected: (value) {
                               if (value == 'details') {
@@ -872,6 +875,42 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
   }
 
   // Helper methods
+  
+  /// Check if current user can delete the file (only if they uploaded it)
+  bool _canDeleteFile(Map<String, dynamic> file) {
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null || currentUser.email == null) {
+        return false;
+      }
+
+      // Get the uploader's email from the file
+      final uploader = file['uploader'];
+      if (uploader == null) {
+        return false;
+      }
+
+      // For files with nested User structure
+      String? uploaderEmail;
+      if (uploader is Map) {
+        uploaderEmail = uploader['email'] as String?;
+      }
+
+      // If we couldn't get the email, check uploaded_by user_id
+      if (uploaderEmail == null) {
+        // We'll need to compare user IDs instead
+        // This requires having loaded the current user's ID
+        return false;
+      }
+
+      // Check if current user's email matches the uploader's email
+      return currentUser.email == uploaderEmail;
+    } catch (e) {
+      print('Error checking file delete permission: $e');
+      return false;
+    }
+  }
+  
   Color _getPatientAvatarColor(int index) {
     final colors = [
       PatientsTheme.primaryGreen,
