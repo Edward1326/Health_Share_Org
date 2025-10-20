@@ -1182,9 +1182,13 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
           .eq('patient_id', patientId)
           .eq('status', 'active');
 
-      final currentDoctorIds = response
-          .map((assignment) => assignment['doctor_id'].toString())
-          .toSet();
+      // Convert to Set<String> explicitly
+      final Set<String> currentDoctorIds = {};
+      for (var assignment in response) {
+        if (assignment['doctor_id'] != null) {
+          currentDoctorIds.add(assignment['doctor_id'].toString());
+        }
+      }
 
       setState(() {
         _selectedDoctorIds.addAll(currentDoctorIds);
@@ -1193,8 +1197,9 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
       });
 
       print('Loaded ${currentDoctorIds.length} existing assignments for patient $patientId');
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error loading existing assignments: $e');
+      print('Stack trace: $stackTrace');
       setState(() => _isLoadingInitial = false);
     }
   }
