@@ -18,7 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Health Share Org: Secure medical record sharing">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,8 +29,30 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>health_share_org</title>
+  <!-- Manifest -->
   <link rel="manifest" href="manifest.json">
+
+  <!-- ================= Security Headers ================= -->
+
+  <!-- Content Security Policy (CSP) -->
+  <meta http-equiv="Content-Security-Policy" 
+        content="default-src 'self'; 
+                 script-src 'self'; 
+                 style-src 'self' 'unsafe-inline'; 
+                 font-src 'self' https://fonts.gstatic.com; 
+                 connect-src 'self' https://YOUR_SUPABASE_URL; 
+                 img-src 'self' data:;">
+
+  <!-- Anti-clickjacking -->
+  <meta http-equiv="X-Frame-Options" content="SAMEORIGIN">
+
+  <!-- Permissions Policy -->
+  <meta http-equiv="Permissions-Policy" content="geolocation=(), camera=(), microphone=()">
+
+  <!-- Strict Transport Security (HSTS) -->
+  <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload">
+
+  <title>health_share_org</title>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
