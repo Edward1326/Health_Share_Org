@@ -1,11 +1,170 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// Input Formatters and Validators
+class InputFormatters {
+  /// Only allow letters, spaces, hyphens, and apostrophes for names
+  static final nameFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r"[a-zA-ZñÑáéíóúÁÉÍÓÚ\s\-']"),
+  );
+
+  /// Only allow numbers, spaces, parentheses, hyphens, and plus sign for phone
+  static final phoneFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r'[0-9\s\-\(\)\+]'),
+  );
+
+  /// Only allow alphanumeric, spaces, and common punctuation for organization name
+  static final organizationNameFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r"[a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ\s\-'.,&()]"),
+  );
+
+  /// Only allow alphanumeric and hyphens for license
+  static final licenseFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r'[a-zA-Z0-9\-]'),
+  );
+}
+
+class InputValidators {
+  /// Validate name (no numbers, no special characters except hyphen and apostrophe)
+  static String? validateName(String? value, String fieldName) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter $fieldName';
+    }
+    
+    final trimmedValue = value.trim();
+    
+    if (trimmedValue.length < 2) {
+      return '$fieldName must be at least 2 characters';
+    }
+    
+    if (RegExp(r'[0-9]').hasMatch(trimmedValue)) {
+      return '$fieldName cannot contain numbers';
+    }
+    
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]').hasMatch(trimmedValue)) {
+      return '$fieldName cannot contain special characters';
+    }
+    
+    return null;
+  }
+
+  /// Validate Philippine phone number
+  static String? validatePhilippinePhone(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter phone number';
+    }
+
+    // Remove all non-digit characters
+    final cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // Check for Philippine mobile formats
+    // Format 1: 09XXXXXXXXX (11 digits starting with 09)
+    // Format 2: +639XXXXXXXXX (13 characters with +63)
+    // Format 3: 639XXXXXXXXX (12 digits starting with 63)
+    
+    if (cleanNumber.startsWith('+63')) {
+      // +639XXXXXXXXX format
+      if (cleanNumber.length != 13) {
+        return 'Invalid Philippine number format';
+      }
+      if (!RegExp(r'^\+639[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else if (cleanNumber.startsWith('63')) {
+      // 639XXXXXXXXX format
+      if (cleanNumber.length != 12) {
+        return 'Invalid Philippine number format';
+      }
+      if (!RegExp(r'^639[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else if (cleanNumber.startsWith('09')) {
+      // 09XXXXXXXXX format
+      if (cleanNumber.length != 11) {
+        return 'Philippine mobile number must be 11 digits';
+      }
+      if (!RegExp(r'^09[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else {
+      return 'Please enter a valid Philippine mobile number (09XX XXX XXXX)';
+    }
+
+    return null;
+  }
+
+  /// Validate email with strict format
+  static String? validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter email address';
+    }
+
+    final email = value.trim().toLowerCase();
+
+    // Must contain exactly one @
+    if (email.split('@').length != 2) {
+      return 'Email must contain exactly one @';
+    }
+
+    // Basic email regex
+    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email)) {
+      return 'Please enter a valid email address';
+    }
+
+    // Check for consecutive dots
+    if (email.contains('..')) {
+      return 'Email cannot contain consecutive dots';
+    }
+
+    // Check if starts or ends with dot
+    final parts = email.split('@');
+    if (parts[0].startsWith('.') || parts[0].endsWith('.')) {
+      return 'Email username cannot start or end with a dot';
+    }
+
+    return null;
+  }
+
+  /// Validate organization name
+  static String? validateOrganizationName(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter organization name';
+    }
+
+    final trimmedValue = value.trim();
+
+    if (trimmedValue.length < 3) {
+      return 'Organization name must be at least 3 characters';
+    }
+
+    if (trimmedValue.length > 100) {
+      return 'Organization name is too long (max 100 characters)';
+    }
+
+    return null;
+  }
+
+  /// Validate address
+  static String? validateAddress(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter address';
+    }
+
+    final trimmedValue = value.trim();
+
+    if (trimmedValue.length < 10) {
+      return 'Please enter a complete address';
+    }
+
+    return null;
+  }
+}
 
 class SignupService {
   static const int _signupCooldownSeconds = 45;
   static DateTime? _lastSignupAttempt;
 
-  /// Check if cooldown period has passed
   static bool canAttemptSignup() {
     if (_lastSignupAttempt == null) return true;
     
@@ -13,7 +172,6 @@ class SignupService {
     return timeSinceLastAttempt >= _signupCooldownSeconds;
   }
 
-  /// Get remaining cooldown time in seconds
   static int getRemainingCooldown() {
     if (_lastSignupAttempt == null) return 0;
     
@@ -22,12 +180,10 @@ class SignupService {
     return remaining > 0 ? remaining : 0;
   }
 
-  /// Record a signup attempt
   static void recordSignupAttempt() {
     _lastSignupAttempt = DateTime.now();
   }
 
-  /// Validate password strength
   static String? validatePassword(String password) {
     if (password.isEmpty) {
       return 'Please enter a password';
@@ -44,7 +200,7 @@ class SignupService {
     if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
       return 'Password must contain at least one special character';
     }
-    return null; // Password is valid
+    return null;
   }
 }
 
@@ -54,7 +210,6 @@ class OTPService {
   static DateTime? _otpSentTime;
   static String? _pendingEmail;
 
-  /// Check if OTP can be resent
   static bool canResendOTP() {
     if (_otpSentTime == null) return true;
     
@@ -62,7 +217,6 @@ class OTPService {
     return timeSinceLastOTP >= _otpCooldownSeconds;
   }
 
-  /// Get remaining OTP cooldown time
   static int getRemainingOTPCooldownTime() {
     if (_otpSentTime == null) return 0;
     
@@ -71,12 +225,6 @@ class OTPService {
     return remaining > 0 ? remaining : 0;
   }
 
-  /// Validate email format
-  static bool isValidEmail(String email) {
-    return RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$').hasMatch(email);
-  }
-
-  /// Check if email already exists
   static Future<bool> checkEmailExists(String email) async {
     try {
       final response = await _supabase
@@ -91,7 +239,6 @@ class OTPService {
     }
   }
 
-  /// Send OTP to email
   static Future<OTPVerificationResult> sendOTPToEmail(String email) async {
     try {
       if (!canResendOTP()) {
@@ -102,10 +249,11 @@ class OTPService {
         );
       }
 
-      if (!isValidEmail(email)) {
+      final emailValidation = InputValidators.validateEmail(email);
+      if (emailValidation != null) {
         return OTPVerificationResult(
           success: false,
-          errorMessage: 'Please enter a valid email address',
+          errorMessage: emailValidation,
         );
       }
 
@@ -155,7 +303,6 @@ class OTPService {
     }
   }
 
-  /// Verify OTP code
   static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
     try {
       if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
@@ -229,7 +376,6 @@ class CreateOrganizationPage extends StatefulWidget {
 }
 
 class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
-  // Theme colors - Green medical theme
   static const Color primaryGreen = Color(0xFF6B8E5A);
   static const Color lightGreen = Color(0xFFF5F8F3);
   static const Color darkText = Color(0xFF2C3E50);
@@ -275,13 +421,9 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
   }
 
   Future<void> _sendOTP() async {
-    if (_adminEmailController.text.trim().isEmpty) {
-      _showErrorSnackBar('Please enter admin email first');
-      return;
-    }
-
-    if (!OTPService.isValidEmail(_adminEmailController.text.trim())) {
-      _showErrorSnackBar('Please enter a valid email address');
+    final emailValidation = InputValidators.validateEmail(_adminEmailController.text);
+    if (emailValidation != null) {
+      _showErrorSnackBar(emailValidation);
       return;
     }
 
@@ -308,6 +450,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
   Future<void> _verifyOTP() async {
     if (_otpController.text.trim().isEmpty) {
       _showErrorSnackBar('Please enter the verification code');
+      return;
+    }
+
+    if (_otpController.text.trim().length != 6) {
+      _showErrorSnackBar('Verification code must be 6 digits');
       return;
     }
 
@@ -342,7 +489,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       return;
     }
 
-    // Check rate limiting using SignupService
     if (!SignupService.canAttemptSignup()) {
       final remainingTime = SignupService.getRemainingCooldown();
       _showErrorSnackBar(
@@ -359,13 +505,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
     try {
       final currentTime = DateTime.now().toIso8601String();
 
-      // Get the current authenticated user (from OTP verification)
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         throw Exception('Authentication session expired. Please verify email again.');
       }
 
-      // Set the password for the authenticated user
       print('Setting password for admin user...');
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: _adminPasswordController.text),
@@ -374,7 +518,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       final authUserId = currentUser.id;
       print('Auth user ID: $authUserId');
 
-      // Step 1: Create the Organization
       print('Creating Organization...');
       final organizationResponse = await Supabase.instance.client
           .from('Organization')
@@ -383,7 +526,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
             'organization_license':
                 _organizationLicenseController.text.trim().isEmpty
                     ? null
-                    : _organizationLicenseController.text.trim(),
+                    : _organizationLicenseController.text.trim().toUpperCase(),
             'created_at': currentTime,
           })
           .select()
@@ -392,7 +535,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       final organizationUuid = organizationResponse['id'];
       print('Organization created with ID: $organizationUuid');
 
-      // Step 2: Create Person record for admin
       print('Creating Person record for admin...');
       final personResponse = await Supabase.instance.client
           .from('Person')
@@ -413,14 +555,13 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       final personUuid = personResponse['id'];
       print('Person created with UUID: $personUuid');
 
-      // Step 3: Create User record for admin
       print('Creating User record for admin...');
       final userResponse = await Supabase.instance.client
           .from('User')
           .insert({
             'person_id': personUuid,
             'created_at': currentTime,
-            'email': _adminEmailController.text.trim(),
+            'email': _adminEmailController.text.trim().toLowerCase(),
           })
           .select()
           .single();
@@ -428,7 +569,6 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       final userUuid = userResponse['id'];
       print('User created with numeric ID: $userUuid');
 
-      // Step 4: Create Organization_User record with admin position
       print('Creating Organization_User record for admin...');
       await Supabase.instance.client.from('Organization_User').insert({
         'position': 'Administrator',
@@ -443,12 +583,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       _showSuccessSnackBar(
           'Organization "${_organizationNameController.text.trim()}" created successfully!');
 
-      // Navigate back or to a success page
       if (mounted) {
         Navigator.pop(context, {
           'organization_id': organizationUuid,
           'organization_name': _organizationNameController.text.trim(),
-          'admin_email': _adminEmailController.text.trim(),
+          'admin_email': _adminEmailController.text.trim().toLowerCase(),
         });
       }
     } catch (e) {
@@ -541,7 +680,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header with illustration
+                // Header
                 Container(
                   padding: const EdgeInsets.all(32),
                   margin: const EdgeInsets.only(bottom: 24),
@@ -607,6 +746,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                 _buildInputField(
                   child: TextFormField(
                     controller: _organizationNameController,
+                    inputFormatters: [InputFormatters.organizationNameFormatter],
                     style: const TextStyle(color: darkText, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Organization Name',
@@ -615,9 +755,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                     ),
-                    validator: (value) => value?.trim().isEmpty ?? true
-                        ? 'Please enter organization name'
-                        : null,
+                    validator: InputValidators.validateOrganizationName,
                   ),
                   icon: Icons.business_rounded,
                 ),
@@ -626,6 +764,10 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                 _buildInputField(
                   child: TextFormField(
                     controller: _organizationLicenseController,
+                    inputFormatters: [
+                      InputFormatters.licenseFormatter,
+                      LengthLimitingTextInputFormatter(50),
+                    ],
                     style: const TextStyle(color: darkText, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Organization License (Optional)',
@@ -660,6 +802,10 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                           controller: _adminEmailController,
                           keyboardType: TextInputType.emailAddress,
                           enabled: !_otpVerified,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                            LengthLimitingTextInputFormatter(100),
+                          ],
                           style: TextStyle(
                             color: _otpVerified ? textGray : darkText,
                             fontSize: 14,
@@ -674,16 +820,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                                 ? Icon(Icons.check_circle, color: primaryGreen, size: 20)
                                 : null,
                           ),
-                          validator: (value) {
-                            if (value?.trim().isEmpty ?? true) {
-                              return 'Please enter admin email';
-                            }
-                            if (!RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$')
-                                .hasMatch(value!)) {
-                              return 'Please enter a valid email address';
-                            }
-                            return null;
-                          },
+                          validator: InputValidators.validateEmail,
                         ),
                       ),
                       if (!_otpVerified)
@@ -718,7 +855,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                   icon: Icons.email_rounded,
                 ),
 
-                // OTP Input Field (shown after OTP is sent)
+                // OTP Input Field
                 if (_otpSent && !_otpVerified)
                   Padding(
                     padding: const EdgeInsets.only(top: 0),
@@ -728,6 +865,10 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                           child: TextFormField(
                             controller: _otpController,
                             keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(6),
+                            ],
                             style: const TextStyle(color: darkText, fontSize: 14),
                             decoration: InputDecoration(
                               hintText: 'Enter 6-digit verification code',
@@ -781,6 +922,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                   _buildInputField(
                     child: TextFormField(
                       controller: _adminFirstNameController,
+                      inputFormatters: [
+                        InputFormatters.nameFormatter,
+                        LengthLimitingTextInputFormatter(50),
+                      ],
+                      textCapitalization: TextCapitalization.words,
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin First Name',
@@ -789,9 +935,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) => value?.trim().isEmpty ?? true
-                          ? 'Please enter admin first name'
-                          : null,
+                      validator: (value) => InputValidators.validateName(value, 'First name'),
                     ),
                     icon: Icons.person_rounded,
                   ),
@@ -800,6 +944,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                   _buildInputField(
                     child: TextFormField(
                       controller: _adminMiddleNameController,
+                      inputFormatters: [
+                        InputFormatters.nameFormatter,
+                        LengthLimitingTextInputFormatter(50),
+                      ],
+                      textCapitalization: TextCapitalization.words,
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Middle Name (Optional)',
@@ -816,6 +965,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                   _buildInputField(
                     child: TextFormField(
                       controller: _adminLastNameController,
+                      inputFormatters: [
+                        InputFormatters.nameFormatter,
+                        LengthLimitingTextInputFormatter(50),
+                      ],
+                      textCapitalization: TextCapitalization.words,
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Last Name',
@@ -824,9 +978,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) => value?.trim().isEmpty ?? true
-                          ? 'Please enter admin last name'
-                          : null,
+                      validator: (value) => InputValidators.validateName(value, 'Last name'),
                     ),
                     icon: Icons.person_rounded,
                   ),
@@ -836,26 +988,19 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                     child: TextFormField(
                       controller: _adminContactNumberController,
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        InputFormatters.phoneFormatter,
+                        LengthLimitingTextInputFormatter(15),
+                      ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'Admin Phone Number',
+                        hintText: 'Admin Phone Number (09XX XXX XXXX)',
                         hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) {
-                        if (value?.trim().isEmpty ?? true) {
-                          return 'Please enter admin contact number';
-                        }
-                        final cleanNumber =
-                            value!.replaceAll(RegExp(r'[\s\-\(\)]'), '');
-                        if (!RegExp(r'^[\+]?[0-9]{10,15}$')
-                            .hasMatch(cleanNumber)) {
-                          return 'Please enter a valid contact number';
-                        }
-                        return null;
-                      },
+                      validator: InputValidators.validatePhilippinePhone,
                     ),
                     icon: Icons.phone_rounded,
                   ),
@@ -865,6 +1010,10 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                     child: TextFormField(
                       controller: _adminAddressController,
                       maxLines: 2,
+                      textCapitalization: TextCapitalization.words,
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(200),
+                      ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Address',
@@ -873,9 +1022,7 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) => value?.trim().isEmpty ?? true
-                          ? 'Please enter admin address'
-                          : null,
+                      validator: InputValidators.validateAddress,
                     ),
                     icon: Icons.location_on_rounded,
                   ),
@@ -885,6 +1032,10 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                     child: TextFormField(
                       controller: _adminPasswordController,
                       obscureText: _obscurePassword,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                        LengthLimitingTextInputFormatter(100),
+                      ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Password',
@@ -910,11 +1061,28 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                     icon: Icons.lock_rounded,
                   ),
 
+                  // Password requirements hint
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, bottom: 14),
+                    child: Text(
+                      'Password must contain:\n• At least 8 characters\n• One uppercase letter\n• One number\n• One special character',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: textGray,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+
                   // Confirm Admin Password
                   _buildInputField(
                     child: TextFormField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                        LengthLimitingTextInputFormatter(100),
+                      ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Confirm Admin Password',

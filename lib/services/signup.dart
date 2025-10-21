@@ -1,5 +1,127 @@
 import 'package:flutter/material.dart';
-import 'package:health_share_org/services/signup_service.dart'; 
+import 'package:flutter/services.dart';
+import 'package:health_share_org/services/signup_service.dart';
+
+// Add these input formatters and validators
+class InputFormatters {
+  /// Only allow letters, spaces, hyphens, and apostrophes for names
+  static final nameFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r"[a-zA-ZñÑáéíóúÁÉÍÓÚ\s\-']"),
+  );
+
+  /// Only allow numbers, spaces, parentheses, hyphens, and plus sign for phone
+  static final phoneFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r'[0-9\s\-\(\)\+]'),
+  );
+}
+
+class InputValidators {
+  /// Validate name (no numbers, no special characters except hyphen and apostrophe)
+  static String? validateName(String? value, String fieldName) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter $fieldName';
+    }
+    
+    final trimmedValue = value.trim();
+    
+    if (trimmedValue.length < 2) {
+      return '$fieldName must be at least 2 characters';
+    }
+    
+    if (RegExp(r'[0-9]').hasMatch(trimmedValue)) {
+      return '$fieldName cannot contain numbers';
+    }
+    
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]').hasMatch(trimmedValue)) {
+      return '$fieldName cannot contain special characters';
+    }
+    
+    return null;
+  }
+
+  /// Validate Philippine phone number
+  static String? validatePhilippinePhone(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter phone number';
+    }
+
+    // Remove all non-digit characters
+    final cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // Check for Philippine mobile formats
+    if (cleanNumber.startsWith('+63')) {
+      if (cleanNumber.length != 13) {
+        return 'Invalid Philippine number format';
+      }
+      if (!RegExp(r'^\+639[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else if (cleanNumber.startsWith('63')) {
+      if (cleanNumber.length != 12) {
+        return 'Invalid Philippine number format';
+      }
+      if (!RegExp(r'^639[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else if (cleanNumber.startsWith('09')) {
+      if (cleanNumber.length != 11) {
+        return 'Philippine mobile number must be 11 digits';
+      }
+      if (!RegExp(r'^09[0-9]{9}$').hasMatch(cleanNumber)) {
+        return 'Invalid Philippine mobile number';
+      }
+    } else {
+      return 'Please enter a valid Philippine mobile number (09XX XXX XXXX)';
+    }
+
+    return null;
+  }
+
+  /// Validate address
+  static String? validateAddress(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter address';
+    }
+
+    final trimmedValue = value.trim();
+
+    if (trimmedValue.length < 10) {
+      return 'Please enter a complete address';
+    }
+
+    return null;
+  }
+
+  /// Validate position/job title
+  static String? validatePosition(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your position';
+    }
+
+    final trimmedValue = value.trim();
+
+    if (trimmedValue.length < 2) {
+      return 'Position must be at least 2 characters';
+    }
+
+    return null;
+  }
+
+  /// Validate department
+  static String? validateDepartment(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your department';
+    }
+
+    final trimmedValue = value.trim();
+
+    if (trimmedValue.length < 2) {
+      return 'Department must be at least 2 characters';
+    }
+
+    return null;
+  }
+}
 
 class SignupTheme {
   static const Color primaryGreen = Color(0xFF4A8B3A);
@@ -41,6 +163,10 @@ class _SignupPageState extends State<SignupPage> {
   bool _isVerifyingOTP = false;
   bool _isSendingOTP = false;
   bool _showOTPField = false;
+  
+  // Password visibility
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -132,13 +258,18 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
+    if (otp.length != 6) {
+      _showErrorSnackBar('Verification code must be 6 digits');
+      return;
+    }
+
     if (password.isEmpty) {
       _showErrorSnackBar('Please enter a password first');
       return;
     }
 
     if (!SignupService.isValidPassword(password)) {
-      _showErrorSnackBar('Password must be 8+ chars with uppercase, lowercase, and numbers');
+      _showErrorSnackBar('Password must be 8+ chars with uppercase, lowercase, number, and symbol');
       return;
     }
 
@@ -171,7 +302,6 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
-  // THIS IS THE MISSING _signup METHOD
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) {
       _showErrorSnackBar('Please fill in all required fields correctly');
@@ -197,7 +327,7 @@ class _SignupPageState extends State<SignupPage> {
     try {
       final result = await SignupService.signup(
         email: _emailController.text.trim(),
-        password: _passwordController.text, // Not used for setting, just validation
+        password: _passwordController.text,
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
         middleName: _middleNameController.text.trim(),
@@ -214,7 +344,6 @@ class _SignupPageState extends State<SignupPage> {
       if (result.success) {
         _showSuccessSnackBar(result.message ?? 'Account created successfully!');
         
-        // Navigate to login after short delay
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) {
           Navigator.pop(context);
@@ -414,6 +543,10 @@ class _SignupPageState extends State<SignupPage> {
                                       controller: _emailController,
                                       keyboardType: TextInputType.emailAddress,
                                       enabled: !_isEmailVerified,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                                        LengthLimitingTextInputFormatter(100),
+                                      ],
                                       decoration: InputDecoration(
                                         hintText: 'Enter your email',
                                         border: OutlineInputBorder(
@@ -456,7 +589,7 @@ class _SignupPageState extends State<SignupPage> {
                                                       Colors.white),
                                             ),
                                           )
-                                        : const Text('Send Code'),
+                                        : Text(_showOTPField ? 'Resend' : 'Send Code'),
                                   ),
                                 ],
                               ),
@@ -468,6 +601,10 @@ class _SignupPageState extends State<SignupPage> {
                                       child: TextFormField(
                                         controller: _otpController,
                                         keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.digitsOnly,
+                                          LengthLimitingTextInputFormatter(6),
+                                        ],
                                         decoration: InputDecoration(
                                           hintText: 'Enter 6-digit code',
                                           border: OutlineInputBorder(
@@ -544,19 +681,22 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.business,
                       ),
 
-                      // Name fields
+                      // Name fields with validation
                       _buildInputField(
                         child: TextFormField(
                           controller: _firstNameController,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            InputFormatters.nameFormatter,
+                            LengthLimitingTextInputFormatter(50),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'First Name',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => value?.trim().isEmpty ?? true
-                              ? 'Please enter your first name'
-                              : null,
+                          validator: (value) => InputValidators.validateName(value, 'First name'),
                         ),
                         icon: Icons.person,
                       ),
@@ -564,6 +704,11 @@ class _SignupPageState extends State<SignupPage> {
                       _buildInputField(
                         child: TextFormField(
                           controller: _middleNameController,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            InputFormatters.nameFormatter,
+                            LengthLimitingTextInputFormatter(50),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'Middle Name (Optional)',
                             border: InputBorder.none,
@@ -577,39 +722,38 @@ class _SignupPageState extends State<SignupPage> {
                       _buildInputField(
                         child: TextFormField(
                           controller: _lastNameController,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            InputFormatters.nameFormatter,
+                            LengthLimitingTextInputFormatter(50),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'Last Name',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => value?.trim().isEmpty ?? true
-                              ? 'Please enter your last name'
-                              : null,
+                          validator: (value) => InputValidators.validateName(value, 'Last name'),
                         ),
                         icon: Icons.person,
                       ),
 
-                      // Contact info
+                      // Contact info with validation
                       _buildInputField(
                         child: TextFormField(
                           controller: _contactNumberController,
                           keyboardType: TextInputType.phone,
+                          inputFormatters: [
+                            InputFormatters.phoneFormatter,
+                            LengthLimitingTextInputFormatter(15),
+                          ],
                           decoration: const InputDecoration(
-                            hintText: 'Phone Number',
+                            hintText: 'Phone Number (09XX XXX XXXX)',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) {
-                            if (value?.trim().isEmpty ?? true) {
-                              return 'Please enter your contact number';
-                            }
-                            if (!SignupService.isValidPhoneNumber(value!)) {
-                              return 'Please enter a valid contact number';
-                            }
-                            return null;
-                          },
+                          validator: InputValidators.validatePhilippinePhone,
                         ),
                         icon: Icons.phone,
                       ),
@@ -618,15 +762,17 @@ class _SignupPageState extends State<SignupPage> {
                         child: TextFormField(
                           controller: _addressController,
                           maxLines: 2,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(200),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'Address',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => value?.trim().isEmpty ?? true
-                              ? 'Please enter your address'
-                              : null,
+                          validator: InputValidators.validateAddress,
                         ),
                         icon: Icons.location_on,
                       ),
@@ -634,15 +780,17 @@ class _SignupPageState extends State<SignupPage> {
                       _buildInputField(
                         child: TextFormField(
                           controller: _positionController,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(100),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'Position/Job Title',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => value?.trim().isEmpty ?? true
-                              ? 'Please enter your position'
-                              : null,
+                          validator: InputValidators.validatePosition,
                         ),
                         icon: Icons.work,
                       ),
@@ -650,36 +798,54 @@ class _SignupPageState extends State<SignupPage> {
                       _buildInputField(
                         child: TextFormField(
                           controller: _departmentController,
+                          textCapitalization: TextCapitalization.words,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(100),
+                          ],
                           decoration: const InputDecoration(
                             hintText: 'Department',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => value?.trim().isEmpty ?? true
-                              ? 'Please enter your department'
-                              : null,
+                          validator: InputValidators.validateDepartment,
                         ),
                         icon: Icons.group_work,
                       ),
 
-                      // Password fields
+                      // Password fields with visibility toggle
                       _buildInputField(
                         child: TextFormField(
                           controller: _passwordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
+                          obscureText: _obscurePassword,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                            LengthLimitingTextInputFormatter(100),
+                          ],
+                          decoration: InputDecoration(
                             hintText: 'Password',
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                color: SignupTheme.textGray,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                            ),
                           ),
                           validator: (value) {
                             if (value?.isEmpty ?? true) {
                               return 'Please enter a password';
                             }
                             if (!SignupService.isValidPassword(value!)) {
-                              return 'Password must be 8+ chars with uppercase, lowercase, and numbers';
+                              return 'Password must be 8+ chars with uppercase, lowercase, number, and symbol';
                             }
                             return null;
                           },
@@ -687,15 +853,44 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.lock,
                       ),
 
+                      // Password requirements hint
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 14),
+                        child: Text(
+                          'Password must contain:\n• At least 8 characters\n• One uppercase letter\n• One lowercase letter\n• One number\n• One special character (!@#\$%^&*)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: SignupTheme.textGray,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+
                       _buildInputField(
                         child: TextFormField(
                           controller: _confirmPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
+                          obscureText: _obscureConfirmPassword,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                            LengthLimitingTextInputFormatter(100),
+                          ],
+                          decoration: InputDecoration(
                             hintText: 'Confirm Password',
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                                color: SignupTheme.textGray,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                });
+                              },
+                            ),
                           ),
                           validator: (value) {
                             if (value?.isEmpty ?? true) {

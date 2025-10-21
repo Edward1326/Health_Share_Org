@@ -586,7 +586,7 @@ class SignupService {
 
   static bool isValidPassword(String password) {
     return password.length >= 8 &&
-           RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password);
+           RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])').hasMatch(password);
   }
 
   static bool isValidPhoneNumber(String phone) {
