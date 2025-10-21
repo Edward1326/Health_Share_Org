@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:health_share_org/functions/admin/admin_patientslist.dart';
-import 'admin_dashboard.dart'; // Import your main layout
+import 'admin_dashboard.dart';
 
-// Clean, modular Patient Content Widget - just the content part
 class PatientContentWidget extends StatefulWidget {
   const PatientContentWidget({Key? key}) : super(key: key);
 
@@ -12,7 +11,6 @@ class PatientContentWidget extends StatefulWidget {
 
 class _PatientContentWidgetState extends State<PatientContentWidget>
     with TickerProviderStateMixin {
-  // Controllers and data
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   
@@ -21,13 +19,11 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
   List<Map<String, dynamic>> _filteredUsers = [];
   List<Map<String, dynamic>> _doctors = [];
   
-  // UI state
   String _searchQuery = '';
   String _selectedFilter = 'all';
   bool _isLoading = true;
   String? _errorMessage;
 
-  // Use DashboardTheme colors
   static const primaryGreen = DashboardTheme.primaryGreen;
   static const textGray = DashboardTheme.textGray;
   static const approvedGreen = DashboardTheme.approvedGreen;
@@ -63,6 +59,25 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
       final doctors = await _functions.loadDoctorsFromSupabase();
       await _functions.loadAssignmentsFromDatabase(users);
 
+      // Load profile images for each user
+      for (var user in users) {
+        try {
+          if (user['userId'] != null) {
+            final personResponse = await _functions.supabase
+                .from('User')
+                .select('Person!inner(image)')
+                .eq('id', user['userId'])
+                .single();
+            
+            if (personResponse['Person'] != null) {
+              user['image'] = personResponse['Person']['image'];
+            }
+          }
+        } catch (e) {
+          print('Error loading image for user ${user['id']}: $e');
+        }
+      }
+
       setState(() {
         _users = users;
         _doctors = doctors;
@@ -79,7 +94,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
   void _applyFilters() {
     List<Map<String, dynamic>> filtered = List.from(_users);
 
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((user) {
         final email = user['email']?.toString().toLowerCase() ?? '';
@@ -89,7 +103,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
       }).toList();
     }
 
-    // Apply status filter
     switch (_selectedFilter) {
       case 'invited':
         filtered = filtered.where((user) => user['status'] == 'invited').toList();
@@ -171,7 +184,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with search and filters
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -188,11 +200,9 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                       side: const BorderSide(color: primaryGreen),
                     ),
                   ),
-                     const SizedBox(width: 12),
+                  const SizedBox(width: 12),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      _showInviteDialog();
-                    },
+                    onPressed: _showInviteDialog,
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Invite Patient'),
                     style: ElevatedButton.styleFrom(
@@ -200,9 +210,7 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ],
@@ -212,7 +220,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
           
           const SizedBox(height: 24),
           
-          // Search and filter row
           Row(
             children: [
               Expanded(
@@ -260,7 +267,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
           
           const SizedBox(height: 24),
           
-          // Error message
           if (_errorMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
@@ -281,7 +287,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             const SizedBox(height: 16),
           ],
           
-          // Content
           if (_isLoading)
             Container(
               height: 400,
@@ -320,14 +325,13 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Center(
+      child: const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.people_outline, size: 80, color: Colors.grey),
-            const SizedBox(height: 24),
-            const Text('No patients found', style: TextStyle(fontSize: 18)),
-            const SizedBox(height: 12),
+            Icon(Icons.people_outline, size: 80, color: Colors.grey),
+            SizedBox(height: 24),
+            Text('No patients found', style: TextStyle(fontSize: 18)),
           ],
         ),
       ),
@@ -372,7 +376,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
       ),
       child: Column(
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -390,7 +393,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             ),
           ),
           
-          // Rows
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -413,19 +415,11 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                       ),
                       child: Row(
                         children: [
-                          // Patient info
                           Expanded(
                             flex: 2,
                             child: Row(
                               children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: _getStatusColor(user['status']),
-                                  child: Text(
-                                    user['name']?.isNotEmpty == true ? user['name'][0] : 'P',
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
+                                _buildPatientAvatar(user),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -440,7 +434,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                             ),
                           ),
                           
-                          // Status
                           Expanded(
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -460,7 +453,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                             ),
                           ),
                           
-                          // Doctor
                           Expanded(
                             child: Text(
                               user['assignedDoctor'] ?? 'Unassigned',
@@ -471,7 +463,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                             ),
                           ),
                           
-                          // Last Visit
                           Expanded(
                             child: Text(
                               user['lastVisit'] ?? 'Never',
@@ -479,7 +470,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                             ),
                           ),
                           
-                          // Actions
                           SizedBox(
                             width: 40,
                             child: PopupMenuButton(
@@ -570,6 +560,78 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
     }
   }
 
+  Widget _buildPatientAvatar(Map<String, dynamic> user, {double radius = 16}) {
+    final imageUrl = user['image'] as String?;
+    final name = user['name'] ?? 'Patient';
+    
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: _getStatusColor(user['status']),
+        child: ClipOval(
+          child: Image.network(
+            imageUrl,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: radius * 2,
+                height: radius * 2,
+                color: _getStatusColor(user['status']),
+                child: Center(
+                  child: Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : 'P',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: radius * 0.75,
+                    ),
+                  ),
+                ),
+              );
+            },
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: radius * 2,
+                height: radius * 2,
+                color: _getStatusColor(user['status']),
+                child: Center(
+                  child: SizedBox(
+                    width: radius,
+                    height: radius,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: _getStatusColor(user['status']),
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'P',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: radius * 0.75,
+          ),
+        ),
+      );
+    }
+  }
+
   void _showInviteDialog() {
     showDialog(
       context: context,
@@ -600,7 +662,7 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
   }
 }
 
-// Simple dialogs
+// Invite Dialog
 class _InvitePatientDialog extends StatefulWidget {
   final AdminPatientListFunctions functions;
   final VoidCallback onPatientInvited;
@@ -691,9 +753,7 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
             Expanded(
               child: _isSearching
                 ? const Center(
-                    child: CircularProgressIndicator(
-                      color: DashboardTheme.primaryGreen,
-                    ),
+                    child: CircularProgressIndicator(color: DashboardTheme.primaryGreen),
                   )
                 : _searchResults.isEmpty
                   ? const Center(
@@ -813,9 +873,7 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
   }
 }
 
-// Replace the entire _PatientDetailsDialog class in your admin_patients_list.dart file
-// Find it around line 850 and replace it with this:
-
+// Patient Details Dialog
 class _PatientDetailsDialog extends StatefulWidget {
   final Map<String, dynamic> user;
   
@@ -836,6 +894,8 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
     _loadAssignedDoctors();
   }
 
+ // CONTINUATION - Patient Details Dialog State
+
   Future<void> _loadAssignedDoctors() async {
     try {
       String patientId = widget.user['patientId']?.toString() ?? 
@@ -846,7 +906,6 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
         return;
       }
 
-      // Get all active assignments for this patient
       final assignments = await _functions.supabase
           .from('Doctor_User_Assignment')
           .select('doctor_id')
@@ -858,13 +917,11 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
         return;
       }
 
-      // Get doctor IDs
       final Set<String> doctorIds = assignments
           .map((a) => a['doctor_id'].toString())
           .toSet()
           .cast<String>();
 
-      // Fetch doctor details
       final doctorResponse = await _functions.supabase
           .from('Organization_User')
           .select('''
@@ -916,17 +973,7 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
       backgroundColor: const Color(0xFFF8F9FA),
       title: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: DashboardTheme.primaryGreen,
-            child: Text(
-              widget.user['name']?[0] ?? 'P',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          _buildPatientAvatarForDialog(widget.user),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -955,7 +1002,6 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
               const Divider(),
               const SizedBox(height: 8),
               
-              // Assigned Doctors Section
               Row(
                 children: [
                   const Icon(
@@ -1106,6 +1152,54 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
     );
   }
 
+  Widget _buildPatientAvatarForDialog(Map<String, dynamic> user) {
+    final imageUrl = user['image'] as String?;
+    final name = user['name'] ?? 'Patient';
+    
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: DashboardTheme.primaryGreen,
+        child: ClipOval(
+          child: Image.network(
+            imageUrl,
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 40,
+                height: 40,
+                color: DashboardTheme.primaryGreen,
+                child: Center(
+                  child: Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : 'P',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: DashboardTheme.primaryGreen,
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'P',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _buildDetailRow(String label, String? value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1134,8 +1228,7 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
   }
 }
 
-// Replace the _DoctorAssignmentDialog class with this updated version
-
+// Doctor Assignment Dialog
 class _DoctorAssignmentDialog extends StatefulWidget {
   final Map<String, dynamic> user;
   final List<Map<String, dynamic>> doctors;
@@ -1175,14 +1268,12 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
         return;
       }
 
-      // Load all current assignments for this patient
       final response = await widget.functions.supabase
           .from('Doctor_User_Assignment')
           .select('doctor_id')
           .eq('patient_id', patientId)
           .eq('status', 'active');
 
-      // Convert to Set<String> explicitly
       final Set<String> currentDoctorIds = {};
       for (var assignment in response) {
         if (assignment['doctor_id'] != null) {
@@ -1254,7 +1345,6 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Patient info card
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1303,7 +1393,6 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                   
                   const SizedBox(height: 16),
                   
-                  // Selected count
                   if (_selectedDoctorIds.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1334,7 +1423,6 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                   
                   const SizedBox(height: 16),
                   
-                  // Search field
                   TextField(
                     decoration: InputDecoration(
                       hintText: 'Search doctors...',
@@ -1365,7 +1453,6 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                   
                   const SizedBox(height: 16),
                   
-                  // Doctor list
                   Expanded(
                     child: widget.doctors.isEmpty
                         ? const Center(
@@ -1500,14 +1587,12 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                       throw Exception('No valid patient ID found');
                     }
                     
-                    // Determine which doctors to add and which to remove
                     final doctorsToAdd = _selectedDoctorIds.difference(_initialDoctorIds);
                     final doctorsToRemove = _initialDoctorIds.difference(_selectedDoctorIds);
                     
                     print('Doctors to add: $doctorsToAdd');
                     print('Doctors to remove: $doctorsToRemove');
                     
-                    // Add new assignments
                     for (final doctorId in doctorsToAdd) {
                       await widget.functions.saveAssignmentToDatabase(
                         patientId,
@@ -1515,7 +1600,6 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                       );
                     }
                     
-                    // Remove unselected assignments
                     for (final doctorId in doctorsToRemove) {
                       await widget.functions.supabase
                           .from('Doctor_User_Assignment')
@@ -1531,9 +1615,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                            'Successfully updated doctor assignments!',
-                          ),
+                          content: const Text('Successfully updated doctor assignments!'),
                           backgroundColor: DashboardTheme.approvedGreen,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(
@@ -1581,9 +1663,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                   children: [
                     const Icon(Icons.check, size: 18),
                     const SizedBox(width: 8),
-                    Text(
-                      'Update Assignments',
-                    ),
+                    const Text('Update Assignments'),
                   ],
                 ),
         ),
@@ -1592,7 +1672,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
   }
 }
 
-// Updated Patients List Page - super clean now
+// Main Page Wrapper
 class AdminPatientsListPage extends StatelessWidget {
   const AdminPatientsListPage({Key? key}) : super(key: key);
 
@@ -1602,7 +1682,6 @@ class AdminPatientsListPage extends StatelessWidget {
     final isSmallScreen = screenSize.width < 800;
 
     if (isSmallScreen) {
-      // Mobile - simple fallback
       return Scaffold(
         appBar: AppBar(
           title: const Text('Patients'),
@@ -1613,7 +1692,6 @@ class AdminPatientsListPage extends StatelessWidget {
       );
     }
 
-    // Desktop - use modular layout
     return const MainDashboardLayout(
       title: 'Patient Management',
       selectedNavIndex: 2,
