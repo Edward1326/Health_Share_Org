@@ -147,9 +147,6 @@ class AdminPatientListFunctions {
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
             'image': person['image'], // Add profile image
-            'lastVisit': patient['created_at'] != null
-                ? DateTime.parse(patient['created_at']).toString().split(' ')[0]
-                : '2024-01-01',
             'status': patient['status'] ?? 'pending',
             'assignedDoctor': null,
             'assignedDoctorId': null,

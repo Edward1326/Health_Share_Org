@@ -246,21 +246,38 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                 ),
               ),
               const SizedBox(width: 16),
-              DropdownButton<String>(
-                value: _selectedFilter,
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('All')),
-                  DropdownMenuItem(value: 'pending', child: Text('Pending')),
-                  DropdownMenuItem(value: 'assigned', child: Text('Assigned')),
-                  DropdownMenuItem(value: 'unassigned', child: Text('Unassigned')),
-                  DropdownMenuItem(value: 'invited', child: Text('Invited')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() { _selectedFilter = value; });
-                    _applyFilters();
-                  }
-                },
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: DropdownButton<String>(
+                  value: _selectedFilter,
+                  underline: const SizedBox(),
+                  icon: const Icon(Icons.keyboard_arrow_down, color: textGray),
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  dropdownColor: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All')),
+                    DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                    DropdownMenuItem(value: 'assigned', child: Text('Assigned')),
+                    DropdownMenuItem(value: 'unassigned', child: Text('Unassigned')),
+                    DropdownMenuItem(value: 'invited', child: Text('Invited')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() { _selectedFilter = value; });
+                      _applyFilters();
+                    }
+                  },
+                ),
               ),
             ],
           ),
@@ -385,9 +402,8 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             child: const Row(
               children: [
                 Expanded(flex: 2, child: Text('Patient', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
                 Expanded(child: Text('Doctor', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Last Visit', style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 40),
               ],
             ),
@@ -435,20 +451,22 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                           ),
                           
                           Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(user['status']).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                user['status'] ?? 'Unknown',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _getStatusColor(user['status']),
-                                  fontWeight: FontWeight.w500,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _getStatusColor(user['status']).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                textAlign: TextAlign.center,
+                                child: Text(
+                                  user['status'] ?? 'Unknown',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _getStatusColor(user['status']),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
                           ),
@@ -460,13 +478,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                                 fontSize: 14,
                                 color: user['assignedDoctor'] != null ? Colors.black : textGray,
                               ),
-                            ),
-                          ),
-                          
-                          Expanded(
-                            child: Text(
-                              user['lastVisit'] ?? 'Never',
-                              style: const TextStyle(fontSize: 14),
                             ),
                           ),
                           
@@ -894,8 +905,6 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
     _loadAssignedDoctors();
   }
 
- // CONTINUATION - Patient Details Dialog State
-
   Future<void> _loadAssignedDoctors() async {
     try {
       String patientId = widget.user['patientId']?.toString() ?? 
@@ -996,7 +1005,6 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
               _buildDetailRow('Email', widget.user['email']),
               _buildDetailRow('Phone', widget.user['phone']),
               _buildDetailRow('Status', widget.user['status']),
-              _buildDetailRow('Last Visit', widget.user['lastVisit']),
               
               const SizedBox(height: 16),
               const Divider(),

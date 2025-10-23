@@ -242,15 +242,23 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   String _formatDateTime(String? dateTimeString) {
-    if (dateTimeString == null) return 'Not available';
-
-    try {
-      final dateTime = DateTime.parse(dateTimeString);
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-    } catch (e) {
-      return 'Invalid date';
-    }
+  if (dateTimeString == null) return 'Not available';
+  try {
+    final dateTime = DateTime.parse(dateTimeString);
+    
+    // Format with date and time
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final year = dateTime.year;
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    
+    return '$day/$month/$year $hour:$minute';
+  
+  } catch (e) {
+    return 'Invalid date';
   }
+}
 
   String _getFullName() {
     if (adminData == null) return 'Unknown Admin';

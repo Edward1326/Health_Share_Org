@@ -280,20 +280,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _showSnackBar('Add patient feature coming soon!'),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Patient'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: PatientsTheme.primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
+                  
                 ],
               ),
             ],
