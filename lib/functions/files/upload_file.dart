@@ -635,7 +635,7 @@ class FileUploadService {
 
       print('RSA-OAEP encryption completed for both patient and doctor');
 
-      // Step 12: Upload encrypted file to IPFS
+      
       print('Step 11: Uploading encrypted file to IPFS...');
 
       final url = Uri.parse('https://api.pinata.cloud/pinning/pinFileToIPFS');
