@@ -72,44 +72,151 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
   }
 
   Future<void> _signOut() async {
-    try {
-      final shouldSignOut = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text('Sign Out'),
-          content: const Text('Are you sure you want to sign out?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel', style: TextStyle(color: StaffDashboardTheme.textGray)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  try {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: const Color(0xFFF8F9FA),
+        contentPadding: EdgeInsets.zero,
+        content: Container(
+          width: 320,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon header with gradient background
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.red.shade400,
+                      Colors.red.shade600,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: const Text('Sign Out'),
-            ),
-          ],
+              
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: StaffDashboardTheme.darkGray,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Are you sure you want to sign out?\nYou will need to log in again to access your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: StaffDashboardTheme.textGray,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: StaffDashboardTheme.textGray,
+                              side: BorderSide(color: Colors.grey.shade300),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade500,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Sign Out',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      );
+      ),
+    );
 
-      if (shouldSignOut == true) {
-        await Supabase.instance.client.auth.signOut();
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.clear();
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
-        }
+    if (shouldSignOut == true) {
+      await Supabase.instance.client.auth.signOut();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
       }
-    } catch (e) {
-      print('Error signing out: $e');
-      _showSnackBar('Error signing out. Please try again.');
     }
+  } catch (e) {
+    print('Error signing out: $e');
+    _showSnackBar('Error signing out. Please try again.');
   }
+}
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

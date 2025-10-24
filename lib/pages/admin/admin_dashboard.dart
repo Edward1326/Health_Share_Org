@@ -38,6 +38,147 @@ class MainDashboardLayout extends StatefulWidget {
 
 class _MainDashboardLayoutState extends State<MainDashboardLayout> {
   
+  Future<void> _signOut() async {
+    try {
+      final shouldSignOut = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: const Color(0xFFF8F9FA),
+          contentPadding: EdgeInsets.zero,
+          content: Container(
+            width: 320,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon header with gradient background
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.red.shade400,
+                        Colors.red.shade600,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.logout_rounded,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Content
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Sign Out',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: DashboardTheme.darkGray,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Are you sure you want to sign out?\nYou will need to log in again to access your account.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: DashboardTheme.textGray,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      
+                      // Action buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: DashboardTheme.textGray,
+                                side: BorderSide(color: Colors.grey.shade300),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade500,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: const Text(
+                                'Sign Out',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (shouldSignOut == true && mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    } catch (e) {
+      print('Error signing out: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -113,9 +254,7 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
           Container(
             padding: const EdgeInsets.all(24),
             child: InkWell(
-              onTap: () {
-                Navigator.pushReplacementNamed(context, '/login');
-              },
+              onTap: _signOut,
               child: const Row(
                 children: [
                   Icon(Icons.logout, color: DashboardTheme.textGray, size: 20),

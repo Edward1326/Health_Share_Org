@@ -437,41 +437,91 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                     ),
                     
                     // Actions
-                    SizedBox(
-                      width: 40,
-                      child: PopupMenuButton(
-                        icon: const Icon(Icons.more_horiz, color: textGray),
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit, size: 16),
-                                SizedBox(width: 8),
-                                Text('Edit'),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete, color: Colors.red, size: 16),
-                                SizedBox(width: 8),
-                                Text('Remove', style: TextStyle(color: Colors.red)),
-                              ],
-                            ),
-                          ),
-                        ],
-                        onSelected: (value) {
-                          if (value == 'edit') {
-                            _showEditDialog(employee);
-                          } else if (value == 'delete') {
-                            _showDeleteDialog(employee);
-                          }
-                        },
-                      ),
-                    ),
+                    // Actions
+SizedBox(
+  width: 40,
+  child: PopupMenuButton(
+    icon: const Icon(Icons.more_horiz, color: textGray),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    elevation: 8,
+    color: Colors.white,
+    itemBuilder: (context) => [
+      PopupMenuItem(
+        value: 'edit',
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A8B3A).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.edit_rounded,
+                  size: 18,
+                  color: Color(0xFF4A8B3A),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Edit',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      PopupMenuItem(
+        value: 'delete',
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.delete_rounded,
+                  size: 18,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Remove',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.red,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+    onSelected: (value) {
+      print('🔍 Menu clicked: $value');
+      if (value == 'edit') {
+        print('📝 Calling edit dialog...');
+        _showEditDialog(employee);
+      } else if (value == 'delete') {
+        print('🗑️ Calling delete dialog...');
+        _showDeleteDialog(employee);
+      }
+    },
+  ),
+),
                   ],
                 ),
               );
@@ -483,57 +533,303 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
   }
 
   void _showEditDialog(Map<String, dynamic> employee) {
-    final controller = TextEditingController(text: employee['role']);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit ${employee['name']}'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Position'),
+  final controller = TextEditingController(text: employee['role']);
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: const Color(0xFFF8F9FA),
+      contentPadding: EdgeInsets.zero,
+      content: Container(
+        width: 400,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                _updatePosition(employee['email'], controller.text.trim());
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon header with gradient background
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF4A8B3A),
+                    const Color(0xFF6BA85A),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Text(
+                    'Edit Employee',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    employee['name']!,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Text field
+                  TextField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      labelText: 'Position',
+                      labelStyle: TextStyle(color: Colors.grey[600]),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.grey[600],
+                            side: BorderSide(color: Colors.grey.shade300),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (controller.text.trim().isNotEmpty) {
+                              _updatePosition(employee['email'], controller.text.trim());
+                              Navigator.pop(context);
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4A8B3A),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Update',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 
-  void _showDeleteDialog(Map<String, dynamic> employee) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Employee'),
-        content: Text('Remove ${employee['name']} from the organization?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _deleteEmployee(employee['email']);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remove'),
-          ),
-        ],
+void _showDeleteDialog(Map<String, dynamic> employee) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: const Color(0xFFF8F9FA),
+      contentPadding: EdgeInsets.zero,
+      content: Container(
+        width: 380,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon header with gradient background
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.red.shade400,
+                    Colors.red.shade600,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_remove_rounded,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  const Text(
+                    'Remove Employee',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF495057),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Are you sure you want to remove ${employee['name']} from the organization?\n\nThis action cannot be undone.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.grey[600],
+                            side: BorderSide(color: Colors.grey.shade300),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _deleteEmployee(employee['email']);
+                            Navigator.pop(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade500,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Remove',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // Updated Employee List Page - super clean now

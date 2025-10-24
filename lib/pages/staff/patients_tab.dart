@@ -412,9 +412,8 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             child: const Row(
               children: [
                 Expanded(flex: 2, child: Text('Patient', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Patient ID', style: TextStyle(fontWeight: FontWeight.w500))),
                 Expanded(flex: 2, child: Text('Contact', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
                 SizedBox(width: 100),
               ],
             ),
@@ -469,15 +468,6 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                       ),
                     ),
 
-                    // Patient ID
-                    Expanded(
-                      child: Text(
-                        patient['patient_id'].toString(),
-                        style: const TextStyle(fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
                     // Email
                     Expanded(
                       flex: 2,
@@ -488,22 +478,24 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                       ),
                     ),
 
-                    // Status
+                    // Status (Centered)
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          patient['status'] ?? 'active',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: PatientsTheme.approvedGreen,
-                            fontWeight: FontWeight.w500,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          textAlign: TextAlign.center,
+                          child: Text(
+                            patient['status'] ?? 'active',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: PatientsTheme.approvedGreen,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),
@@ -684,7 +676,13 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             child: const Row(
               children: [
                 Expanded(flex: 3, child: Text('File Name', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Category', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+  child: Text(
+    'Category', 
+    style: TextStyle(fontWeight: FontWeight.w500), 
+    textAlign: TextAlign.center  // This centers the header text
+  )
+),
                 Expanded(child: Text('Type', style: TextStyle(fontWeight: FontWeight.w500))),
                 Expanded(child: Text('Uploaded By', style: TextStyle(fontWeight: FontWeight.w500))),
                 Expanded(child: Text('Date', style: TextStyle(fontWeight: FontWeight.w500))),
@@ -754,25 +752,28 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
                     ),
 
                     // Category
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _getCategoryColor(category).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          category.replaceAll('_', ' ').toUpperCase(),
-                          style: TextStyle(
-                            color: _getCategoryColor(category),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
+                   // Category
+Expanded(
+  child: Center(  // Wrap the Container in Center widget
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _getCategoryColor(category).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        category.replaceAll('_', ' ').toUpperCase(),
+        style: TextStyle(
+          color: _getCategoryColor(category),
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+  ),
+),
 
                     // Type
                     Expanded(
@@ -1016,26 +1017,15 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
   }
 
   String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else if (difference.inDays < 30) {
-      final weeks = (difference.inDays / 7).floor();
-      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
-    } else if (difference.inDays < 365) {
-      final months = (difference.inDays / 30).floor();
-      return months == 1 ? '1 month ago' : '$months months ago';
-    } else {
-      final years = (difference.inDays / 365).floor();
-      return years == 1 ? '1 year ago' : '$years years ago';
-    }
-  }
+  // Format with date and time
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final year = date.year;
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  
+  return '$day/$month/$year $hour:$minute';
+}
 
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
