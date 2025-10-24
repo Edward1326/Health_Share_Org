@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:webcrypto/webcrypto.dart';
-// Import crypto ONLY for sha256, with prefix to avoid conflicts
 import 'package:crypto/crypto.dart' as crypto;
 
 class SignupResult {
@@ -96,7 +95,6 @@ class SignupService {
     }
   }
 
-  // RSA key generation using Web Crypto API (FAST! ~50-200ms)
   static Future<Map<String, String>> _generateRSAKeyPair() async {
     try {
       print('Generating RSA-2048 keys using Web Crypto API...');
