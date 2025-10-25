@@ -536,12 +536,12 @@ class FileUploadService {
         return;
       }
 
-     
+      // Step 6: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
       print('Step 5: Calculating SHA256 hash of original file...');
       final sha256Hash = _calculateSHA256(fileBytes);
       print('File SHA256 hash: $sha256Hash');
 
-      
+      // Step 7: Generate AES key and nonce for GCM mode
       print('Step 6: Generating AES-256 key and nonce...');
       final aesKey = _generateRandomBytes(32); // 32 bytes for AES-256
       final aesNonce = _generateRandomBytes(12); // 12 bytes for GCM nonce
@@ -549,7 +549,7 @@ class FileUploadService {
       print('Generated AES-256 key (base64): ${base64Encode(aesKey)}');
       print('Generated GCM nonce (base64): ${base64Encode(aesNonce)}');
 
-      
+      // Step 8: Encrypt file with AES-256-GCM (using consistent format)
       print('Step 7: Encrypting file with AES-256-GCM...');
       final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
@@ -596,7 +596,7 @@ class FileUploadService {
 
       print('Patient RSA public key retrieved');
 
-      
+      // Step 10: Get doctor's RSA public key
       print('Step 9: Getting doctor RSA public key...');
       final doctorResponse = await Supabase.instance.client
           .from('User')
@@ -620,7 +620,7 @@ class FileUploadService {
 
       print('Doctor RSA public key retrieved');
 
-      
+      // Step 11: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
       print('Step 10: Encrypting AES key with RSA-OAEP...');
       final keyData = {
         'key': base64Encode(aesKey),      // BASE64 format (consistent with mobile)
@@ -635,7 +635,7 @@ class FileUploadService {
 
       print('RSA-OAEP encryption completed for both patient and doctor');
 
-      
+      // Step 12: Upload encrypted file to IPFS
       print('Step 11: Uploading encrypted file to IPFS...');
 
       final url = Uri.parse('https://api.pinata.cloud/pinning/pinFileToIPFS');
@@ -692,7 +692,7 @@ class FileUploadService {
         final ipfsCid = ipfsJson['IpfsHash'] as String;
         print('IPFS upload successful. CID: $ipfsCid');
 
-      
+        // Step 13: Create file record in Files table
         print('Step 12: Creating file record in database...');
         final uploadTimestamp = DateTime.now();
         final fileResponse = await Supabase.instance.client
@@ -741,7 +741,7 @@ class FileUploadService {
 
         print('File sharing record created successfully');
 
-        
+        // 🔗 Step 16: LOG TO HIVE BLOCKCHAIN
         print('🔗 Step 15: Logging to Hive blockchain...');
         final hiveResult = await _logToHiveBlockchain(
           fileName: fileDetails['fileName']!,

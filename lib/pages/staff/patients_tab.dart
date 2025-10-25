@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
-
+import 'patient_profile.dart';
 // Theme colors matching the staff dashboard
 class PatientsTheme {
   static const Color primaryGreen = Color(0xFF4A8B3A);
@@ -29,6 +29,9 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
   Map<String, dynamic>? _selectedPatient;
   bool _loadingPatients = false;
   bool _loadingFiles = false;
+  List<Map<String, dynamic>> _assignedDoctors = [];
+  bool _loadingDetails = false;
+  int _selectedTabIndex = 0;
 
   @override
   void initState() {
@@ -77,35 +80,39 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
       print('DEBUG: Doctor IDs for assignment lookup: $doctorIds');
 
       final response = await Supabase.instance.client
-          .from('Doctor_User_Assignment')
-          .select('''
+    .from('Doctor_User_Assignment')
+    .select('''
+      id,
+      doctor_id,
+      patient_id,
+      status,
+      assigned_at,
+      Patient!patient_id(
+        id,
+        user_id,
+        organization_id,
+        User!user_id(
           id,
-          doctor_id,
-          patient_id,
-          status,
-          assigned_at,
-          Patient!patient_id(
+          person_id,
+          email,
+          Person!person_id(
             id,
-            user_id,
-            organization_id,
-            User!user_id(
-              id,
-              person_id,
-              email,
-              Person!person_id(
-                id,
-                first_name,
-                middle_name,
-                last_name,
-                address,
-                contact_number,
-                image
-              )
-            )
+            first_name,
+            middle_name,
+            last_name,
+            address,
+            contact_number,
+            image,
+            blood_type,
+            allergies,
+            medical_conditions,
+            disabilities
           )
-        ''')
-          .in_('doctor_id', doctorIds)
-          .eq('status', 'active');
+        )
+      )
+    ''')
+    .in_('doctor_id', doctorIds)
+    .eq('status', 'active');
 
       print('DEBUG: Patients query response: $response');
 
@@ -243,12 +250,84 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return _selectedPatient == null
-        ? _buildPatientsListView()
-        : _buildPatientDetailsView();
+Future<void> _loadPatientDetails() async {
+  if (_selectedPatient == null) return;
+
+  setState(() => _loadingDetails = true);
+
+  try {
+    final patientId = _selectedPatient!['patient_id']?.toString() ?? '';
+
+    if (patientId.isEmpty) {
+      throw Exception('No valid patient ID found');
+    }
+
+    // Load assigned doctors for this patient
+    final assignments = await Supabase.instance.client
+        .from('Doctor_User_Assignment')
+        .select('doctor_id')
+        .eq('patient_id', patientId)
+        .eq('status', 'active');
+
+    if (assignments.isNotEmpty) {
+      final doctorIds = assignments
+          .map((a) => a['doctor_id'].toString())
+          .toSet()
+          .toList();
+
+      final doctorResponse = await Supabase.instance.client
+          .from('Organization_User')
+          .select('''
+            id,
+            position,
+            department,
+            User!inner(
+              Person!inner(
+                first_name,
+                last_name,
+                image
+              )
+            )
+          ''')
+          .in_('id', doctorIds);
+
+      final List<Map<String, dynamic>> doctors = [];
+      for (final doctor in doctorResponse) {
+        final person = doctor['User']['Person'];
+        final doctorName = person != null &&
+                person['first_name'] != null &&
+                person['last_name'] != null
+            ? '${person['first_name']} ${person['last_name']}'
+            : 'Dr. ${doctor['position'] ?? 'Unknown'}';
+
+        doctors.add({
+          'id': doctor['id'],
+          'name': doctorName,
+          'position': doctor['position'] ?? 'Medical Staff',
+          'department': doctor['department'] ?? 'General',
+          'image': person['image'],
+        });
+      }
+      
+      setState(() {
+        _assignedDoctors = doctors;
+      });
+    }
+
+    setState(() => _loadingDetails = false);
+  } catch (e) {
+    print('Error loading patient details: $e');
+    setState(() => _loadingDetails = false);
+    _showSnackBar('Error loading patient details: $e');
   }
+}
+
+  @override
+Widget build(BuildContext context) {
+  return _selectedPatient == null
+      ? _buildPatientsListView()
+      : _buildPatientProfileView();
+}
 
   Widget _buildPatientsListView() {
     return SingleChildScrollView(
@@ -502,26 +581,34 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
 
                     // Actions
                     SizedBox(
-                      width: 100,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                _selectedPatient = patient;
-                              });
-                              final patientId = patient['patient_id'].toString();
-                              _loadAllFilesForPatient(patientId);
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: PatientsTheme.primaryGreen,
-                            ),
-                            child: const Text('View'),
-                          ),
-                        ],
-                      ),
-                    ),
+  width: 100,
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.end,
+    children: [
+      ElevatedButton(
+        onPressed: () {
+          setState(() {
+            _selectedPatient = patient;
+            _selectedTabIndex = 0;
+          });
+          final patientId = patient['patient_id'].toString();
+          _loadPatientDetails();
+          _loadAllFilesForPatient(patientId);
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: PatientsTheme.primaryGreen,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+        child: const Text('View', style: TextStyle(fontSize: 13)),
+      ),
+    ],
+  ),
+),
                   ],
                 ),
               );
@@ -532,335 +619,750 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
     );
   }
 
-  Widget _buildPatientDetailsView() {
-    final patient = _selectedPatient!;
-    final person = patient['User']['Person'];
-    final fullName = _buildFullName(person);
+  Widget _buildPatientProfileView() {
+  final person = _selectedPatient!['User']['Person'];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Back button and header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedPatient = null;
-                        _selectedPatientFiles = [];
-                      });
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                  const SizedBox(width: 12),
-                  _buildPatientAvatar(person, radius: 20),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        patient['User']['email'] ?? '',
-                        style: const TextStyle(
-                          color: PatientsTheme.textGray,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: () => FileUploadService.uploadFileForPatient(
-                  context,
-                  _selectedPatient!,
-                  _showSnackBar,
-                  () => _loadAllFilesForPatient(
-                      _selectedPatient!['patient_id'].toString()),
-                ),
-                icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('Upload File'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: PatientsTheme.primaryGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header with back button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedPatient = null;
+                      _selectedPatientFiles = [];
+                      _assignedDoctors = [];
+                      _selectedTabIndex = 0;
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  style: IconButton.styleFrom(
+                    foregroundColor: PatientsTheme.primaryGreen,
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // Files Section
-          if (_loadingFiles)
-            Container(
-              height: 400,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(width: 12),
+                _buildPatientAvatar(person, radius: 20),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircularProgressIndicator(color: PatientsTheme.primaryGreen),
-                    SizedBox(height: 16),
-                    Text('Loading files...'),
-                  ],
-                ),
-              ),
-            )
-          else if (_selectedPatientFiles.isEmpty)
-            Container(
-              height: 400,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.folder_outlined, size: 80, color: Colors.grey),
-                    SizedBox(height: 24),
-                    Text('No files shared', style: TextStyle(fontSize: 18)),
-                    SizedBox(height: 8),
                     Text(
-                      'Upload files to share with this patient',
-                      style: TextStyle(fontSize: 14, color: PatientsTheme.textGray),
+                      _buildFullName(person),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: PatientsTheme.darkGray,
+                      ),
+                    ),
+                    Text(
+                      _selectedPatient!['User']['email'] ?? '',
+                      style: const TextStyle(
+                        color: PatientsTheme.textGray,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
+              ],
+            ),
+            ElevatedButton.icon(
+              onPressed: () => FileUploadService.uploadFileForPatient(
+                context,
+                _selectedPatient!,
+                _showSnackBar,
+                () => _loadAllFilesForPatient(
+                    _selectedPatient!['patient_id'].toString()),
               ),
-            )
-          else
-            _buildFilesTable(),
-        ],
-      ),
-    );
-  }
+              icon: const Icon(Icons.upload_file, size: 18),
+              label: const Text('Upload File'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: PatientsTheme.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
 
-  Widget _buildFilesTable() {
+        const SizedBox(height: 24),
+
+        // Tab Navigation
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            children: [
+              _buildTabButton('Profile', 0, Icons.person_outline),
+              _buildTabButton('Medical Files', 1, Icons.folder_outlined),
+              _buildTabButton('Medical Info', 2, Icons.medical_services_outlined),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Tab Content
+        if (_selectedTabIndex == 0) _buildProfileTab(),
+        if (_selectedTabIndex == 1) _buildFilesTab(),
+        if (_selectedTabIndex == 2) _buildMedicalInfoTab(),
+      ],
+    ),
+  );
+}
+
+Widget _buildTabButton(String label, int index, IconData icon) {
+  final isSelected = _selectedTabIndex == index;
+  return Expanded(
+    child: InkWell(
+      onTap: () => setState(() => _selectedTabIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? PatientsTheme.primaryGreen : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : PatientsTheme.textGray,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : PatientsTheme.textGray,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _buildProfileTab() {
+  if (_loadingDetails) {
     return Container(
+      height: 400,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      child: const Center(
+        child: CircularProgressIndicator(color: PatientsTheme.primaryGreen),
+      ),
+    );
+  }
+
+  final person = _selectedPatient!['User']['Person'];
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Profile Header Card
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
-            child: const Row(
-              children: [
-                Expanded(flex: 3, child: Text('File Name', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(
-  child: Text(
-    'Category', 
-    style: TextStyle(fontWeight: FontWeight.w500), 
-    textAlign: TextAlign.center  // This centers the header text
-  )
-),
-                Expanded(child: Text('Type', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Uploaded By', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Date', style: TextStyle(fontWeight: FontWeight.w500))),
-                SizedBox(width: 100),
-              ],
+          ],
+        ),
+        child: Column(
+          children: [
+            _buildPatientAvatar(person, radius: 50),
+            const SizedBox(height: 16),
+            Text(
+              _buildFullName(person),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: PatientsTheme.darkGray,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: PatientsTheme.approvedGreen.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _selectedPatient!['status']?.toUpperCase() ?? 'ACTIVE',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: PatientsTheme.approvedGreen,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      const SizedBox(height: 24),
+
+      const Text(
+        'Contact Information',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: PatientsTheme.darkGray,
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Email Address',
+        _selectedPatient!['User']['email'] ?? 'Not specified',
+        Icons.email,
+        PatientsTheme.lightGreen,
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Contact Number',
+        person['contact_number'] ?? 'Not specified',
+        Icons.phone,
+        Colors.blue,
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Address',
+        person['address'] ?? 'Not specified',
+        Icons.location_on,
+        PatientsTheme.orange,
+        isMultiline: true,
+      ),
+
+      const SizedBox(height: 24),
+
+      Row(
+        children: [
+          const Icon(Icons.medical_services, size: 18, color: PatientsTheme.primaryGreen),
+          const SizedBox(width: 8),
+          const Text(
+            'Care Team',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: PatientsTheme.darkGray,
             ),
           ),
+        ],
+      ),
+      const SizedBox(height: 12),
 
-          // Rows
-          ListView.builder(
+      if (_assignedDoctors.isEmpty)
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline, size: 18, color: PatientsTheme.textGray),
+              SizedBox(width: 8),
+              Text('No other doctors assigned', style: TextStyle(color: PatientsTheme.textGray)),
+            ],
+          ),
+        )
+      else
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _selectedPatientFiles.length,
+            itemCount: _assignedDoctors.length,
             itemBuilder: (context, index) {
-              final fileShare = _selectedPatientFiles[index];
-              final file = fileShare['Files'];
-              final fileType = file['file_type'] ?? 'unknown';
-              final category = file['category'] ?? 'other';
-              final fileName = file['filename'] ?? 'Unknown File';
-              final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
-              final uploader = file['uploader'];
-              final uploaderName = uploader != null
-                  ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
-                  : 'Unknown';
-
+              final doctor = _assignedDoctors[index];
               return Container(
-                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: index < _selectedPatientFiles.length - 1
+                      color: index < _assignedDoctors.length - 1
                           ? Colors.grey.shade200
                           : Colors.transparent,
                     ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    // File name with icon
-                    Expanded(
-                      flex: 3,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: _getFileTypeColor(fileType).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(
-                              _getFileTypeIcon(fileType),
-                              color: _getFileTypeColor(fileType),
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              fileName,
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: CircleAvatar(
+                    backgroundColor: PatientsTheme.primaryGreen,
+                    radius: 20,
+                    child: Text(
+                      doctor['name']?[0] ?? 'D',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
-
-                    // Category
-                   // Category
-Expanded(
-  child: Center(  // Wrap the Container in Center widget
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: _getCategoryColor(category).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        category.replaceAll('_', ' ').toUpperCase(),
-        style: TextStyle(
-          color: _getCategoryColor(category),
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-        ),
-        textAlign: TextAlign.center,
-        overflow: TextOverflow.ellipsis,
-      ),
-    ),
-  ),
-),
-
-                    // Type
-                    Expanded(
-                      child: Text(
-                        fileType.toUpperCase(),
-                        style: const TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
+                  ),
+                  title: Text(
+                    doctor['name'] ?? 'Unknown Doctor',
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (doctor['position'] != null)
+                        Text(
+                          doctor['position'],
+                          style: const TextStyle(fontSize: 12, color: PatientsTheme.textGray),
+                        ),
+                      if (doctor['department'] != null)
+                        Text(
+                          doctor['department'],
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        ),
+                    ],
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: PatientsTheme.approvedGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Active',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: PatientsTheme.approvedGreen,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-
-                    // Uploader
-                    Expanded(
-                      child: Text(
-                        uploaderName,
-                        style: const TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
-                    // Date
-                    Expanded(
-                      child: Text(
-                        _formatDate(createdAt),
-                        style: const TextStyle(fontSize: 12, color: PatientsTheme.textGray),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
-                    // Actions
-                    SizedBox(
-                      width: 100,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            onPressed: () => FileDecryptionService.previewFile(
-                                context, file, _showSnackBar),
-                            icon: const Icon(Icons.visibility, size: 18),
-                            color: PatientsTheme.primaryGreen,
-                            tooltip: 'Preview',
-                          ),
-                          PopupMenuButton(
-                            icon: const Icon(Icons.more_vert, size: 18, color: PatientsTheme.textGray),
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'details',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.info_outline, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('Details'),
-                                  ],
-                                ),
-                              ),
-                              // Only show delete option if current user uploaded the file
-                              if (_canDeleteFile(file))
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.red, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('Delete', style: TextStyle(color: Colors.red)),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                            onSelected: (value) {
-                              if (value == 'details') {
-                                _showFileDetails(file);
-                              } else if (value == 'delete') {
-                                _confirmDeleteFile(file);
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               );
             },
           ),
-        ],
+        ),
+    ],
+  );
+}
+
+Widget _buildFilesTab() {
+  if (_loadingFiles) {
+    return Container(
+      height: 400,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: PatientsTheme.primaryGreen),
+            SizedBox(height: 16),
+            Text('Loading files...'),
+          ],
+        ),
       ),
     );
   }
+
+  if (_selectedPatientFiles.isEmpty) {
+    return Container(
+      height: 400,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_outlined, size: 80, color: Colors.grey),
+            SizedBox(height: 24),
+            Text('No files shared', style: TextStyle(fontSize: 18)),
+            SizedBox(height: 8),
+            Text(
+              'Upload files to share with this patient',
+              style: TextStyle(fontSize: 14, color: PatientsTheme.textGray),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Fixed: Call _buildFilesTable() instead of _buildFilesTab()
+  return _buildFilesTable();
+}
+
+// Make sure you have this method to actually display the files
+Widget _buildFilesTable() {
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.grey.shade200),
+    ),
+    child: Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+          ),
+          child: const Row(
+            children: [
+              Expanded(flex: 3, child: Text('File Name', style: TextStyle(fontWeight: FontWeight.w500))),
+              Expanded(child: Text('Category', style: TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
+              Expanded(child: Text('Type', style: TextStyle(fontWeight: FontWeight.w500))),
+              Expanded(child: Text('Uploaded By', style: TextStyle(fontWeight: FontWeight.w500))),
+              Expanded(child: Text('Date', style: TextStyle(fontWeight: FontWeight.w500))),
+              SizedBox(width: 100),
+            ],
+          ),
+        ),
+        
+        // Files list
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _selectedPatientFiles.length,
+          itemBuilder: (context, index) {
+            final fileShare = _selectedPatientFiles[index];
+            final file = fileShare['Files'];
+            final fileType = file['file_type'] ?? 'unknown';
+            final category = file['category'] ?? 'other';
+            final fileName = file['filename'] ?? 'Unknown File';
+            final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+            final uploader = file['uploader'];
+            final uploaderName = uploader != null
+                ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
+                : 'Unknown';
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: index < _selectedPatientFiles.length - 1
+                        ? Colors.grey.shade200
+                        : Colors.transparent,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // File name with icon
+                  Expanded(
+                    flex: 3,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: _getFileTypeColor(fileType).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            _getFileTypeIcon(fileType),
+                            color: _getFileTypeColor(fileType),
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            fileName,
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Category
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _getCategoryColor(category).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          category.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            color: _getCategoryColor(category),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // File type
+                  Expanded(
+                    child: Text(
+                      fileType.toUpperCase(),
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                  // Uploader name
+                  Expanded(
+                    child: Text(
+                      uploaderName,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                  // Upload date
+                  Expanded(
+                    child: Text(
+                      _formatDate(createdAt),
+                      style: const TextStyle(fontSize: 12, color: PatientsTheme.textGray),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                  // Actions
+                  SizedBox(
+                    width: 100,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          onPressed: () => FileDecryptionService.previewFile(
+                              context, file, _showSnackBar),
+                          icon: const Icon(Icons.visibility, size: 18),
+                          color: PatientsTheme.primaryGreen,
+                          tooltip: 'Preview',
+                        ),
+                        PopupMenuButton(
+                          icon: const Icon(Icons.more_vert, size: 18, color: PatientsTheme.textGray),
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'details',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 16),
+                                  SizedBox(width: 8),
+                                  Text('Details'),
+                                ],
+                              ),
+                            ),
+                            if (_canDeleteFile(file))
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Delete', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                          ],
+                          onSelected: (value) {
+                            if (value == 'details') {
+                              _showFileDetails(file);
+                            } else if (value == 'delete') {
+                              _confirmDeleteFile(file);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildMedicalInfoTab() {
+  if (_loadingDetails) {
+    return Container(
+      height: 400,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(color: PatientsTheme.primaryGreen),
+      ),
+    );
+  }
+
+  final person = _selectedPatient!['User']['Person'];
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Medical Information',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: PatientsTheme.darkGray,
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Blood Type',
+        person['blood_type'] ?? 'Not specified',
+        Icons.bloodtype,
+        Colors.red,
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Allergies',
+        person['allergies'] ?? 'None specified',
+        Icons.warning,
+        PatientsTheme.orange,
+        isMultiline: true,
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Medical Conditions',
+        person['medical_conditions'] ?? 'None specified',
+        Icons.medical_services,
+        Colors.purple,
+        isMultiline: true,
+      ),
+      const SizedBox(height: 12),
+
+      _buildInfoCard(
+        'Disabilities',
+        person['disabilities'] ?? 'None specified',
+        Icons.accessibility,
+        Colors.blue,
+        isMultiline: true,
+      ),
+    ],
+  );
+}
+
+Widget _buildInfoCard(
+  String title,
+  String content,
+  IconData icon,
+  Color iconColor, {
+  bool isMultiline = false,
+}) {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Row(
+      crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: PatientsTheme.textGray,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                content,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: PatientsTheme.darkGray,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: isMultiline ? null : 2,
+                overflow: isMultiline ? null : TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   // Helper methods
   
