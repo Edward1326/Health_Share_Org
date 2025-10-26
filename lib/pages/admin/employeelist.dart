@@ -92,34 +92,55 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
   }
 
   Future<void> _deleteEmployee(String email) async {
-    try {
-      final userResponse = await supabase
-          .from('User')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
+  try {
+    // First, get the user_id and person_id
+    final userResponse = await supabase
+        .from('User')
+        .select('id, person_id')
+        .eq('email', email)
+        .maybeSingle();
+    
+    if (userResponse != null) {
+      final userId = userResponse['id'];
+      final personId = userResponse['person_id'];
       
-      if (userResponse != null) {
+      // Delete in order: Organization_User -> User -> Person
+      // 1. Delete from Organization_User
+      await supabase
+          .from('Organization_User')
+          .delete()
+          .eq('user_id', userId);
+      
+      // 2. Delete from User
+      await supabase
+          .from('User')
+          .delete()
+          .eq('id', userId);
+      
+      // 3. Delete from Person (if person_id exists)
+      if (personId != null) {
         await supabase
-            .from('Organization_User')
+            .from('Person')
             .delete()
-            .eq('user_id', userResponse['id']);
-        
-        _loadEmployees();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Employee removed successfully!')),
-          );
-        }
+            .eq('id', personId);
       }
-    } catch (e) {
+      
+      _loadEmployees();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          const SnackBar(content: Text('Employee removed successfully!')),
         );
       }
     }
+  } catch (e) {
+    print('Error deleting employee: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
   }
+}
 
   Future<void> _updatePosition(String email, String newPosition) async {
     try {
