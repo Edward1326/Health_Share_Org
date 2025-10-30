@@ -1706,17 +1706,17 @@ Widget _buildInfoCard(
         ),
       );
 
-      // Update File_Shares to set shared_with_user_id to null
+      // Delete the File_Shares row entirely
       await Supabase.instance.client
           .from('File_Shares')
-          .update({'shared_with_user_id': null})
+          .delete()
           .eq('file_id', file['id'].toString())
           .eq('shared_with_user_id', userId);
 
       // Close loading dialog
       if (mounted) Navigator.pop(context);
 
-      _showSnackBar('File unshared successfully');
+      _showSnackBar('File share deleted successfully');
       
       // Reload files
       if (_selectedPatient != null) {
@@ -1726,8 +1726,8 @@ Widget _buildInfoCard(
       // Close loading dialog
       if (mounted) Navigator.pop(context);
       
-      print('Error unsharing file: $e');
-      _showSnackBar('Error unsharing file: $e');
+      print('Error deleting file share: $e');
+      _showSnackBar('Error deleting file share: $e');
     }
   }
 }
