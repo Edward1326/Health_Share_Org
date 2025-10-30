@@ -1683,6 +1683,20 @@ Widget _buildInfoCard(
 
   Future<void> _deleteFile(Map<String, dynamic> file) async {
     try {
+      // Get the user_id from the nested Patient object
+      final String? userId = _selectedPatient!['Patient']?['user_id'];
+
+      // Validate that we have the required IDs
+      if (file['id'] == null || file['id'].toString() == 'null') {
+        _showSnackBar('Error: File ID is missing');
+        return;
+      }
+
+      if (userId == null || userId.toString() == 'null') {
+        _showSnackBar('Error: User ID is missing');
+        return;
+      }
+
       // Show loading indicator
       showDialog(
         context: context,
@@ -1692,16 +1706,17 @@ Widget _buildInfoCard(
         ),
       );
 
-      // Delete from Files table
+      // Update File_Shares to set shared_with_user_id to null
       await Supabase.instance.client
-          .from('Files')
-          .delete()
-          .eq('id', file['id']);
+          .from('File_Shares')
+          .update({'shared_with_user_id': null})
+          .eq('file_id', file['id'].toString())
+          .eq('shared_with_user_id', userId);
 
       // Close loading dialog
       if (mounted) Navigator.pop(context);
 
-      _showSnackBar('File deleted successfully');
+      _showSnackBar('File unshared successfully');
       
       // Reload files
       if (_selectedPatient != null) {
@@ -1711,8 +1726,8 @@ Widget _buildInfoCard(
       // Close loading dialog
       if (mounted) Navigator.pop(context);
       
-      print('Error deleting file: $e');
-      _showSnackBar('Error deleting file: $e');
+      print('Error unsharing file: $e');
+      _showSnackBar('Error unsharing file: $e');
     }
   }
 }
