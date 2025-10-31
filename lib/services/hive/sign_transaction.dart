@@ -197,7 +197,6 @@ class HiveTransactionSignerWeb {
 
       // 2. Decompress point R from x
       final R = curve.decompressPoint(recoveryId & 1, x);
-      if (R == null || !(R * n)!.isInfinity) return null;
 
       // 3. Calculate message hash 'e'
       final e = _bytesToBigInt(hash);

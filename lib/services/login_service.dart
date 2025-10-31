@@ -1,8 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
+
 
 class LoginService {
   static const int _loginCooldownSeconds = 5;
@@ -322,47 +320,6 @@ class SignupService {
     } catch (e) {
       print('Failed to load organizations: $e');
       throw Exception('Failed to load organizations: $e');
-    }
-  }
-
-  /// Generate key fingerprint helper
-  static String _generateKeyFingerprint(String publicKeyPem) {
-    final keyBytes = utf8.encode(publicKeyPem);
-    final digest = sha256.convert(keyBytes);
-    return digest.toString().substring(0, 16); // First 16 chars of SHA256
-  }
-
-  /// Get appropriate error message for signup
-  static String _getSignupErrorMessage(dynamic error) {
-    String errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('duplicate key')) {
-      if (errorString.contains('email') ||
-          errorString.contains('users_email_key')) {
-        return 'An account with this email already exists.';
-      } else {
-        return 'An account with this information already exists.';
-      }
-    } else if (errorString.contains('foreign key') ||
-        errorString.contains('violates foreign key constraint')) {
-      return 'Invalid organization selected. Please try again.';
-    } else if (errorString.contains('invalid input syntax')) {
-      return 'Invalid data format. Please check your input.';
-    } else if (errorString.contains('rate limit') ||
-        errorString.contains('429') ||
-        errorString.contains('too many')) {
-      return 'Too many signup attempts. Please wait a moment before trying again.';
-    } else if (errorString.contains('weak password') ||
-        errorString.contains('password')) {
-      return 'Password is too weak. Please use a stronger password with at least 8 characters, one uppercase letter, one number, and one special character.';
-    } else if (errorString.contains('invalid email') ||
-        errorString.contains('email')) {
-      return 'Invalid email address. Please check your email and try again.';
-    } else if (errorString.contains('network') ||
-        errorString.contains('connection')) {
-      return 'Network error. Please check your internet connection and try again.';
-    } else {
-      return 'Signup failed. Please check your information and try again.';
     }
   }
 

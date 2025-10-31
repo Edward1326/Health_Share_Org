@@ -402,16 +402,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -916,7 +906,6 @@ class HealthShareLogoPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final center = Offset(size.width / 2, size.height / 2);
-    final cornerRadius = size.width * 0.04;
     
     // Dimensions for the cross
     final innerGap = size.width * 0.08;

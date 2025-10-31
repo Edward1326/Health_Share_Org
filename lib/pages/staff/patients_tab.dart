@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
-import 'patient_profile.dart';
 import 'package:health_share_org/functions/files/delete_file.dart';
 // Theme colors matching the staff dashboard
 class PatientsTheme {
@@ -1409,17 +1408,6 @@ Widget _buildInfoCard(
       return false;
     }
   }
-  
-  Color _getPatientAvatarColor(int index) {
-    final colors = [
-      PatientsTheme.primaryGreen,
-      PatientsTheme.coral,
-      PatientsTheme.orange,
-      Colors.purple,
-      Colors.teal
-    ];
-    return colors[index % colors.length];
-  }
 
   String _getPatientInitials(String fullName) {
     if (fullName.trim().isEmpty) {
@@ -1648,8 +1636,6 @@ Widget _buildInfoCard(
 
   void _confirmDeleteFile(Map<String, dynamic> file) {
   // Capture the navigator before any async operations
-  final navigator = Navigator.of(context);
-  final scaffold = ScaffoldMessenger.of(context);
   
   showDialog(
     context: context,

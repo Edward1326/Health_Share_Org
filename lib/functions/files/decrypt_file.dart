@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:fast_rsa/fast_rsa.dart';
 import 'package:health_share_org/services/hive/compare.dart';
 import 'dart:async';
 import 'package:flutter_dotenv/flutter_dotenv.dart';

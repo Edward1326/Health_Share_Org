@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'patients_tab.dart';
-import '/main.dart';
 import 'staff_profile.dart';
 
 // Theme colors - matching admin dashboard exactly

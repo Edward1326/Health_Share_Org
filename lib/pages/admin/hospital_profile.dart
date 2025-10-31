@@ -24,7 +24,6 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   // Use DashboardTheme colors
   static const primaryGreen = DashboardTheme.primaryGreen;
   static const textGray = DashboardTheme.textGray;
-  static const cardBackground = DashboardTheme.cardBackground;
 
   // Organization data
   Map<String, dynamic>? organizationData;
