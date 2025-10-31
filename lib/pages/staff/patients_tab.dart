@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:health_share_org/functions/files/upload_file.dart';
 import 'package:health_share_org/functions/files/decrypt_file.dart';
 import 'patient_profile.dart';
+import 'package:health_share_org/functions/files/delete_file.dart';
 // Theme colors matching the staff dashboard
 class PatientsTheme {
   static const Color primaryGreen = Color(0xFF4A8B3A);
@@ -189,6 +190,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
           shared_by_user_id,
           shared_with_user_id,
           shared_with_doctor,
+          revoked_at,
           Files!inner(
             id,
             filename,
@@ -199,6 +201,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
             ipfs_cid,
             sha256_hash,
             uploaded_by,
+            deleted_at,
             uploader:User!uploaded_by(
               email,
               Person!person_id(
@@ -209,19 +212,25 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
           )
         ''')
         .or('and(shared_by_user_id.eq.$currentDoctorUserId,shared_with_user_id.eq.$patientUserId),and(shared_by_user_id.eq.$patientUserId,shared_with_user_id.eq.$currentDoctorUserId),and(shared_by_user_id.eq.$patientUserId,shared_with_doctor.eq.$currentDoctorUserId)')
+        .is_('revoked_at', null)  // Filter out revoked shares
         .order('shared_at', ascending: false);
 
     print('DEBUG: Doctor user_id: $currentDoctorUserId, Patient user_id: $patientUserId');
     print('DEBUG: Found ${allShares.length} file shares between doctor and patient');
     
-    // Debug: print the actual shares found
-    for (var share in allShares) {
-      print('DEBUG: Share - shared_by: ${share['shared_by_user_id']}, shared_with: ${share['shared_with_user_id']}');
-    }
-
+    // Filter out deleted files and convert to list
     List<Map<String, dynamic>> filesList = [];
     for (var share in allShares) {
-      filesList.add(Map<String, dynamic>.from(share as Map));
+      final shareMap = Map<String, dynamic>.from(share as Map);
+      final file = shareMap['Files'] as Map<String, dynamic>?;
+      
+      // Check if file exists and is not deleted
+      if (file != null && file['deleted_at'] == null) {
+        filesList.add(shareMap);
+        print('DEBUG: Share - shared_by: ${shareMap['shared_by_user_id']}, shared_with: ${shareMap['shared_with_user_id']}');
+      } else {
+        print('DEBUG: Skipping share - file is deleted or null');
+      }
     }
 
     setState(() {
@@ -229,7 +238,7 @@ class _ModernPatientsContentWidgetState extends State<ModernPatientsContentWidge
       _loadingFiles = false;
     });
 
-    print('Loaded ${filesList.length} files for this patient');
+    print('Loaded ${filesList.length} files for this patient (after filtering deleted/revoked)');
   } catch (e) {
     print('Error loading files for patient: $e');
     setState(() {
@@ -1638,96 +1647,121 @@ Widget _buildInfoCard(
   }
 
   void _confirmDeleteFile(Map<String, dynamic> file) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        backgroundColor: const Color(0xFFF8F9FA),
-        title: const Text(
-          'Delete File',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-            color: PatientsTheme.darkGray,
-          ),
+  // Capture the navigator before any async operations
+  final navigator = Navigator.of(context);
+  final scaffold = ScaffoldMessenger.of(context);
+  
+  showDialog(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      title: const Text(
+        'Delete File',
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 18,
         ),
-        content: Text(
-          'Are you sure you want to delete "${file['filename']}"? This action cannot be undone.',
-          style: const TextStyle(color: PatientsTheme.darkGray),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              foregroundColor: PatientsTheme.textGray,
-            ),
-            child: const Text('Cancel'),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Are you sure you want to delete this file?',
+            style: const TextStyle(fontSize: 14),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteFile(file);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.red.withOpacity(0.3)),
             ),
-            child: const Text('Delete'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file['filename'] ?? 'Unknown File',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'This action will:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '• Delete all encryption keys',
+                  style: TextStyle(fontSize: 11),
+                ),
+                const Text(
+                  '• Revoke all file shares',
+                  style: TextStyle(fontSize: 11),
+                ),
+                const Text(
+                  '• Mark the file as deleted',
+                  style: TextStyle(fontSize: 11),
+                ),
+                const Text(
+                  '• Log deletion to Hive blockchain',
+                  style: TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'This action cannot be undone.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _deleteFile(Map<String, dynamic> file) async {
-    try {
-      // Get the user_id from the nested Patient object
-      final String? userId = _selectedPatient!['Patient']?['user_id'];
-
-      // Validate that we have the required IDs
-      if (file['id'] == null || file['id'].toString() == 'null') {
-        _showSnackBar('Error: File ID is missing');
-        return;
-      }
-
-      if (userId == null || userId.toString() == 'null') {
-        _showSnackBar('Error: User ID is missing');
-        return;
-      }
-
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: PatientsTheme.primaryGreen),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
         ),
-      );
-
-      // Delete the File_Shares row entirely
-      await Supabase.instance.client
-          .from('File_Shares')
-          .delete()
-          .eq('file_id', file['id'].toString())
-          .eq('shared_with_user_id', userId);
-
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-
-      _showSnackBar('File share deleted successfully');
-      
-      // Reload files
-      if (_selectedPatient != null) {
-        _loadAllFilesForPatient(_selectedPatient!['patient_id'].toString());
-      }
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-      
-      print('Error deleting file share: $e');
-      _showSnackBar('Error deleting file share: $e');
-    }
-  }
+        ElevatedButton(
+          onPressed: () async {
+            // Close confirmation dialog
+            Navigator.pop(dialogContext);
+            
+            // Check if the original context is still valid before proceeding
+            if (!context.mounted) return;
+            
+            // Call delete with the original context
+            await FileDeleteService.deleteFile(
+              context: context,
+              file: file,
+              showSnackBar: _showSnackBar,
+              onDeleteSuccess: () {
+                // Reload files after successful deletion
+                if (_selectedPatient != null) {
+                  _loadAllFilesForPatient(_selectedPatient!['patient_id'].toString());
+                }
+              },
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+}
 }

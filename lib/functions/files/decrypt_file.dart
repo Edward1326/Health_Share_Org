@@ -11,7 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:pointycastle/export.dart' hide Mac;
 import 'package:asn1lib/asn1lib.dart';
 import 'package:cryptography/cryptography.dart';
-import 'file_preview.dart';
+import 'preview_file.dart';
 
 class FileDecryptionService {
   // PERFORMANCE FIX: Use cryptography package for fast AES-GCM decryption
