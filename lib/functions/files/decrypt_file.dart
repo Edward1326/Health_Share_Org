@@ -94,15 +94,16 @@ class FileDecryptionService {
       
 
       await _performDecryption(
-        context: context,
-        fileId: fileId,
-        ipfsCid: ipfsCid,
-        filename: filename,
-        mimeType: mimeType,
-        actualUserId: actualUserId,
-        rsaPrivateKeyPem: rsaPrivateKeyPem,
-        showSnackBar: showSnackBar,
-      );
+  context: context,
+  fileId: fileId,
+  ipfsCid: ipfsCid,
+  filename: filename,
+  mimeType: mimeType,
+  actualUserId: actualUserId,
+  rsaPrivateKeyPem: rsaPrivateKeyPem,
+  showSnackBar: showSnackBar,
+  verificationResult: verificationResult, // ADD THIS
+);
 
     } catch (e, stackTrace) {
       print('ERROR in previewFile: $e');
@@ -112,122 +113,359 @@ class FileDecryptionService {
   }
 
   static Future<void> _performDecryption({
-    required BuildContext context,
-    required dynamic fileId,
-    required String ipfsCid,
-    required String filename,
-    required String mimeType,
-    required String actualUserId,
-    required String rsaPrivateKeyPem,
-    required Function(String) showSnackBar,
-  }) async {
-    final stopwatch = Stopwatch()..start();
+  required BuildContext context,
+  required dynamic fileId,
+  required String ipfsCid,
+  required String filename,
+  required String mimeType,
+  required String actualUserId,
+  required String rsaPrivateKeyPem,
+  required Function(String) showSnackBar,
+  required VerificationResult verificationResult, // ADD THIS PARAMETER
+}) async {
+  final stopwatch = Stopwatch()..start();
+  
+  try {
+    final allFileKeys = await Supabase.instance.client
+        .from('File_Keys')
+        .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted, nonce_hex')
+        .eq('file_id', fileId);
+
+    print('Found ${allFileKeys.length} File_Keys records for file $fileId');
+
+    Map<String, dynamic>? usableKey;
     
-    try {
-      final allFileKeys = await Supabase.instance.client
-          .from('File_Keys')
-          .select('id, file_id, recipient_type, recipient_id, aes_key_encrypted, nonce_hex')
-          .eq('file_id', fileId);
-
-      print('Found ${allFileKeys.length} File_Keys records for file $fileId');
-
-      Map<String, dynamic>? usableKey;
-      
-      for (var key in allFileKeys) {
-        if (key['recipient_type'] == 'user' && key['recipient_id'] == actualUserId) {
-          usableKey = key;
-          print('Found direct user key: ${usableKey!['id']}');
-          break;
-        }
+    for (var key in allFileKeys) {
+      if (key['recipient_type'] == 'user' && key['recipient_id'] == actualUserId) {
+        usableKey = key;
+        print('Found direct user key: ${usableKey!['id']}');
+        break;
       }
-
-      if (usableKey == null) {
-        print('No usable key found');
-        showSnackBar('No decryption key found for this file');
-        return;
-      }
-
-      // RSA Decryption with PointyCastle (fast on web)
-      print('\n--- ATTEMPTING RSA DECRYPTION ---');
-      final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
-      
-      
-      
-      final decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
-      print('✓ PointyCastle RSA decryption successful!');
-
-      final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
-      final aesKeyBase64 = keyData['key'] as String?;
-      final aesNonceBase64 = keyData['nonce'] as String?;
-
-      if (aesKeyBase64 == null) {
-        throw Exception('Missing AES key in decrypted data');
-      }
-
-      // PERFORMANCE FIX: Convert to bytes directly (no hex conversion needed)
-      final aesKeyBytes = base64Decode(aesKeyBase64);
-      
-      Uint8List nonceBytes;
-      if (aesNonceBase64 != null) {
-        nonceBytes = base64Decode(aesNonceBase64);
-      } else {
-        // Fallback to nonce_hex if nonce not in JSON
-        final nonceHex = usableKey['nonce_hex'] as String?;
-        if (nonceHex == null || nonceHex.isEmpty) {
-          throw Exception('Missing AES nonce');
-        }
-        nonceBytes = _hexToBytes(nonceHex);
-      }
-
-      print('✓ AES key (${aesKeyBytes.length} bytes) and nonce (${nonceBytes.length} bytes) extracted');
-      print('  RSA decryption took: ${stopwatch.elapsedMilliseconds}ms');
-
-      // Download file from IPFS
-      
-      final downloadStart = stopwatch.elapsedMilliseconds;
-      
-      final ipfsUrl = 'https://apricot-delicate-vole-342.mypinata.cloud/ipfs/$ipfsCid';
-      final response = await http.get(Uri.parse(ipfsUrl));
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download from IPFS: ${response.statusCode}');
-      }
-
-      final encryptedFileBytes = response.bodyBytes;
-      final downloadTime = stopwatch.elapsedMilliseconds - downloadStart;
-      print('✓ Downloaded ${encryptedFileBytes.length} bytes from IPFS in ${downloadTime}ms');
-
-      // PERFORMANCE FIX: Use native cryptography package for AES-GCM (SUPER FAST!)
-      
-      final decryptStart = stopwatch.elapsedMilliseconds;
-      
-      final decryptedBytes = await _fastDecryptFile(
-        encryptedFileBytes,
-        aesKeyBytes,
-        nonceBytes,
-      );
-
-      final decryptTime = stopwatch.elapsedMilliseconds - decryptStart;
-      stopwatch.stop();
-      
-      print('✅ File decrypted successfully!');
-      print('  Decrypted size: ${decryptedBytes.length} bytes');
-      print('  Decryption took: ${decryptTime}ms');
-      print('  Total time: ${stopwatch.elapsedMilliseconds}ms');
-
-      // Show preview
-      
-      await _showFilePreview(context, filename, mimeType, decryptedBytes);
-
-    } catch (e, stackTrace) {
-      stopwatch.stop();
-      print('Error in _performDecryption after ${stopwatch.elapsedMilliseconds}ms: $e');
-      print('Stack trace: $stackTrace');
-      
-      rethrow;
     }
-  }
 
+    if (usableKey == null) {
+      print('No usable key found');
+      showSnackBar('No decryption key found for this file');
+      return;
+    }
+
+    // RSA Decryption with PointyCastle (fast on web)
+    print('\n--- ATTEMPTING RSA DECRYPTION ---');
+    final encryptedKeyData = usableKey['aes_key_encrypted'] as String;
+    
+    final decryptedKeyDataJson = _decryptWithRSAOAEP(encryptedKeyData, rsaPrivateKeyPem);
+    print('✓ PointyCastle RSA decryption successful!');
+
+    final keyData = jsonDecode(decryptedKeyDataJson) as Map<String, dynamic>;
+    final aesKeyBase64 = keyData['key'] as String?;
+    final aesNonceBase64 = keyData['nonce'] as String?;
+
+    if (aesKeyBase64 == null) {
+      throw Exception('Missing AES key in decrypted data');
+    }
+
+    // PERFORMANCE FIX: Convert to bytes directly (no hex conversion needed)
+    final aesKeyBytes = base64Decode(aesKeyBase64);
+    
+    Uint8List nonceBytes;
+    if (aesNonceBase64 != null) {
+      nonceBytes = base64Decode(aesNonceBase64);
+    } else {
+      // Fallback to nonce_hex if nonce not in JSON
+      final nonceHex = usableKey['nonce_hex'] as String?;
+      if (nonceHex == null || nonceHex.isEmpty) {
+        throw Exception('Missing AES nonce');
+      }
+      nonceBytes = _hexToBytes(nonceHex);
+    }
+
+    print('✓ AES key (${aesKeyBytes.length} bytes) and nonce (${nonceBytes.length} bytes) extracted');
+    print('  RSA decryption took: ${stopwatch.elapsedMilliseconds}ms');
+
+    // Download file from IPFS
+    final downloadStart = stopwatch.elapsedMilliseconds;
+    
+    final ipfsUrl = 'https://apricot-delicate-vole-342.mypinata.cloud/ipfs/$ipfsCid';
+    final response = await http.get(Uri.parse(ipfsUrl));
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to download from IPFS: ${response.statusCode}');
+    }
+
+    final encryptedFileBytes = response.bodyBytes;
+    final downloadTime = stopwatch.elapsedMilliseconds - downloadStart;
+    print('✓ Downloaded ${encryptedFileBytes.length} bytes from IPFS in ${downloadTime}ms');
+
+    // 🔐 NEW: VERIFY IPFS FILE INTEGRITY
+    print('\n🔐 === VERIFYING IPFS FILE INTEGRITY ===');
+    final downloadedFileHash = await _computeSHA256(encryptedFileBytes);
+    print('Downloaded file hash: $downloadedFileHash');
+    print('Expected hash (blockchain): ${verificationResult.blockchainFileHash}');
+
+    if (downloadedFileHash != verificationResult.blockchainFileHash) {
+      print('❌ IPFS FILE INTEGRITY FAILED - Hash mismatch!');
+      await _showIPFSIntegrityFailedDialog(
+        context,
+        downloadedFileHash,
+        verificationResult.blockchainFileHash ?? 'N/A',
+      );
+      showSnackBar('❌ Downloaded file is corrupted or tampered');
+      return;
+    }
+
+    print('✅ IPFS FILE INTEGRITY VERIFIED');
+    print('=== IPFS VERIFICATION END ===\n');
+
+    // PERFORMANCE FIX: Use native cryptography package for AES-GCM (SUPER FAST!)
+    final decryptStart = stopwatch.elapsedMilliseconds;
+    
+    final decryptedBytes = await _fastDecryptFile(
+      encryptedFileBytes,
+      aesKeyBytes,
+      nonceBytes,
+    );
+
+    final decryptTime = stopwatch.elapsedMilliseconds - decryptStart;
+    stopwatch.stop();
+    
+    print('✅ File decrypted successfully!');
+    print('  Decrypted size: ${decryptedBytes.length} bytes');
+    print('  Decryption took: ${decryptTime}ms');
+    print('  Total time: ${stopwatch.elapsedMilliseconds}ms');
+
+    // Show preview
+    await _showFilePreview(context, filename, mimeType, decryptedBytes);
+
+  } catch (e, stackTrace) {
+    stopwatch.stop();
+    print('Error in _performDecryption after ${stopwatch.elapsedMilliseconds}ms: $e');
+    print('Stack trace: $stackTrace');
+    
+    rethrow;
+  }
+}
+
+/// Compute SHA-256 hash of file bytes
+static Future<String> _computeSHA256(Uint8List bytes) async {
+  final digest = await Sha256().hash(bytes);
+  return digest.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+}
+
+static Future<void> _showIPFSIntegrityFailedDialog(
+  BuildContext context,
+  String downloadedHash,
+  String expectedHash,
+) async {
+  const Color errorRed = Color(0xFFDC2626);
+  const Color lightRed = Color(0xFFFEF2F2);
+  const Color darkText = Color(0xFF2C3E50);
+  const Color textGray = Color(0xFF6C757D);
+  const Color primaryGreen = Color(0xFF6B8E5A);
+  const Color lightGreen = Color(0xFFF5F8F3);
+  const Color borderColor = Color(0xFFD5E1CF);
+
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: errorRed.withOpacity(0.3), width: 2),
+      ),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: lightRed,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.cloud_off_rounded,
+              color: errorRed,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'IPFS File Corrupted',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: darkText,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: lightRed,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: errorRed.withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_rounded, color: errorRed, size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Downloaded file does not match blockchain record!',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: errorRed,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'The file downloaded from IPFS has been modified or corrupted. The hash does not match the immutable blockchain record.',
+              style: TextStyle(fontSize: 14, color: textGray, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Hash Comparison:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: darkText,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: lightGreen,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 1.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.cloud_download_rounded, color: primaryGreen, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Downloaded from IPFS:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: darkText,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: SelectableText(
+                      downloadedHash,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: textGray,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Icon(Icons.link_rounded, color: primaryGreen, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Expected (Blockchain):',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: darkText,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: SelectableText(
+                      expectedHash,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: textGray,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange[300]!, width: 1),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded, color: Colors.orange[700], size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'The IPFS storage may have been compromised. Contact your system administrator.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[900],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: errorRed,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: const Text(
+            'Close',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    ),
+  );
+}
   // =====================================================
   // PERFORMANCE FIX: Fast AES-GCM Decryption
   // =====================================================
