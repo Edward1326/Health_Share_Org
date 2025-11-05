@@ -23,7 +23,7 @@ class FileUploadService {
   static const Color darkGray = Color(0xFF757575);
 
   // File size limits
-  static const int MAX_FILE_SIZE_MB = 50;
+  static const int MAX_FILE_SIZE_MB = 1000;
   static const int MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   static const int LARGE_FILE_WARNING_MB = 5;
   static const int LARGE_FILE_WARNING_BYTES = LARGE_FILE_WARNING_MB * 1024 * 1024;
@@ -536,25 +536,25 @@ class FileUploadService {
         return;
       }
 
-      // Step 6: Calculate SHA256 hash of original file (BEFORE encryption - for Hive logging)
-      print('Step 5: Calculating SHA256 hash of original file...');
-      final sha256Hash = _calculateSHA256(fileBytes);
-      print('File SHA256 hash: $sha256Hash');
-
-      // Step 7: Generate AES key and nonce for GCM mode
-      print('Step 6: Generating AES-256 key and nonce...');
+      // Step 6: Generate AES key and nonce for GCM mode
+      print('Step 5: Generating AES-256 key and nonce...');
       final aesKey = _generateRandomBytes(32); // 32 bytes for AES-256
       final aesNonce = _generateRandomBytes(12); // 12 bytes for GCM nonce
 
       print('Generated AES-256 key (base64): ${base64Encode(aesKey)}');
       print('Generated GCM nonce (base64): ${base64Encode(aesNonce)}');
 
-      // Step 8: Encrypt file with AES-256-GCM (using consistent format)
-      print('Step 7: Encrypting file with AES-256-GCM...');
+      // Step 7: Encrypt file with AES-256-GCM (using consistent format)
+      print('Step 6: Encrypting file with AES-256-GCM...');
       final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
       print('Original file size: ${fileBytes.length} bytes');
       print('Encrypted file size: ${encryptedBytes.length} bytes');
+
+      // 🔐 Step 8: Calculate SHA256 hash of ENCRYPTED file (for Hive logging and IPFS verification)
+      print('Step 7: Calculating SHA256 hash of ENCRYPTED file...');
+      final sha256Hash = _calculateSHA256(encryptedBytes);  // ✅ HASH THE ENCRYPTED FILE!
+      print('Encrypted file SHA256 hash: $sha256Hash');
 
       // Step 9: Get patient's RSA public key
       print('Step 8: Getting patient RSA public key...');
@@ -745,7 +745,7 @@ class FileUploadService {
         print('🔗 Step 15: Logging to Hive blockchain...');
         final hiveResult = await _logToHiveBlockchain(
           fileName: fileDetails['fileName']!,
-          fileHash: sha256Hash,
+          fileHash: sha256Hash,  // ✅ Now using the ENCRYPTED file hash
           fileId: fileId.toString(),
           userId: uploaderId,
           timestamp: uploadTimestamp,

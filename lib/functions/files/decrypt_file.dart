@@ -196,25 +196,52 @@ class FileDecryptionService {
     final downloadTime = stopwatch.elapsedMilliseconds - downloadStart;
     print('✓ Downloaded ${encryptedFileBytes.length} bytes from IPFS in ${downloadTime}ms');
 
-    // 🔐 NEW: VERIFY IPFS FILE INTEGRITY
-    print('\n🔐 === VERIFYING IPFS FILE INTEGRITY ===');
-    final downloadedFileHash = await _computeSHA256(encryptedFileBytes);
-    print('Downloaded file hash: $downloadedFileHash');
-    print('Expected hash (blockchain): ${verificationResult.blockchainFileHash}');
+   // 🔍 ADD THIS DEBUG CODE HERE (BEFORE HASHING)
+print('\n🔍 === DETAILED HASH ANALYSIS ===');
+print('Downloaded file size: ${encryptedFileBytes.length} bytes');
+if (encryptedFileBytes.length >= 32) {
+  print('First 32 bytes (hex): ${encryptedFileBytes.sublist(0, 32).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+  print('Last 32 bytes (hex): ${encryptedFileBytes.sublist(encryptedFileBytes.length - 32).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+} else {
+  print('File too small to show byte preview');
+}
 
-    if (downloadedFileHash != verificationResult.blockchainFileHash) {
-      print('❌ IPFS FILE INTEGRITY FAILED - Hash mismatch!');
-      await _showIPFSIntegrityFailedDialog(
-        context,
-        downloadedFileHash,
-        verificationResult.blockchainFileHash ?? 'N/A',
-      );
-      showSnackBar('❌ Downloaded file is corrupted or tampered');
-      return;
-    }
+// 🔐 NEW: VERIFY IPFS FILE INTEGRITY
+print('\n🔐 === VERIFYING IPFS FILE INTEGRITY ===');
+final downloadedFileHash = await _computeSHA256(encryptedFileBytes);
+print('Downloaded file hash: $downloadedFileHash');
+print('Expected hash (blockchain): ${verificationResult.blockchainFileHash}');
 
-    print('✅ IPFS FILE INTEGRITY VERIFIED');
-    print('=== IPFS VERIFICATION END ===\n');
+// Get the confirmed hash from Hive_Logs (which was already verified against blockchain)
+final hiveLogRecord = await Supabase.instance.client
+    .from('Hive_Logs')
+    .select('file_hash')
+    .eq('file_id', fileId)
+    .maybeSingle();
+
+if (hiveLogRecord == null) {
+  print('❌ No Hive_Logs record found');
+  showSnackBar('❌ No blockchain record found for this file');
+  return;
+}
+
+final blockchainConfirmedHash = hiveLogRecord['file_hash'] as String;
+print('Expected hash (Hive_Logs): $blockchainConfirmedHash');
+
+if (downloadedFileHash != blockchainConfirmedHash) {
+  print('❌ IPFS FILE INTEGRITY FAILED - Hash mismatch!');
+  await _showIPFSIntegrityFailedDialog(
+    context,
+    downloadedFileHash,
+    blockchainConfirmedHash,
+  );
+  showSnackBar('❌ Downloaded file is corrupted or tampered');
+  return;
+}
+
+print('✅ IPFS FILE INTEGRITY VERIFIED');
+print('=== IPFS VERIFICATION END ===\n');
+
 
     // PERFORMANCE FIX: Use native cryptography package for AES-GCM (SUPER FAST!)
     final decryptStart = stopwatch.elapsedMilliseconds;
