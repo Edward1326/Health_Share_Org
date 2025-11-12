@@ -785,23 +785,37 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.phone,
                       ),
 
+                      // Contact info with validation
                       _buildInputField(
                         child: TextFormField(
-                          controller: _addressController,
-                          maxLines: 2,
-                          textCapitalization: TextCapitalization.words,
+                          controller: _contactNumberController,
+                          keyboardType: TextInputType.phone,
                           inputFormatters: [
-                            LengthLimitingTextInputFormatter(200),
+                            FilteringTextInputFormatter
+                                .digitsOnly, // Only allow digits
+                            LengthLimitingTextInputFormatter(
+                                11), // Limit to 11 digits
                           ],
                           decoration: const InputDecoration(
-                            hintText: 'Address',
+                            hintText: 'Phone Number (09XX XXX XXXX)',
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: InputValidators.validateAddress,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please enter phone number';
+                            }
+                            if (value.length != 11) {
+                              return 'Phone number must be exactly 11 digits';
+                            }
+                            if (!value.startsWith('09')) {
+                              return 'Phone number must start with 09';
+                            }
+                            return null;
+                          },
                         ),
-                        icon: Icons.location_on,
+                        icon: Icons.phone,
                       ),
 
                       _buildInputField(
