@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
@@ -853,7 +854,11 @@ class _HospitalProfileContentWidgetState
                     icon: Icons.phone,
                     hint: 'Enter contact number',
                     keyboardType: TextInputType.phone,
-                  ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(11),
+                    ],
+                  )
                 ],
               ),
             ),
@@ -907,11 +912,13 @@ class _HospitalProfileContentWidgetState
     required String hint,
     TextInputType? keyboardType,
     int maxLines = 1,
+    List<TextInputFormatter>? inputFormatters, // Add this parameter
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      inputFormatters: inputFormatters, // Add this line
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

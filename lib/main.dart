@@ -28,16 +28,15 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'HealthShare',
       theme: ThemeData(),
       debugShowCheckedModeBanner: false,
-      initialRoute: '/',
+      initialRoute: '/login', // Changed from '/' to '/login'
       routes: {
-        '/': (context) => const LoginPage(),
+        '/': (context) => const LoginPage(), // Changed to LoginPage
         '/login': (context) => const LoginPage(),
         '/signup': (context) => const SignupPage(),
         '/admin_dashboard': (context) => const Dashboard(),
@@ -49,7 +48,6 @@ class MyApp extends StatelessWidget {
         '/staff_profile': (context) => const StaffProfilePage(),
         '/admin_profile': (context) => const AdminProfilePage(),
       },
-      // Handle unknown routes
     );
   }
 }

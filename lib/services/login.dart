@@ -5,6 +5,7 @@ import '../pages/admin/admin_dashboard.dart';
 import '../pages/staff/staff_dashboard.dart';
 import '../pages/reset_password.dart';
 import 'login_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -20,11 +21,72 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _isCheckingAuth = true; // Add this to show loading while checking
 
   @override
   void initState() {
     super.initState();
+    _checkExistingAuth(); // Check if user is already logged in
     _setupAuthListener();
+  }
+
+  // Check if user is already authenticated
+  Future<void> _checkExistingAuth() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+      final userId = prefs.getString('userId');
+      final userPosition = prefs.getString('userPosition');
+      final organizationId = prefs.getString('organizationId');
+
+      // Also check Supabase session
+      final session = Supabase.instance.client.auth.currentSession;
+
+      if (isLoggedIn &&
+          userId != null &&
+          userPosition != null &&
+          organizationId != null &&
+          session != null) {
+        // User is already logged in, navigate to appropriate dashboard
+        if (mounted) {
+          if (userPosition == 'administrator') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const Dashboard(),
+                settings: RouteSettings(
+                  arguments: {
+                    'organizationId': organizationId,
+                    'userId': userId,
+                  },
+                ),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const StaffDashboard(),
+                settings: RouteSettings(
+                  arguments: {
+                    'organizationId': organizationId,
+                    'userId': userId,
+                  },
+                ),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Error checking auth: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingAuth = false;
+        });
+      }
+    }
   }
 
   void _setupAuthListener() {
@@ -41,8 +103,30 @@ class _LoginPageState extends State<LoginPage> {
             );
           }
         });
+      } else if (event == AuthChangeEvent.signedOut) {
+        // Clear stored data when user signs out
+        _clearLoginState();
       }
     });
+  }
+
+  // Save login state to SharedPreferences
+  Future<void> _saveLoginState(
+      String userId, String userPosition, String organizationId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userId', userId);
+    await prefs.setString('userPosition', userPosition);
+    await prefs.setString('organizationId', organizationId);
+    await prefs.setBool('isLoggedIn', true);
+  }
+
+  // Clear login state from SharedPreferences
+  Future<void> _clearLoginState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userId');
+    await prefs.remove('userPosition');
+    await prefs.remove('organizationId');
+    await prefs.remove('isLoggedIn');
   }
 
   @override
@@ -76,20 +160,46 @@ class _LoginPageState extends State<LoginPage> {
       if (result.success) {
         // Get organization ID directly from the login result
         String? organizationId;
-        
-        if (result.userDetails != null && 
+
+        if (result.userDetails != null &&
             result.userDetails!['organization_users'] != null &&
             result.userDetails!['organization_users'].isNotEmpty) {
-          organizationId = result.userDetails!['organization_users'][0]['organization_id'] as String?;
+          organizationId = result.userDetails!['organization_users'][0]
+              ['organization_id'] as String?;
         }
-        
+
         if (organizationId == null) {
-          _showErrorSnackBar('Failed to fetch organization data. Please try again.');
+          _showErrorSnackBar(
+              'Failed to fetch organization data. Please try again.');
           await Supabase.instance.client.auth.signOut();
           return;
         }
 
+        // Get user ID from Supabase session or userDetails
+        final session = Supabase.instance.client.auth.currentSession;
+        String? userId = session?.user.id;
+
+        // Fallback: try to get from userDetails if session doesn't have it
+        if (userId == null && result.userDetails != null) {
+          userId = result.userDetails!['id'] as String?;
+        }
+
+        // If still null, show error
+        if (userId == null) {
+          _showErrorSnackBar(
+              'Failed to get user information. Please try again.');
+          await Supabase.instance.client.auth.signOut();
+          return;
+        }
+
+        final userPosition = result.userPosition ?? '';
+
+        // Save login state to SharedPreferences
+        await _saveLoginState(userId, userPosition, organizationId);
+
         print('✅ Login successful for organization: $organizationId');
+        print('✅ User ID: $userId');
+        print('✅ User Position: $userPosition');
 
         // Navigate based on user position
         if (mounted) {
@@ -214,7 +324,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Title
               const Text(
                 'Check Your Email',
@@ -226,7 +336,7 @@ class _LoginPageState extends State<LoginPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              
+
               // Subtitle
               const Text(
                 'We\'ve sent a password reset link to',
@@ -237,10 +347,11 @@ class _LoginPageState extends State<LoginPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              
+
               // Email
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8F9FA),
                   borderRadius: BorderRadius.circular(8),
@@ -256,7 +367,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Instructions
               Container(
                 padding: const EdgeInsets.all(16),
@@ -289,7 +400,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Buttons
               Row(
                 children: [
@@ -404,15 +515,25 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading screen while checking authentication
+    if (_isCheckingAuth) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF6B8E5A),
+          ),
+        ),
+      );
+    }
+
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 800;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: isSmallScreen 
-          ? _buildMobileLayout()
-          : _buildDesktopLayout(),
+        child: isSmallScreen ? _buildMobileLayout() : _buildDesktopLayout(),
       ),
     );
   }
@@ -814,8 +935,8 @@ class _LoginPageState extends State<LoginPage> {
                       ? null
                       : () {
                           if (!LoginService.canAttemptLogin()) {
-                            final remainingTime = LoginService
-                                .getRemainingCooldownTime();
+                            final remainingTime =
+                                LoginService.getRemainingCooldownTime();
                             _showErrorSnackBar(
                                 'Please wait $remainingTime seconds before trying again.');
                             return;
@@ -901,38 +1022,31 @@ class HealthShareLogoPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.055 // Thinner stroke
+      ..strokeWidth = size.width * 0.055
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
     final center = Offset(size.width / 2, size.height / 2);
-    
-    // Dimensions for the cross
+
     final innerGap = size.width * 0.08;
     final armExtension = size.width * 0.38;
 
-    // Teal/cyan color for left/bottom L-shape
     paint.color = const Color(0xFF17A2B8);
-    
-    // Draw left-bottom L shape
+
     final leftBottomPath = Path();
-    // Start from top-left, go down and right
     leftBottomPath.moveTo(center.dx - innerGap, center.dy - armExtension);
     leftBottomPath.lineTo(center.dx - innerGap, center.dy - innerGap);
     leftBottomPath.lineTo(center.dx - armExtension, center.dy - innerGap);
-    
+
     canvas.drawPath(leftBottomPath, paint);
 
-    // Gray color for right/top L-shape
     paint.color = const Color(0xFF9E9E9E);
-    
-    // Draw right-top L shape
+
     final rightTopPath = Path();
-    // Start from bottom-right, go up and left
     rightTopPath.moveTo(center.dx + innerGap, center.dy + armExtension);
     rightTopPath.lineTo(center.dx + innerGap, center.dy + innerGap);
     rightTopPath.lineTo(center.dx + armExtension, center.dy + innerGap);
-    
+
     canvas.drawPath(rightTopPath, paint);
   }
 

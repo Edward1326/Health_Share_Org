@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:health_share_org/services/login.dart';
 
 // Input Formatters and Validators
 class InputFormatters {
@@ -10,9 +11,7 @@ class InputFormatters {
   );
 
   /// Only allow numbers, spaces, parentheses, hyphens, and plus sign for phone
-  static final phoneFormatter = FilteringTextInputFormatter.allow(
-    RegExp(r'[0-9\s\-\(\)\+]'),
-  );
+  static final phoneFormatter = FilteringTextInputFormatter.digitsOnly;
 
   /// Only allow alphanumeric, spaces, and common punctuation for organization name
   static final organizationNameFormatter = FilteringTextInputFormatter.allow(
@@ -56,40 +55,22 @@ class InputValidators {
       return 'Please enter phone number';
     }
 
-    // Remove all non-digit characters
-    final cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    // Remove all non-digit characters (just in case)
+    final cleanNumber = value.replaceAll(RegExp(r'\D'), '');
 
-    // Check for Philippine mobile formats
-    // Format 1: 09XXXXXXXXX (11 digits starting with 09)
-    // Format 2: +639XXXXXXXXX (13 characters with +63)
-    // Format 3: 639XXXXXXXXX (12 digits starting with 63)
+    // Must be exactly 11 digits
+    if (cleanNumber.length != 11) {
+      return 'Phone number must be exactly 11 digits';
+    }
 
-    if (cleanNumber.startsWith('+63')) {
-      // +639XXXXXXXXX format
-      if (cleanNumber.length != 13) {
-        return 'Invalid Philippine number format';
-      }
-      if (!RegExp(r'^\+639[0-9]{9}$').hasMatch(cleanNumber)) {
-        return 'Invalid Philippine mobile number';
-      }
-    } else if (cleanNumber.startsWith('63')) {
-      // 639XXXXXXXXX format
-      if (cleanNumber.length != 12) {
-        return 'Invalid Philippine number format';
-      }
-      if (!RegExp(r'^639[0-9]{9}$').hasMatch(cleanNumber)) {
-        return 'Invalid Philippine mobile number';
-      }
-    } else if (cleanNumber.startsWith('09')) {
-      // 09XXXXXXXXX format
-      if (cleanNumber.length != 11) {
-        return 'Philippine mobile number must be 11 digits';
-      }
-      if (!RegExp(r'^09[0-9]{9}$').hasMatch(cleanNumber)) {
-        return 'Invalid Philippine mobile number';
-      }
-    } else {
-      return 'Please enter a valid Philippine mobile number (09XX XXX XXXX)';
+    // Must start with 09
+    if (!cleanNumber.startsWith('09')) {
+      return 'Phone number must start with 09';
+    }
+
+    // Validate it's a valid Philippine mobile number format (09XXXXXXXXX)
+    if (!RegExp(r'^09[0-9]{9}$').hasMatch(cleanNumber)) {
+      return 'Invalid Philippine mobile number';
     }
 
     return null;
@@ -1020,8 +1001,9 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       controller: _adminContactNumberController,
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
-                        InputFormatters.phoneFormatter,
-                        LengthLimitingTextInputFormatter(15),
+                        FilteringTextInputFormatter.digitsOnly, // Only digits
+                        LengthLimitingTextInputFormatter(
+                            11), // Limit to 11 characters
                       ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
@@ -1212,7 +1194,13 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                 // Back Link
                 Center(
                   child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => LoginPage()),
+                        (route) => false, // Remove all previous routes
+                      );
+                    },
                     child: Text(
                       '← Back to Login',
                       style: TextStyle(

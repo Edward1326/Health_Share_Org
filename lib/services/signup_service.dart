@@ -1,7 +1,3 @@
-// Add to pubspec.yaml:
-// dependencies:
-//   webcrypto: ^0.5.3
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';

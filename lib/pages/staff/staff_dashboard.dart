@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'patients_tab.dart';
 import 'staff_profile.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Theme colors - matching admin dashboard exactly
 class StaffDashboardTheme {
@@ -207,17 +208,33 @@ class _MainStaffDashboardLayoutState extends State<MainStaffDashboardLayout> {
         ),
       );
 
-      if (shouldSignOut == true) {
-        await Supabase.instance.client.auth.signOut();
+      if (shouldSignOut == true && mounted) {
+        // Clear SharedPreferences first
         final prefs = await SharedPreferences.getInstance();
         await prefs.clear();
+
+        // Sign out from Supabase
+        await Supabase.instance.client.auth.signOut();
+
+        // Navigate to login page and remove all previous routes
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false, // Remove all previous routes
+          );
         }
       }
     } catch (e) {
       print('Error signing out: $e');
-      _showSnackBar('Error signing out. Please try again.');
+      // Even if there's an error, try to navigate to login
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/login',
+          (route) => false,
+        );
+      }
     }
   }
 

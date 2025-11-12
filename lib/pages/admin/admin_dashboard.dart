@@ -4,6 +4,8 @@ import 'employeelist.dart';
 import 'patientslist.dart';
 import 'hospital_profile.dart';
 import 'admin_profile.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Theme colors - shared across all dashboard components
 class DashboardTheme {
@@ -174,10 +176,32 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
       );
 
       if (shouldSignOut == true && mounted) {
-        Navigator.pushReplacementNamed(context, '/login');
+        // Clear SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+
+        // Sign out from Supabase
+        await Supabase.instance.client.auth.signOut();
+
+        // Navigate to login page and remove all previous routes
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false, // Remove all previous routes
+          );
+        }
       }
     } catch (e) {
       print('Error signing out: $e');
+      // Even if there's an error, try to navigate to login
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/login',
+          (route) => false,
+        );
+      }
     }
   }
 

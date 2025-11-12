@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
@@ -698,6 +699,10 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                     label: 'Contact Number',
                     icon: Icons.phone,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(11),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   _buildTextField(
@@ -801,11 +806,13 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    List<TextInputFormatter>? inputFormatters, // Add this parameter
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      inputFormatters: inputFormatters, // Add this line
       style: const TextStyle(
         fontSize: 14,
         color: Color(0xFF495057),

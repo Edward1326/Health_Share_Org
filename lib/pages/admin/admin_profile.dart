@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
@@ -702,6 +703,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                     label: 'Contact Number',
                     icon: Icons.phone,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(11),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   _buildTextField(
@@ -805,11 +810,13 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    List<TextInputFormatter>? inputFormatters, // Add this parameter
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      inputFormatters: inputFormatters, // Add this line
       style: const TextStyle(
         fontSize: 14,
         color: Color(0xFF495057),
@@ -822,25 +829,27 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         ),
         prefixIcon: Icon(
           icon,
-          color: const Color(0xFF6C757D),
+          color: const Color(0xFF4A8B3A), // Changed to match your theme
           size: 20,
         ),
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide:
+              const BorderSide(color: Color(0xFFDEE2E6)), // Matched your theme
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide:
+              const BorderSide(color: Color(0xFFDEE2E6)), // Matched your theme
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 12), // Matched your theme
         alignLabelWithHint: maxLines > 1,
       ),
     );
