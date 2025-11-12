@@ -30,10 +30,12 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _contactNumberController = TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
   final TextEditingController _bloodTypeController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
-  final TextEditingController _medicalConditionsController = TextEditingController();
+  final TextEditingController _medicalConditionsController =
+      TextEditingController();
   final TextEditingController _disabilitiesController = TextEditingController();
 
   @override
@@ -86,11 +88,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
       print('DEBUG: Organization_User data: $orgUserResponse');
 
       // Get Person data for personal information
-      final personResponse = await supabase
-          .from('Person')
-          .select()
-          .eq('id', personId)
-          .single();
+      final personResponse =
+          await supabase.from('Person').select().eq('id', personId).single();
 
       print('DEBUG: Person data: $personResponse');
 
@@ -110,7 +109,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
         _contactNumberController.text = staffData!['contact_number'] ?? '';
         _bloodTypeController.text = staffData!['blood_type'] ?? '';
         _allergiesController.text = staffData!['allergies'] ?? '';
-        _medicalConditionsController.text = staffData!['medical_conditions'] ?? '';
+        _medicalConditionsController.text =
+            staffData!['medical_conditions'] ?? '';
         _disabilitiesController.text = staffData!['disabilities'] ?? '';
       });
 
@@ -238,39 +238,39 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
   }
 
   String _formatDateTime(String? dateTimeString) {
-  if (dateTimeString == null) return 'Not available';
-  try {
-    final dateTime = DateTime.parse(dateTimeString);
-    
-    // Format with date and time
-    final day = dateTime.day.toString().padLeft(2, '0');
-    final month = dateTime.month.toString().padLeft(2, '0');
-    final year = dateTime.year;
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    
-    return '$day/$month/$year $hour:$minute';
-  
-  } catch (e) {
-    return 'Invalid date';
+    if (dateTimeString == null) return 'Not available';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+
+      // Format with date and time
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final year = dateTime.year;
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+
+      return '$day/$month/$year $hour:$minute';
+    } catch (e) {
+      return 'Invalid date';
+    }
   }
-}
 
   String _getFullName() {
     if (staffData == null) return 'Unknown Staff';
-    
+
     final firstName = staffData!['first_name'] ?? '';
     final middleName = staffData!['middle_name'] ?? '';
     final lastName = staffData!['last_name'] ?? '';
-    
-    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
+
+    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'
+        .trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return MainStaffDashboardLayout(
       title: 'My Profile',
-      selectedNavIndex: 1,  // Changed from 4 to 1
+      selectedNavIndex: 1, // Changed from 4 to 1
       content: _buildProfileContent(),
     );
   }
@@ -329,10 +329,9 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                       child: CircleAvatar(
                         radius: 50,
                         backgroundColor: const Color(0xFF4A8B3A),
-                        backgroundImage:
-                            staffData!['image'] != null
-                                ? NetworkImage(staffData!['image'])
-                                : null,
+                        backgroundImage: staffData!['image'] != null
+                            ? NetworkImage(staffData!['image'])
+                            : null,
                         child: staffData!['image'] == null
                             ? const Icon(
                                 Icons.person,
@@ -346,9 +345,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                       bottom: 0,
                       right: 0,
                       child: GestureDetector(
-                        onTap: isUploadingImage
-                            ? null
-                            : _pickAndUploadImage,
+                        onTap: isUploadingImage ? null : _pickAndUploadImage,
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -365,9 +362,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation<
-                                            Color>(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
                                       Colors.white,
                                     ),
                                   ),
@@ -562,7 +557,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
   }
 
   Widget _buildInfoCard(
-      String title, String content, IconData icon, Color iconColor, {bool isMultiline = false}) {
+      String title, String content, IconData icon, Color iconColor,
+      {bool isMultiline = false}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -577,7 +573,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
         ],
       ),
       child: Row(
-        crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment:
+            isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -710,7 +707,7 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
                     maxLines: 2,
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Medical Information
                   const Align(
                     alignment: Alignment.centerLeft,
@@ -761,7 +758,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
               },
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF6C757D),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               child: const Text(
                 'Cancel',
@@ -776,7 +774,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -836,7 +835,8 @@ class _StaffProfilePageState extends State<StaffProfilePage> {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         alignLabelWithHint: maxLines > 1,
       ),
     );

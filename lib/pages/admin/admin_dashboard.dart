@@ -37,14 +37,14 @@ class MainDashboardLayout extends StatefulWidget {
 }
 
 class _MainDashboardLayoutState extends State<MainDashboardLayout> {
-  
   Future<void> _signOut() async {
     try {
       final shouldSignOut = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           backgroundColor: const Color(0xFFF8F9FA),
           contentPadding: EdgeInsets.zero,
           content: Container(
@@ -89,7 +89,7 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                     ],
                   ),
                 ),
-                
+
                 // Content
                 Padding(
                   padding: const EdgeInsets.all(24),
@@ -114,7 +114,7 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      
+
                       // Action buttons
                       Row(
                         children: [
@@ -124,7 +124,8 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: DashboardTheme.textGray,
                                 side: BorderSide(color: Colors.grey.shade300),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -146,7 +147,8 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                                 backgroundColor: Colors.red.shade500,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -187,9 +189,9 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
     return Scaffold(
       backgroundColor: DashboardTheme.sidebarGray,
       body: SafeArea(
-        child: isSmallScreen 
-          ? widget.content // Mobile: Just show content directly
-          : _buildDesktopLayout(),
+        child: isSmallScreen
+            ? widget.content // Mobile: Just show content directly
+            : _buildDesktopLayout(),
       ),
     );
   }
@@ -202,14 +204,14 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
           width: 250.0,
           child: _buildSidebar(),
         ),
-        
+
         // Main Content Area
         Expanded(
           child: Column(
             children: [
               // Top Header Bar (Green)
               _buildTopHeader(),
-              
+
               // Main Content
               Expanded(
                 child: Container(
@@ -241,15 +243,19 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
               ),
             ),
           ),
-          
+
           // Navigation Items
-          _buildNavItem(Icons.people, 'Employees', 0, widget.selectedNavIndex == 0),
-          _buildNavItem(Icons.local_hospital, 'Patients', 1, widget.selectedNavIndex == 1),
-          _buildNavItem(Icons.business, 'Hospital Profile', 2, widget.selectedNavIndex == 2),
-          _buildNavItem(Icons.account_circle, 'My Profile', 3, widget.selectedNavIndex == 3),
-          
+          _buildNavItem(
+              Icons.people, 'Employees', 0, widget.selectedNavIndex == 0),
+          _buildNavItem(Icons.local_hospital, 'Patients', 1,
+              widget.selectedNavIndex == 1),
+          _buildNavItem(Icons.business, 'Hospital Profile', 2,
+              widget.selectedNavIndex == 2),
+          _buildNavItem(Icons.account_circle, 'My Profile', 3,
+              widget.selectedNavIndex == 3),
+
           const Spacer(),
-          
+
           // Logout Button
           Container(
             padding: const EdgeInsets.all(24),
@@ -275,7 +281,8 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String title, int index, bool isSelected) {
+  Widget _buildNavItem(
+      IconData icon, String title, int index, bool isSelected) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
@@ -347,7 +354,8 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                   style: TextStyle(
                     color: isSelected ? Colors.white : DashboardTheme.textGray,
                     fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.w500 : FontWeight.normal,
                   ),
                 ),
               ),
@@ -368,9 +376,9 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
           const Icon(Icons.show_chart, color: Colors.white),
           const SizedBox(width: 16),
           const Icon(Icons.people, color: Colors.white),
-          
+
           const Spacer(),
-          
+
           // Title and actions
           Text(
             widget.title,
@@ -380,14 +388,14 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Actions
           if (widget.actions != null) ...widget.actions!,
-          
+
           const SizedBox(width: 16),
-          
+
           // User info
           const Row(
             children: [

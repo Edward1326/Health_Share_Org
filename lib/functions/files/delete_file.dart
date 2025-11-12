@@ -17,124 +17,126 @@ class FileDeleteService {
   /// 3. Updating deleted_at in Files table
   /// 4. Logging deletion to Hive blockchain
   /// Deletes a file completely by:
-/// 1. Deleting all encryption keys from File_Keys table
-/// 2. Updating revoked_at in File_Shares table
-/// 3. Updating deleted_at in Files table
-/// 4. Logging deletion to Hive blockchain
-static Future<void> deleteFile({
-  required BuildContext context,
-  required Map<String, dynamic> file,
-  required Function(String) showSnackBar,
-  required Function() onDeleteSuccess,
-}) async {
-  try {
-    final fileId = file['id']?.toString();
-    final fileName = file['filename']?.toString() ?? 'Unknown File';
-    final fileHash = file['sha256_hash']?.toString() ?? '';
-    
-    if (fileId == null || fileId == 'null') {
-      showSnackBar('Error: Invalid file ID');
-      return;
+  /// 1. Deleting all encryption keys from File_Keys table
+  /// 2. Updating revoked_at in File_Shares table
+  /// 3. Updating deleted_at in Files table
+  /// 4. Logging deletion to Hive blockchain
+  static Future<void> deleteFile({
+    required BuildContext context,
+    required Map<String, dynamic> file,
+    required Function(String) showSnackBar,
+    required Function() onDeleteSuccess,
+  }) async {
+    try {
+      final fileId = file['id']?.toString();
+      final fileName = file['filename']?.toString() ?? 'Unknown File';
+      final fileHash = file['sha256_hash']?.toString() ?? '';
+
+      if (fileId == null || fileId == 'null') {
+        showSnackBar('Error: Invalid file ID');
+        return;
+      }
+
+      // Get current user ID
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        showSnackBar('Authentication error: Not logged in');
+        return;
+      }
+
+      final userResponse = await Supabase.instance.client
+          .from('User')
+          .select('id')
+          .eq('email', currentUser.email!);
+
+      if (userResponse.isEmpty) {
+        showSnackBar('User not found');
+        return;
+      }
+
+      final userId = userResponse.first['id']?.toString();
+      if (userId == null) {
+        showSnackBar('Error: Invalid user ID');
+        return;
+      }
+
+      // Check if context is still valid before showing dialog
+      if (!context.mounted) return;
+
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final now = DateTime.now();
+      final timestamp = now.toIso8601String();
+
+      // Step 1: Delete all encryption keys for this file
+      await _deleteFileKeys(fileId);
+
+      // Step 2: Update File_Shares to mark as revoked
+      await _revokeFileShares(fileId, timestamp);
+
+      // Step 3: Update Files table to mark as deleted
+      await _markFileAsDeleted(fileId, timestamp);
+
+      // Step 4: Log deletion to Hive blockchain
+      print('🔗 Logging file deletion to Hive blockchain...');
+      final hiveResult = await _logDeletionToHiveBlockchain(
+        fileName: fileName,
+        fileHash: fileHash,
+        fileId: fileId,
+        userId: userId,
+        timestamp: now,
+        context: context,
+      );
+
+      // Check if context is still valid before closing dialog
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+
+      // Show success message based on Hive result
+      if (hiveResult.success) {
+        showSnackBar(
+            'File deleted and logged to Hive blockchain successfully!');
+        print('✅ HIVE BLOCKCHAIN DELETION LOGGING SUCCESSFUL');
+        print('   Transaction ID: ${hiveResult.transactionId}');
+        print('   Block Number: ${hiveResult.blockNum}');
+      } else {
+        showSnackBar(
+            'File deleted successfully! (Hive logging failed - check logs)');
+        print(
+            '⚠️ HIVE BLOCKCHAIN DELETION LOGGING FAILED: ${hiveResult.error}');
+      }
+
+      // Trigger refresh callback
+      onDeleteSuccess();
+    } catch (e) {
+      // Check if context is still valid before closing dialog
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+
+      print('Error deleting file: $e');
+      showSnackBar('Error deleting file: $e');
     }
-
-    // Get current user ID
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    if (currentUser == null) {
-      showSnackBar('Authentication error: Not logged in');
-      return;
-    }
-
-    final userResponse = await Supabase.instance.client
-        .from('User')
-        .select('id')
-        .eq('email', currentUser.email!);
-
-    if (userResponse.isEmpty) {
-      showSnackBar('User not found');
-      return;
-    }
-
-    final userId = userResponse.first['id']?.toString();
-    if (userId == null) {
-      showSnackBar('Error: Invalid user ID');
-      return;
-    }
-
-    // Check if context is still valid before showing dialog
-    if (!context.mounted) return;
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    final now = DateTime.now();
-    final timestamp = now.toIso8601String();
-
-    // Step 1: Delete all encryption keys for this file
-    await _deleteFileKeys(fileId);
-
-    // Step 2: Update File_Shares to mark as revoked
-    await _revokeFileShares(fileId, timestamp);
-
-    // Step 3: Update Files table to mark as deleted
-    await _markFileAsDeleted(fileId, timestamp);
-
-    // Step 4: Log deletion to Hive blockchain
-    print('🔗 Logging file deletion to Hive blockchain...');
-    final hiveResult = await _logDeletionToHiveBlockchain(
-      fileName: fileName,
-      fileHash: fileHash,
-      fileId: fileId,
-      userId: userId,
-      timestamp: now,
-      context: context,
-    );
-
-    // Check if context is still valid before closing dialog
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
-
-    // Show success message based on Hive result
-    if (hiveResult.success) {
-      showSnackBar('File deleted and logged to Hive blockchain successfully!');
-      print('✅ HIVE BLOCKCHAIN DELETION LOGGING SUCCESSFUL');
-      print('   Transaction ID: ${hiveResult.transactionId}');
-      print('   Block Number: ${hiveResult.blockNum}');
-    } else {
-      showSnackBar('File deleted successfully! (Hive logging failed - check logs)');
-      print('⚠️ HIVE BLOCKCHAIN DELETION LOGGING FAILED: ${hiveResult.error}');
-    }
-    
-    // Trigger refresh callback
-    onDeleteSuccess();
-    
-  } catch (e) {
-    // Check if context is still valid before closing dialog
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
-    
-    print('Error deleting file: $e');
-    showSnackBar('Error deleting file: $e');
   }
-}
 
   /// Deletes all encryption keys associated with a file from File_Keys table
   static Future<void> _deleteFileKeys(String fileId) async {
     try {
       print('DEBUG: Deleting keys for file_id: $fileId');
-      
+
       await Supabase.instance.client
           .from('File_Keys')
           .delete()
           .eq('file_id', fileId);
-      
+
       print('DEBUG: Successfully deleted keys for file_id: $fileId');
     } catch (e) {
       print('ERROR: Failed to delete file keys: $e');
@@ -146,12 +148,11 @@ static Future<void> deleteFile({
   static Future<void> _revokeFileShares(String fileId, String timestamp) async {
     try {
       print('DEBUG: Revoking file shares for file_id: $fileId');
-      
+
       await Supabase.instance.client
           .from('File_Shares')
-          .update({'revoked_at': timestamp})
-          .eq('file_id', fileId);
-      
+          .update({'revoked_at': timestamp}).eq('file_id', fileId);
+
       print('DEBUG: Successfully revoked file shares for file_id: $fileId');
     } catch (e) {
       print('ERROR: Failed to revoke file shares: $e');
@@ -160,15 +161,15 @@ static Future<void> deleteFile({
   }
 
   /// Marks a file as deleted in the Files table
-  static Future<void> _markFileAsDeleted(String fileId, String timestamp) async {
+  static Future<void> _markFileAsDeleted(
+      String fileId, String timestamp) async {
     try {
       print('DEBUG: Marking file as deleted for file_id: $fileId');
-      
+
       await Supabase.instance.client
           .from('Files')
-          .update({'deleted_at': timestamp})
-          .eq('id', fileId);
-      
+          .update({'deleted_at': timestamp}).eq('id', fileId);
+
       print('DEBUG: Successfully marked file as deleted for file_id: $fileId');
     } catch (e) {
       print('ERROR: Failed to mark file as deleted: $e');
@@ -177,7 +178,7 @@ static Future<void> deleteFile({
   }
 
   /// 🔗 LOG FILE DELETION TO HIVE BLOCKCHAIN
-  /// This orchestrates: HiveCustomJsonService → HiveTransactionService → 
+  /// This orchestrates: HiveCustomJsonService → HiveTransactionService →
   /// HiveTransactionSigner → HiveTransactionBroadcaster → Hive_Logs table
   static Future<HiveLogResult> _logDeletionToHiveBlockchain({
     required String fileName,
@@ -203,7 +204,8 @@ static Future<void> deleteFile({
         timestamp: timestamp,
         action: 'delete', // Specify deletion action
       );
-      final customJsonOperation = customJsonResult['operation'] as List<dynamic>;
+      final customJsonOperation =
+          customJsonResult['operation'] as List<dynamic>;
       print('✓ Deletion custom JSON created');
 
       // 🔗 STEP 2: Create unsigned transaction using HiveTransactionService
@@ -253,11 +255,13 @@ static Future<void> deleteFile({
           print('✗ Failed to insert Hive deletion log into database');
           return HiveLogResult(
             success: false,
-            error: 'Transaction broadcast succeeded but database logging failed',
+            error:
+                'Transaction broadcast succeeded but database logging failed',
           );
         }
       } else {
-        print('✗ Failed to broadcast deletion transaction: ${broadcastResult.getError()}');
+        print(
+            '✗ Failed to broadcast deletion transaction: ${broadcastResult.getError()}');
         return HiveLogResult(success: false, error: broadcastResult.getError());
       }
     } catch (e, stackTrace) {

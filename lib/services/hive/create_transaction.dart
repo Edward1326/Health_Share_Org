@@ -4,11 +4,11 @@ import 'package:http/http.dart' as http;
 import 'package:convert/convert.dart';
 
 /// Hive Blockchain Transaction Service for Web
-/// 
+///
 /// This service handles the creation of unsigned transactions for the Hive blockchain.
 /// It fetches dynamic global properties from the Hive API and constructs properly
 /// formatted transaction structures.
-/// 
+///
 /// Works in web environment without any platform-specific dependencies.
 class HiveTransactionService {
   // Hive API endpoint - public node for blockchain queries

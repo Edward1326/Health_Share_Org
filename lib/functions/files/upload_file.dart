@@ -23,10 +23,11 @@ class FileUploadService {
   static const Color darkGray = Color(0xFF757575);
 
   // File size limits
-  static const int MAX_FILE_SIZE_MB = 1000;
+  static const int MAX_FILE_SIZE_MB = 200;
   static const int MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   static const int LARGE_FILE_WARNING_MB = 5;
-  static const int LARGE_FILE_WARNING_BYTES = LARGE_FILE_WARNING_MB * 1024 * 1024;
+  static const int LARGE_FILE_WARNING_BYTES =
+      LARGE_FILE_WARNING_MB * 1024 * 1024;
 
   // Cryptography instances
   static final _aesGcm = AesGcm.with256bits();
@@ -137,24 +138,27 @@ class FileUploadService {
       print('Data size: ${data.length} bytes');
       print('Key size: ${key.length} bytes');
       print('Nonce size: ${nonce.length} bytes');
-      
+
       final secretKey = SecretKey(key);
-      
+
       final secretBox = await _aesGcm.encrypt(
         data,
         secretKey: secretKey,
         nonce: nonce,
       );
-      
+
       print('AES encryption completed successfully');
-      
+
       // Format: [ciphertext][16-byte MAC] (consistent with mobile services)
-      final result = Uint8List(secretBox.cipherText.length + secretBox.mac.bytes.length);
+      final result =
+          Uint8List(secretBox.cipherText.length + secretBox.mac.bytes.length);
       result.setRange(0, secretBox.cipherText.length, secretBox.cipherText);
-      result.setRange(secretBox.cipherText.length, result.length, secretBox.mac.bytes);
-      
-      print('Combined encrypted data: ${result.length} bytes (${secretBox.cipherText.length} ciphertext + ${secretBox.mac.bytes.length} MAC)');
-      
+      result.setRange(
+          secretBox.cipherText.length, result.length, secretBox.mac.bytes);
+
+      print(
+          'Combined encrypted data: ${result.length} bytes (${secretBox.cipherText.length} ciphertext + ${secretBox.mac.bytes.length} MAC)');
+
       return result;
     } catch (e) {
       print('AES-256-GCM encryption error: $e');
@@ -166,18 +170,18 @@ class FileUploadService {
   static RSAPublicKey _parseRSAPublicKeyFromPem(String pem) {
     try {
       print('Parsing RSA public key from PEM...');
-      
+
       // Clean the PEM string
       final cleanPem = pem.trim();
-      
+
       // Determine the format
       bool isPkcs1 = cleanPem.contains('-----BEGIN RSA PUBLIC KEY-----');
       bool isPkcs8 = cleanPem.contains('-----BEGIN PUBLIC KEY-----');
-      
+
       if (!isPkcs1 && !isPkcs8) {
         throw FormatException('Invalid PEM format - missing proper headers');
       }
-      
+
       String lines;
       if (isPkcs1) {
         print('Detected PKCS#1 format');
@@ -198,45 +202,52 @@ class FileUploadService {
             .replaceAll(' ', '')
             .trim();
       }
-      
+
       if (lines.isEmpty) {
         throw FormatException('Empty key data after cleaning');
       }
-      
+
       final keyBytes = base64Decode(lines);
-      
+
       if (isPkcs1) {
         // PKCS#1 format - direct RSA key structure
         final publicKeyParser = ASN1Parser(keyBytes);
         final publicKeySeq = publicKeyParser.nextObject() as ASN1Sequence;
-        
-        final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
-        final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
-        
-        print('PKCS#1 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
+
+        final modulus =
+            (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
+        final exponent =
+            (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+
+        print(
+            'PKCS#1 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
         return RSAPublicKey(modulus, exponent!);
       } else {
         // PKCS#8 format - wrapped in algorithm identifier
         final asn1Parser = ASN1Parser(keyBytes);
         final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
-        
+
         // Extract the public key bit string
         final publicKeyBitString = topLevelSeq.elements[1] as ASN1BitString;
         final publicKeyBytes = publicKeyBitString.contentBytes();
-        
+
         // Parse the RSA public key structure
         final publicKeyParser = ASN1Parser(publicKeyBytes);
         final publicKeySeq = publicKeyParser.nextObject() as ASN1Sequence;
-        
-        final modulus = (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
-        final exponent = (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
-        
-        print('PKCS#8 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
+
+        final modulus =
+            (publicKeySeq.elements[0] as ASN1Integer).valueAsBigInteger;
+        final exponent =
+            (publicKeySeq.elements[1] as ASN1Integer).valueAsBigInteger;
+
+        print(
+            'PKCS#8 RSA key parsed - Modulus bits: ${modulus!.bitLength}, Exponent: $exponent');
         return RSAPublicKey(modulus, exponent!);
       }
     } catch (e) {
       print('Error parsing RSA public key from PEM: $e');
-      print('PEM content (first 100 chars): ${pem.substring(0, pem.length > 100 ? 100 : pem.length)}');
+      print(
+          'PEM content (first 100 chars): ${pem.substring(0, pem.length > 100 ? 100 : pem.length)}');
       rethrow;
     }
   }
@@ -246,20 +257,20 @@ class FileUploadService {
     try {
       print('Starting RSA-OAEP encryption...');
       print('Data to encrypt length: ${data.length} characters');
-      
+
       final publicKey = _parseRSAPublicKeyFromPem(publicKeyPem);
-      
+
       // Create OAEP encryptor with SHA-256
       final encryptor = OAEPEncoding(RSAEngine())
         ..init(true, PublicKeyParameter<RSAPublicKey>(publicKey));
-      
+
       final dataBytes = utf8.encode(data);
       final encryptedBytes = encryptor.process(Uint8List.fromList(dataBytes));
       final encryptedBase64 = base64Encode(encryptedBytes);
-      
+
       print('RSA-OAEP encryption completed successfully');
       print('Encrypted data length: ${encryptedBase64.length} characters');
-      
+
       return encryptedBase64;
     } catch (e) {
       print('RSA-OAEP encryption error: $e');
@@ -268,7 +279,7 @@ class FileUploadService {
   }
 
   /// 🔗 MAIN INTEGRATION METHOD - Connects all Hive services and logs to database
-  /// This orchestrates: HiveCustomJsonService → HiveTransactionService → 
+  /// This orchestrates: HiveCustomJsonService → HiveTransactionService →
   /// HiveTransactionSigner → HiveTransactionBroadcaster → Hive_Logs table
   static Future<HiveLogResult> _logToHiveBlockchain({
     required String fileName,
@@ -293,7 +304,8 @@ class FileUploadService {
         fileHash: fileHash,
         timestamp: timestamp,
       );
-      final customJsonOperation = customJsonResult['operation'] as List<dynamic>;
+      final customJsonOperation =
+          customJsonResult['operation'] as List<dynamic>;
       print('✓ Custom JSON created');
 
       // 🔗 STEP 2: Create unsigned transaction using HiveTransactionService
@@ -343,11 +355,13 @@ class FileUploadService {
           print('✗ Failed to insert Hive log into database');
           return HiveLogResult(
             success: false,
-            error: 'Transaction broadcast succeeded but database logging failed',
+            error:
+                'Transaction broadcast succeeded but database logging failed',
           );
         }
       } else {
-        print('✗ Failed to broadcast transaction: ${broadcastResult.getError()}');
+        print(
+            '✗ Failed to broadcast transaction: ${broadcastResult.getError()}');
         return HiveLogResult(success: false, error: broadcastResult.getError());
       }
     } catch (e, stackTrace) {
@@ -401,8 +415,9 @@ class FileUploadService {
 
     try {
       print('=== STARTING FILE UPLOAD PROCESS WITH HIVE INTEGRATION ===');
-      print('Using PointyCastle RSA-OAEP + cryptography AES-256-GCM (consistent format)');
-      
+      print(
+          'Using PointyCastle RSA-OAEP + cryptography AES-256-GCM (consistent format)');
+
       // Step 1: Create HTML file input for web compatibility
       print('Step 1: Creating file input dialog...');
       final html.InputElement uploadInput = html.InputElement(type: 'file');
@@ -422,19 +437,23 @@ class FileUploadService {
       final fileSize = file.size;
       final fileExtension = fileName.split('.').last.toLowerCase();
 
-      print('File selected: $fileName (${fileSize} bytes - ${formatFileSize(fileSize)})');
+      print(
+          'File selected: $fileName (${fileSize} bytes - ${formatFileSize(fileSize)})');
 
       // Step 2: Check file size
       if (!isFileSizeAcceptable(fileSize)) {
-        showSnackBar('File too large! Maximum size is ${MAX_FILE_SIZE_MB}MB. Your file is ${formatFileSize(fileSize)}');
+        showSnackBar(
+            'File too large! Maximum size is ${MAX_FILE_SIZE_MB}MB. Your file is ${formatFileSize(fileSize)}');
         print('File rejected: exceeds ${MAX_FILE_SIZE_MB}MB limit');
         return;
       }
 
       // Warn about large files
       if (fileSize > LARGE_FILE_WARNING_BYTES) {
-        print('Large file detected (>${LARGE_FILE_WARNING_MB}MB), showing warning...');
-        final shouldContinue = await showFileSizeWarning(context, fileName, fileSize);
+        print(
+            'Large file detected (>${LARGE_FILE_WARNING_MB}MB), showing warning...');
+        final shouldContinue =
+            await showFileSizeWarning(context, fileName, fileSize);
         if (shouldContinue != true) {
           print('User cancelled large file upload');
           return;
@@ -453,7 +472,8 @@ class FileUploadService {
 
       // Step 4: Show file details dialog and get description
       print('Step 3: Getting file details from user...');
-      final fileDetails = await _showFileDetailsDialog(context, fileName, fileSize);
+      final fileDetails =
+          await _showFileDetailsDialog(context, fileName, fileSize);
       if (fileDetails == null) {
         print('User cancelled file upload');
         return;
@@ -464,7 +484,8 @@ class FileUploadService {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -546,20 +567,22 @@ class FileUploadService {
 
       // Step 7: Encrypt file with AES-256-GCM (using consistent format)
       print('Step 6: Encrypting file with AES-256-GCM...');
-      final encryptedBytes = await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
+      final encryptedBytes =
+          await _encryptWithAES256GCM(fileBytes, aesKey, aesNonce);
 
       print('Original file size: ${fileBytes.length} bytes');
       print('Encrypted file size: ${encryptedBytes.length} bytes');
 
       // 🔐 Step 8: Calculate SHA256 hash of ENCRYPTED file (for Hive logging and IPFS verification)
       print('Step 7: Calculating SHA256 hash of ENCRYPTED file...');
-      final sha256Hash = _calculateSHA256(encryptedBytes);  // ✅ HASH THE ENCRYPTED FILE!
+      final sha256Hash =
+          _calculateSHA256(encryptedBytes); // ✅ HASH THE ENCRYPTED FILE!
       print('Encrypted file SHA256 hash: $sha256Hash');
 
       // Step 9: Get patient's RSA public key
       print('Step 8: Getting patient RSA public key...');
       final patientId = selectedPatient['patient_id'];
-      
+
       final patientResponse = await Supabase.instance.client
           .from('Patient')
           .select('id, user_id')
@@ -567,7 +590,8 @@ class FileUploadService {
 
       if (patientResponse.isEmpty) {
         Navigator.pop(context);
-        showSnackBar('Patient not found in Patient table. Patient ID: $patientId');
+        showSnackBar(
+            'Patient not found in Patient table. Patient ID: $patientId');
         return;
       }
 
@@ -586,7 +610,8 @@ class FileUploadService {
       }
 
       final patientUserData = patientUserResponse.first;
-      final patientRsaPublicKeyPem = patientUserData['rsa_public_key'] as String?;
+      final patientRsaPublicKeyPem =
+          patientUserData['rsa_public_key'] as String?;
 
       if (patientRsaPublicKeyPem == null || patientRsaPublicKeyPem.isEmpty) {
         Navigator.pop(context);
@@ -614,7 +639,8 @@ class FileUploadService {
 
       if (doctorRsaPublicKeyPem == null || doctorRsaPublicKeyPem.isEmpty) {
         Navigator.pop(context);
-        showSnackBar('Doctor does not have an RSA public key. Please generate keys first.');
+        showSnackBar(
+            'Doctor does not have an RSA public key. Please generate keys first.');
         return;
       }
 
@@ -623,15 +649,18 @@ class FileUploadService {
       // Step 11: Encrypt AES key and nonce with RSA-OAEP using PointyCastle (consistent format)
       print('Step 10: Encrypting AES key with RSA-OAEP...');
       final keyData = {
-        'key': base64Encode(aesKey),      // BASE64 format (consistent with mobile)
-        'nonce': base64Encode(aesNonce),  // BASE64 format (consistent with mobile)
+        'key': base64Encode(aesKey), // BASE64 format (consistent with mobile)
+        'nonce':
+            base64Encode(aesNonce), // BASE64 format (consistent with mobile)
       };
       final keyDataJson = jsonEncode(keyData);
 
       print('Key data JSON: $keyDataJson');
 
-      final patientRsaEncryptedString = _encryptWithRSAOAEP(keyDataJson, patientRsaPublicKeyPem);
-      final doctorRsaEncryptedString = _encryptWithRSAOAEP(keyDataJson, doctorRsaPublicKeyPem);
+      final patientRsaEncryptedString =
+          _encryptWithRSAOAEP(keyDataJson, patientRsaPublicKeyPem);
+      final doctorRsaEncryptedString =
+          _encryptWithRSAOAEP(keyDataJson, doctorRsaPublicKeyPem);
 
       print('RSA-OAEP encryption completed for both patient and doctor');
 
@@ -682,8 +711,8 @@ class FileUploadService {
 
       print('Sending IPFS upload request (timeout: 10 minutes)...');
       final streamedResponse = await request.send().timeout(
-        const Duration(minutes: 10), // Increased timeout for large files
-      );
+            const Duration(minutes: 10), // Increased timeout for large files
+          );
 
       final response = await http.Response.fromStream(streamedResponse);
 
@@ -745,7 +774,7 @@ class FileUploadService {
         print('🔗 Step 15: Logging to Hive blockchain...');
         final hiveResult = await _logToHiveBlockchain(
           fileName: fileDetails['fileName']!,
-          fileHash: sha256Hash,  // ✅ Now using the ENCRYPTED file hash
+          fileHash: sha256Hash, // ✅ Now using the ENCRYPTED file hash
           fileId: fileId.toString(),
           userId: uploaderId,
           timestamp: uploadTimestamp,
@@ -757,17 +786,18 @@ class FileUploadService {
 
         // Show success message based on Hive result
         if (hiveResult.success) {
-          showSnackBar('File encrypted, uploaded, and logged to Hive blockchain successfully!');
+          showSnackBar(
+              'File encrypted, uploaded, and logged to Hive blockchain successfully!');
           print('✅ HIVE BLOCKCHAIN LOGGING SUCCESSFUL');
           print('   Transaction ID: ${hiveResult.transactionId}');
           print('   Block Number: ${hiveResult.blockNum}');
         } else {
-          showSnackBar('File uploaded successfully! (Hive logging failed - check logs)');
+          showSnackBar(
+              'File uploaded successfully! (Hive logging failed - check logs)');
           print('⚠️ HIVE BLOCKCHAIN LOGGING FAILED: ${hiveResult.error}');
         }
 
         print('=== FILE UPLOAD PROCESS COMPLETED ===');
-
       } else {
         String errorMessage;
         switch (response.statusCode) {
@@ -778,7 +808,8 @@ class FileUploadService {
             errorMessage = 'Unauthorized - Check your Pinata API credentials';
             break;
           case 402:
-            errorMessage = 'Payment required - Check your Pinata account limits';
+            errorMessage =
+                'Payment required - Check your Pinata account limits';
             break;
           case 403:
             errorMessage = 'Forbidden - Check your Pinata API permissions';
@@ -798,11 +829,13 @@ class FileUploadService {
 
         Navigator.pop(context);
         showSnackBar('$errorMessage: ${response.body}');
-        print('IPFS upload failed - Status: ${response.statusCode}, Body: ${response.body}');
+        print(
+            'IPFS upload failed - Status: ${response.statusCode}, Body: ${response.body}');
       }
     } on TimeoutException {
       Navigator.pop(context);
-      showSnackBar('Upload timeout - Please check your connection and try again');
+      showSnackBar(
+          'Upload timeout - Please check your connection and try again');
       print('IPFS upload timeout');
     } catch (e, stackTrace) {
       Navigator.pop(context);
@@ -813,275 +846,263 @@ class FileUploadService {
   }
 
   static Future<Map<String, String>?> _showFileDetailsDialog(
-    BuildContext context, String fileName, int fileSize) async {
-  final nameController = TextEditingController(text: fileName);
-  final descriptionController = TextEditingController();
-  String selectedCategory = 'medical_report';
+      BuildContext context, String fileName, int fileSize) async {
+    final nameController = TextEditingController(text: fileName);
+    final descriptionController = TextEditingController();
+    String selectedCategory = 'medical_report';
 
-  // Theme colors to match your app
-  const Color primaryGreen = Color(0xFF6B8E5A);
-  const Color lightGreen = Color(0xFFF5F8F3);
-  const Color textGray = Color(0xFF6C757D);
-  const Color darkText = Color(0xFF2C3E50);
-  const Color borderColor = Color(0xFFD5E1CF);
+    // Theme colors to match your app
+    const Color primaryGreen = Color(0xFF6B8E5A);
+    const Color lightGreen = Color(0xFFF5F8F3);
+    const Color textGray = Color(0xFF6C757D);
+    const Color darkText = Color(0xFF2C3E50);
+    const Color borderColor = Color(0xFFD5E1CF);
 
-  final categories = [
-    'medical_report',
-    'lab_result',
-    'prescription',
-    'x_ray',
-    'mri_scan',
-    'ct_scan',
-    'ultrasound',
-    'blood_test',
-    'discharge_summary',
-    'consultation_notes',
-    'other'
-  ];
+    final categories = [
+      'medical_report',
+      'lab_result',
+      'prescription',
+      'x_ray',
+      'mri_scan',
+      'ct_scan',
+      'ultrasound',
+      'blood_test',
+      'discharge_summary',
+      'consultation_notes',
+      'other'
+    ];
 
-  return showDialog<Map<String, String>>(
-    context: context,
-    barrierColor: Colors.black.withOpacity(0.5),
-    builder: (context) => AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      contentPadding: const EdgeInsets.all(24),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: lightGreen,
-              borderRadius: BorderRadius.circular(10),
+    return showDialog<Map<String, String>>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: lightGreen,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child:
+                  const Icon(Icons.cloud_upload, color: primaryGreen, size: 24),
             ),
-            child: const Icon(Icons.cloud_upload, color: primaryGreen, size: 24),
+            const SizedBox(width: 12),
+            const Text(
+              'File Upload Details',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: darkText,
+                fontSize: 20,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: lightGreen,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor, width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.insert_drive_file,
+                          color: primaryGreen, size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fileName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: darkText,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Size: ${formatFileSize(fileSize)}',
+                            style: TextStyle(
+                              color: textGray,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: darkText, fontSize: 14),
+                decoration: InputDecoration(
+                  labelText: 'Display Name *',
+                  labelStyle: TextStyle(
+                      color: textGray,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500),
+                  hintText: 'Enter a descriptive name',
+                  hintStyle:
+                      TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: borderColor, width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryGreen, width: 2),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: borderColor, width: 1.5),
+                  ),
+                  prefixIcon: const Icon(Icons.edit_outlined,
+                      color: primaryGreen, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                style: const TextStyle(color: darkText, fontSize: 14),
+                decoration: InputDecoration(
+                  labelText: 'Medical Category *',
+                  labelStyle: TextStyle(
+                      color: textGray,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: borderColor, width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryGreen, width: 2),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: borderColor, width: 1.5),
+                  ),
+                  prefixIcon: const Icon(Icons.category_outlined,
+                      color: primaryGreen, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                dropdownColor: Colors.white,
+                items: categories.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(
+                      category
+                          .replaceAll('_', ' ')
+                          .split(' ')
+                          .map((word) =>
+                              word[0].toUpperCase() + word.substring(1))
+                          .join(' '),
+                      style: const TextStyle(color: darkText, fontSize: 14),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    selectedCategory = value;
+                  }
+                },
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          const Text(
-            'File Upload Details',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: darkText,
-              fontSize: 20,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: textGray,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        const Text('Please enter a display name for the file'),
+                    backgroundColor: Colors.red[600],
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, {
+                'fileName': nameController.text.trim(),
+                'description': descriptionController.text.trim(),
+                'category': selectedCategory,
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryGreen,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Upload File',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: lightGreen,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: borderColor, width: 1.5),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.insert_drive_file, color: primaryGreen, size: 28),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fileName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: darkText,
-                            fontSize: 14,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Size: ${formatFileSize(fileSize)}',
-                          style: TextStyle(
-                            color: textGray,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: nameController,
-              style: const TextStyle(color: darkText, fontSize: 14),
-              decoration: InputDecoration(
-                labelText: 'Display Name *',
-                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
-                hintText: 'Enter a descriptive name',
-                hintStyle: TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: primaryGreen, width: 2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                prefixIcon: const Icon(Icons.edit_outlined, color: primaryGreen, size: 20),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descriptionController,
-              style: const TextStyle(color: darkText, fontSize: 14),
-              decoration: InputDecoration(
-                labelText: 'Description (Optional)',
-                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
-                hintText: 'Add notes about this file',
-                hintStyle: TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: primaryGreen, width: 2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                prefixIcon: const Icon(Icons.notes_outlined, color: primaryGreen, size: 20),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedCategory,
-              style: const TextStyle(color: darkText, fontSize: 14),
-              decoration: InputDecoration(
-                labelText: 'Medical Category *',
-                labelStyle: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: primaryGreen, width: 2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: borderColor, width: 1.5),
-                ),
-                prefixIcon: const Icon(Icons.category_outlined, color: primaryGreen, size: 20),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-              dropdownColor: Colors.white,
-              items: categories.map((category) {
-                return DropdownMenuItem(
-                  value: category,
-                  child: Text(
-                    category
-                        .replaceAll('_', ' ')
-                        .split(' ')
-                        .map((word) => word[0].toUpperCase() + word.substring(1))
-                        .join(' '),
-                    style: const TextStyle(color: darkText, fontSize: 14),
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  selectedCategory = value;
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          style: TextButton.styleFrom(
-            foregroundColor: textGray,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (nameController.text.trim().isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Please enter a display name for the file'),
-                  backgroundColor: Colors.red[600],
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
-              return;
-            }
-            Navigator.pop(context, {
-              'fileName': nameController.text.trim(),
-              'description': descriptionController.text.trim(),
-              'category': selectedCategory,
-            });
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: primaryGreen,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-            elevation: 0,
-            shadowColor: Colors.transparent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: const Text(
-            'Upload File',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   /// Test the complete Hive workflow without uploading a file
   /// Useful for debugging and testing the integration

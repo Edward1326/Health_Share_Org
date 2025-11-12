@@ -13,12 +13,12 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
     with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   final AdminPatientListFunctions _functions = AdminPatientListFunctions();
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _filteredUsers = [];
   List<Map<String, dynamic>> _doctors = [];
-  
+
   String _searchQuery = '';
   String _selectedFilter = 'all';
   bool _isLoading = true;
@@ -50,7 +50,10 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
 
   Future<void> _loadData() async {
     try {
-      setState(() { _isLoading = true; _errorMessage = null; });
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
 
       final orgId = await _functions.getCurrentOrganizationId();
       if (orgId == null) throw Exception('Unable to get organization ID');
@@ -68,7 +71,7 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                 .select('Person!inner(image)')
                 .eq('id', user['userId'])
                 .single();
-            
+
             if (personResponse['Person'] != null) {
               user['image'] = personResponse['Person']['image'];
             }
@@ -87,7 +90,10 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
       _applyFilters();
       _animationController.forward();
     } catch (e) {
-      setState(() { _isLoading = false; _errorMessage = e.toString(); });
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
     }
   }
 
@@ -105,38 +111,47 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
 
     switch (_selectedFilter) {
       case 'invited':
-        filtered = filtered.where((user) => user['status'] == 'invited').toList();
+        filtered =
+            filtered.where((user) => user['status'] == 'invited').toList();
         break;
       case 'unassigned':
-        filtered = filtered.where((user) =>
-            user['status'] == 'unassigned' || 
-            (user['status'] != 'pending' && user['assignedDoctor'] == null)).toList();
+        filtered = filtered
+            .where((user) =>
+                user['status'] == 'unassigned' ||
+                (user['status'] != 'pending' && user['assignedDoctor'] == null))
+            .toList();
         break;
       case 'assigned':
-        filtered = filtered.where((user) => user['assignedDoctor'] != null).toList();
+        filtered =
+            filtered.where((user) => user['assignedDoctor'] != null).toList();
         break;
       case 'pending':
-        filtered = filtered.where((user) => user['status'] == 'pending').toList();
+        filtered =
+            filtered.where((user) => user['status'] == 'pending').toList();
         break;
       case 'all':
       default:
         break;
     }
 
-    setState(() { _filteredUsers = filtered; });
+    setState(() {
+      _filteredUsers = filtered;
+    });
   }
 
   Future<void> _onApprove(Map<String, dynamic> user) async {
     try {
       String patientId = user['id']?.toString() ?? '';
       if (patientId.isEmpty) throw Exception('No valid patient ID found');
-      
+
       await _functions.approvePendingPatient(patientId);
       await _loadData();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${user['name']} approved'), backgroundColor: Colors.green),
+          SnackBar(
+              content: Text('${user['name']} approved'),
+              backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -152,10 +167,12 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
     try {
       await _functions.rejectPendingPatient(user['patient_id'] ?? user['id']);
       await _loadData();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${user['name']} rejected'), backgroundColor: Colors.orange),
+          SnackBar(
+              content: Text('${user['name']} rejected'),
+              backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
@@ -170,7 +187,9 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
   Future<void> _onAssignDoctor(Map<String, dynamic> user) async {
     if (!_functions.validateUserForAssignment(user)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot assign doctor to this patient'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Cannot assign doctor to this patient'),
+            backgroundColor: Colors.red),
       );
       return;
     }
@@ -187,7 +206,8 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Patient Management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+              const Text('Patient Management',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
               Row(
                 children: [
                   ElevatedButton.icon(
@@ -208,18 +228,18 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryGreen,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ],
               ),
             ],
           ),
-          
           const SizedBox(height: 24),
-          
           Row(
             children: [
               Expanded(
@@ -228,26 +248,32 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                   decoration: InputDecoration(
                     hintText: 'Search patients...',
                     prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    suffixIcon: _searchQuery.isNotEmpty 
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() { _searchQuery = ''; });
-                            _applyFilters();
-                          },
-                        )
-                      : null,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                              _applyFilters();
+                            },
+                          )
+                        : null,
                   ),
                   onChanged: (value) {
-                    setState(() { _searchQuery = value; });
+                    setState(() {
+                      _searchQuery = value;
+                    });
                     _applyFilters();
                   },
                 ),
               ),
               const SizedBox(width: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -267,13 +293,17 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                   items: const [
                     DropdownMenuItem(value: 'all', child: Text('All')),
                     DropdownMenuItem(value: 'pending', child: Text('Pending')),
-                    DropdownMenuItem(value: 'assigned', child: Text('Assigned')),
-                    DropdownMenuItem(value: 'unassigned', child: Text('Unassigned')),
+                    DropdownMenuItem(
+                        value: 'assigned', child: Text('Assigned')),
+                    DropdownMenuItem(
+                        value: 'unassigned', child: Text('Unassigned')),
                     DropdownMenuItem(value: 'invited', child: Text('Invited')),
                   ],
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() { _selectedFilter = value; });
+                      setState(() {
+                        _selectedFilter = value;
+                      });
                       _applyFilters();
                     }
                   },
@@ -281,9 +311,7 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
               ),
             ],
           ),
-          
           const SizedBox(height: 24),
-          
           if (_errorMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
@@ -297,13 +325,13 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                   const Icon(Icons.error, color: Colors.red),
                   const SizedBox(width: 12),
                   Expanded(child: Text(_errorMessage!)),
-                  ElevatedButton(onPressed: _loadData, child: const Text('Retry')),
+                  ElevatedButton(
+                      onPressed: _loadData, child: const Text('Retry')),
                 ],
               ),
             ),
             const SizedBox(height: 16),
           ],
-          
           if (_isLoading)
             Container(
               height: 400,
@@ -369,11 +397,15 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
           children: [
             const Icon(Icons.search_off, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text('No patients match your search', style: TextStyle(fontSize: 16)),
+            const Text('No patients match your search',
+                style: TextStyle(fontSize: 16)),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () {
-                setState(() { _searchQuery = ''; _selectedFilter = 'all'; });
+                setState(() {
+                  _searchQuery = '';
+                  _selectedFilter = 'all';
+                });
                 _applyFilters();
               },
               child: const Text('Clear filters'),
@@ -397,18 +429,26 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(8)),
             ),
             child: const Row(
               children: [
-                Expanded(flex: 2, child: Text('Patient', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
-                Expanded(child: Text('Doctor', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Patient',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Status',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('Doctor',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 40),
               ],
             ),
           ),
-          
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -425,7 +465,9 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
-                            color: index < _filteredUsers.length - 1 ? Colors.grey.shade200 : Colors.transparent,
+                            color: index < _filteredUsers.length - 1
+                                ? Colors.grey.shade200
+                                : Colors.transparent,
                           ),
                         ),
                       ),
@@ -439,23 +481,29 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(user['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w500)),
-                                      Text(user['email'] ?? '', style: TextStyle(fontSize: 12, color: textGray)),
+                                      Text(user['name'] ?? 'Unknown',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w500)),
+                                      Text(user['email'] ?? '',
+                                          style: TextStyle(
+                                              fontSize: 12, color: textGray)),
                                     ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          
                           Expanded(
                             child: Center(
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: _getStatusColor(user['status']).withOpacity(0.1),
+                                  color: _getStatusColor(user['status'])
+                                      .withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: Text(
@@ -470,21 +518,22 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                               ),
                             ),
                           ),
-                          
                           Expanded(
                             child: Text(
                               user['assignedDoctor'] ?? 'Unassigned',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: user['assignedDoctor'] != null ? Colors.black : textGray,
+                                color: user['assignedDoctor'] != null
+                                    ? Colors.black
+                                    : textGray,
                               ),
                             ),
                           ),
-                          
                           SizedBox(
                             width: 40,
                             child: PopupMenuButton(
-                              icon: const Icon(Icons.more_horiz, color: textGray),
+                              icon:
+                                  const Icon(Icons.more_horiz, color: textGray),
                               itemBuilder: (context) => [
                                 const PopupMenuItem(
                                   value: 'view',
@@ -512,7 +561,8 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                                     value: 'approve',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.check, color: Colors.green, size: 16),
+                                        Icon(Icons.check,
+                                            color: Colors.green, size: 16),
                                         SizedBox(width: 8),
                                         Text('Approve'),
                                       ],
@@ -522,9 +572,12 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                                     value: 'reject',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.close, color: Colors.red, size: 16),
+                                        Icon(Icons.close,
+                                            color: Colors.red, size: 16),
                                         SizedBox(width: 8),
-                                        Text('Reject', style: TextStyle(color: Colors.red)),
+                                        Text('Reject',
+                                            style:
+                                                TextStyle(color: Colors.red)),
                                       ],
                                     ),
                                   ),
@@ -563,18 +616,23 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
 
   Color _getStatusColor(String? status) {
     switch (status?.toLowerCase()) {
-      case 'pending': return pendingOrange;
-      case 'approved': return approvedGreen;
-      case 'assigned': return Colors.blue;
-      case 'invited': return Colors.purple;
-      default: return Colors.grey;
+      case 'pending':
+        return pendingOrange;
+      case 'approved':
+        return approvedGreen;
+      case 'assigned':
+        return Colors.blue;
+      case 'invited':
+        return Colors.purple;
+      default:
+        return Colors.grey;
     }
   }
 
   Widget _buildPatientAvatar(Map<String, dynamic> user, {double radius = 16}) {
     final imageUrl = user['image'] as String?;
     final name = user['name'] ?? 'Patient';
-    
+
     if (imageUrl != null && imageUrl.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
@@ -678,7 +736,8 @@ class _InvitePatientDialog extends StatefulWidget {
   final AdminPatientListFunctions functions;
   final VoidCallback onPatientInvited;
 
-  const _InvitePatientDialog({required this.functions, required this.onPatientInvited});
+  const _InvitePatientDialog(
+      {required this.functions, required this.onPatientInvited});
 
   @override
   State<_InvitePatientDialog> createState() => _InvitePatientDialogState();
@@ -697,23 +756,33 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
 
   Future<void> _searchUsers(String query) async {
     if (query.isEmpty) {
-      setState(() { _searchResults = []; });
+      setState(() {
+        _searchResults = [];
+      });
       return;
     }
 
-    setState(() { _isSearching = true; });
+    setState(() {
+      _isSearching = true;
+    });
     try {
       final results = await widget.functions.searchUsersToInvite(query);
-      setState(() { _searchResults = results; _isSearching = false; });
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
     } catch (e) {
-      setState(() { _isSearching = false; });
+      setState(() {
+        _isSearching = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Search error: $e'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         );
       }
@@ -742,7 +811,8 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
               controller: _controller,
               decoration: InputDecoration(
                 hintText: 'Search by email...',
-                prefixIcon: const Icon(Icons.search, color: DashboardTheme.textGray),
+                prefixIcon:
+                    const Icon(Icons.search, color: DashboardTheme.textGray),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -755,7 +825,8 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: DashboardTheme.primaryGreen, width: 2),
+                  borderSide: const BorderSide(
+                      color: DashboardTheme.primaryGreen, width: 2),
                 ),
               ),
               onChanged: _searchUsers,
@@ -763,110 +834,122 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
             const SizedBox(height: 16),
             Expanded(
               child: _isSearching
-                ? const Center(
-                    child: CircularProgressIndicator(color: DashboardTheme.primaryGreen),
-                  )
-                : _searchResults.isEmpty
                   ? const Center(
-                      child: Text(
-                        'Start typing to search',
-                        style: TextStyle(color: DashboardTheme.textGray),
-                      ),
+                      child: CircularProgressIndicator(
+                          color: DashboardTheme.primaryGreen),
                     )
-                  : Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: ListView.builder(
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) {
-                          final user = _searchResults[index];
-                          return Container(
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: index < _searchResults.length - 1
-                                      ? Colors.grey.shade200
-                                      : Colors.transparent,
-                                ),
-                              ),
-                            ),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: DashboardTheme.primaryGreen,
-                                child: Text(
-                                  user['name']?[0] ?? 'U',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
+                  : _searchResults.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Start typing to search',
+                            style: TextStyle(color: DashboardTheme.textGray),
+                          ),
+                        )
+                      : Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: ListView.builder(
+                            itemCount: _searchResults.length,
+                            itemBuilder: (context, index) {
+                              final user = _searchResults[index];
+                              return Container(
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: index < _searchResults.length - 1
+                                          ? Colors.grey.shade200
+                                          : Colors.transparent,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              title: Text(
-                                user['name'] ?? 'Unknown',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
-                              ),
-                              subtitle: Text(
-                                user['email'] ?? '',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: DashboardTheme.textGray,
-                                ),
-                              ),
-                              trailing: ElevatedButton(
-                                onPressed: () async {
-                                  try {
-                                    await widget.functions.inviteUser(user);
-                                    widget.onPatientInvited();
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: const Text('Patient invited successfully!'),
-                                          backgroundColor: DashboardTheme.approvedGreen,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: $e'),
-                                          backgroundColor: Colors.red,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: DashboardTheme.primaryGreen,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor:
+                                        DashboardTheme.primaryGreen,
+                                    child: Text(
+                                      user['name']?[0] ?? 'U',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                                  title: Text(
+                                    user['name'] ?? 'Unknown',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w500),
+                                  ),
+                                  subtitle: Text(
+                                    user['email'] ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: DashboardTheme.textGray,
+                                    ),
+                                  ),
+                                  trailing: ElevatedButton(
+                                    onPressed: () async {
+                                      try {
+                                        await widget.functions.inviteUser(user);
+                                        widget.onPatientInvited();
+                                        if (mounted) {
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                  'Patient invited successfully!'),
+                                              backgroundColor:
+                                                  DashboardTheme.approvedGreen,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text('Error: $e'),
+                                              backgroundColor: Colors.red,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          DashboardTheme.primaryGreen,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 8,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: const Text('Invite'),
                                   ),
                                 ),
-                                child: const Text('Invite'),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                              );
+                            },
+                          ),
+                        ),
             ),
           ],
         ),
@@ -887,7 +970,7 @@ class _InvitePatientDialogState extends State<_InvitePatientDialog> {
 // Patient Details Dialog
 class _PatientDetailsDialog extends StatefulWidget {
   final Map<String, dynamic> user;
-  
+
   const _PatientDetailsDialog({required this.user});
 
   @override
@@ -907,9 +990,10 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
 
   Future<void> _loadAssignedDoctors() async {
     try {
-      String patientId = widget.user['patientId']?.toString() ?? 
-                         widget.user['id']?.toString() ?? '';
-      
+      String patientId = widget.user['patientId']?.toString() ??
+          widget.user['id']?.toString() ??
+          '';
+
       if (patientId.isEmpty) {
         setState(() => _isLoading = false);
         return;
@@ -931,9 +1015,8 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
           .toSet()
           .cast<String>();
 
-      final doctorResponse = await _functions.supabase
-          .from('Organization_User')
-          .select('''
+      final doctorResponse =
+          await _functions.supabase.from('Organization_User').select('''
             id,
             position,
             department,
@@ -944,8 +1027,7 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
                 image
               )
             )
-          ''')
-          .in_('id', doctorIds.toList());
+          ''').in_('id', doctorIds.toList());
 
       final List<Map<String, dynamic>> doctors = [];
       for (final doctor in doctorResponse) {
@@ -1005,11 +1087,9 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
               _buildDetailRow('Email', widget.user['email']),
               _buildDetailRow('Phone', widget.user['phone']),
               _buildDetailRow('Status', widget.user['status']),
-              
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              
               Row(
                 children: [
                   const Icon(
@@ -1028,7 +1108,6 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              
               if (_isLoading)
                 const Center(
                   child: Padding(
@@ -1048,7 +1127,8 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.info_outline, size: 18, color: DashboardTheme.textGray),
+                      Icon(Icons.info_outline,
+                          size: 18, color: DashboardTheme.textGray),
                       SizedBox(width: 8),
                       Text(
                         'No doctors assigned',
@@ -1127,7 +1207,8 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: DashboardTheme.approvedGreen.withOpacity(0.1),
+                              color:
+                                  DashboardTheme.approvedGreen.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
@@ -1163,7 +1244,7 @@ class _PatientDetailsDialogState extends State<_PatientDetailsDialog> {
   Widget _buildPatientAvatarForDialog(Map<String, dynamic> user) {
     final imageUrl = user['image'] as String?;
     final name = user['name'] ?? 'Patient';
-    
+
     if (imageUrl != null && imageUrl.isNotEmpty) {
       return CircleAvatar(
         radius: 20,
@@ -1251,7 +1332,8 @@ class _DoctorAssignmentDialog extends StatefulWidget {
   });
 
   @override
-  State<_DoctorAssignmentDialog> createState() => _DoctorAssignmentDialogState();
+  State<_DoctorAssignmentDialog> createState() =>
+      _DoctorAssignmentDialogState();
 }
 
 class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
@@ -1269,8 +1351,10 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
 
   Future<void> _loadExistingAssignments() async {
     try {
-      String patientId = widget.user['patientId']?.toString() ?? widget.user['id']?.toString() ?? '';
-      
+      String patientId = widget.user['patientId']?.toString() ??
+          widget.user['id']?.toString() ??
+          '';
+
       if (patientId.isEmpty) {
         setState(() => _isLoadingInitial = false);
         return;
@@ -1295,7 +1379,8 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
         _isLoadingInitial = false;
       });
 
-      print('Loaded ${currentDoctorIds.length} existing assignments for patient $patientId');
+      print(
+          'Loaded ${currentDoctorIds.length} existing assignments for patient $patientId');
     } catch (e, stackTrace) {
       print('Error loading existing assignments: $e');
       print('Stack trace: $stackTrace');
@@ -1305,16 +1390,16 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
 
   List<Map<String, dynamic>> get _filteredDoctors {
     if (_searchQuery.isEmpty) return widget.doctors;
-    
+
     return widget.doctors.where((doctor) {
       final name = doctor['name']?.toString().toLowerCase() ?? '';
       final position = doctor['position']?.toString().toLowerCase() ?? '';
       final department = doctor['department']?.toString().toLowerCase() ?? '';
       final query = _searchQuery.toLowerCase();
-      
-      return name.contains(query) || 
-             position.contains(query) || 
-             department.contains(query);
+
+      return name.contains(query) ||
+          position.contains(query) ||
+          department.contains(query);
     }).toList();
   }
 
@@ -1325,7 +1410,8 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
       backgroundColor: const Color(0xFFF8F9FA),
       title: Row(
         children: [
-          const Icon(Icons.medical_services, color: DashboardTheme.primaryGreen),
+          const Icon(Icons.medical_services,
+              color: DashboardTheme.primaryGreen),
           const SizedBox(width: 8),
           const Text(
             'Assign Doctors',
@@ -1398,16 +1484,17 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
                   if (_selectedDoctorIds.isNotEmpty)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: DashboardTheme.primaryGreen.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: DashboardTheme.primaryGreen.withOpacity(0.3)),
+                        border: Border.all(
+                            color:
+                                DashboardTheme.primaryGreen.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
@@ -1428,13 +1515,12 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                         ],
                       ),
                     ),
-                  
                   const SizedBox(height: 16),
-                  
                   TextField(
                     decoration: InputDecoration(
                       hintText: 'Search doctors...',
-                      prefixIcon: const Icon(Icons.search, color: DashboardTheme.textGray),
+                      prefixIcon: const Icon(Icons.search,
+                          color: DashboardTheme.textGray),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -1447,31 +1533,33 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: DashboardTheme.primaryGreen, width: 2),
+                        borderSide: const BorderSide(
+                            color: DashboardTheme.primaryGreen, width: 2),
                       ),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear),
-                              onPressed: () => setState(() => _searchQuery = ''),
+                              onPressed: () =>
+                                  setState(() => _searchQuery = ''),
                             )
                           : null,
                     ),
                     onChanged: (value) => setState(() => _searchQuery = value),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
                   Expanded(
                     child: widget.doctors.isEmpty
                         ? const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.medical_services_outlined, size: 64, color: Colors.grey),
+                                Icon(Icons.medical_services_outlined,
+                                    size: 64, color: Colors.grey),
                                 SizedBox(height: 16),
                                 Text(
                                   'No doctors available',
-                                  style: TextStyle(color: DashboardTheme.textGray),
+                                  style:
+                                      TextStyle(color: DashboardTheme.textGray),
                                 ),
                               ],
                             ),
@@ -1481,11 +1569,13 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.search_off, size: 64, color: Colors.grey),
+                                    Icon(Icons.search_off,
+                                        size: 64, color: Colors.grey),
                                     SizedBox(height: 16),
                                     Text(
                                       'No doctors match your search',
-                                      style: TextStyle(color: DashboardTheme.textGray),
+                                      style: TextStyle(
+                                          color: DashboardTheme.textGray),
                                     ),
                                   ],
                                 ),
@@ -1494,26 +1584,30 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade200),
+                                  border:
+                                      Border.all(color: Colors.grey.shade200),
                                 ),
                                 child: ListView.builder(
                                   itemCount: _filteredDoctors.length,
                                   itemBuilder: (context, index) {
                                     final doctor = _filteredDoctors[index];
                                     final doctorId = doctor['id'].toString();
-                                    final isSelected = _selectedDoctorIds.contains(doctorId);
-                                    
+                                    final isSelected =
+                                        _selectedDoctorIds.contains(doctorId);
+
                                     return Container(
                                       decoration: BoxDecoration(
                                         border: Border(
                                           bottom: BorderSide(
-                                            color: index < _filteredDoctors.length - 1
+                                            color: index <
+                                                    _filteredDoctors.length - 1
                                                 ? Colors.grey.shade200
                                                 : Colors.transparent,
                                           ),
                                         ),
-                                        color: isSelected 
-                                            ? DashboardTheme.primaryGreen.withOpacity(0.05)
+                                        color: isSelected
+                                            ? DashboardTheme.primaryGreen
+                                                .withOpacity(0.05)
                                             : Colors.transparent,
                                       ),
                                       child: CheckboxListTile(
@@ -1523,26 +1617,32 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                                             if (checked == true) {
                                               _selectedDoctorIds.add(doctorId);
                                             } else {
-                                              _selectedDoctorIds.remove(doctorId);
+                                              _selectedDoctorIds
+                                                  .remove(doctorId);
                                             }
                                           });
                                         },
-                                        activeColor: DashboardTheme.primaryGreen,
+                                        activeColor:
+                                            DashboardTheme.primaryGreen,
                                         title: Text(
                                           doctor['name'] ?? 'Unknown Doctor',
                                           style: TextStyle(
-                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
                                           ),
                                         ),
                                         subtitle: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             if (doctor['position'] != null)
                                               Text(
                                                 doctor['position'],
                                                 style: const TextStyle(
                                                   fontSize: 12,
-                                                  color: DashboardTheme.textGray,
+                                                  color:
+                                                      DashboardTheme.textGray,
                                                 ),
                                               ),
                                             if (doctor['department'] != null)
@@ -1556,7 +1656,7 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                                           ],
                                         ),
                                         secondary: CircleAvatar(
-                                          backgroundColor: isSelected 
+                                          backgroundColor: isSelected
                                               ? DashboardTheme.primaryGreen
                                               : Colors.grey.shade300,
                                           child: Text(
@@ -1590,24 +1690,27 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
               : () async {
                   setState(() => _isLoading = true);
                   try {
-                    String patientId = widget.user['patientId']?.toString() ?? '';
+                    String patientId =
+                        widget.user['patientId']?.toString() ?? '';
                     if (patientId.isEmpty) {
                       throw Exception('No valid patient ID found');
                     }
-                    
-                    final doctorsToAdd = _selectedDoctorIds.difference(_initialDoctorIds);
-                    final doctorsToRemove = _initialDoctorIds.difference(_selectedDoctorIds);
-                    
+
+                    final doctorsToAdd =
+                        _selectedDoctorIds.difference(_initialDoctorIds);
+                    final doctorsToRemove =
+                        _initialDoctorIds.difference(_selectedDoctorIds);
+
                     print('Doctors to add: $doctorsToAdd');
                     print('Doctors to remove: $doctorsToRemove');
-                    
+
                     for (final doctorId in doctorsToAdd) {
                       await widget.functions.saveAssignmentToDatabase(
                         patientId,
                         doctorId,
                       );
                     }
-                    
+
                     for (final doctorId in doctorsToRemove) {
                       await widget.functions.supabase
                           .from('Doctor_User_Assignment')
@@ -1616,14 +1719,15 @@ class _DoctorAssignmentDialogState extends State<_DoctorAssignmentDialog> {
                           .eq('doctor_id', doctorId)
                           .eq('status', 'active');
                     }
-                    
+
                     widget.onAssignmentChanged();
-                    
+
                     if (mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('Successfully updated doctor assignments!'),
+                          content: const Text(
+                              'Successfully updated doctor assignments!'),
                           backgroundColor: DashboardTheme.approvedGreen,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(

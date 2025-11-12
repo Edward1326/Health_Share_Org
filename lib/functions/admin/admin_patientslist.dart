@@ -89,18 +89,18 @@ class AdminPatientListFunctions {
   Future<List<Map<String, dynamic>>> loadUsersFromSupabase() async {
     try {
       print('=== DEBUG: Starting patient loading process ===');
-      
+
       // Ensure we have organization ID
       if (currentOrganizationId == null) {
         print('⚠️ No organization ID set, fetching...');
         await getCurrentOrganizationId();
-        
+
         if (currentOrganizationId == null) {
           print('❌ Failed to get organization ID');
           return [];
         }
       }
-      
+
       print('✅ Current organization ID: $currentOrganizationId');
 
       // Fetch patients ONLY from the current organization (including image field)
@@ -119,7 +119,8 @@ class AdminPatientListFunctions {
       print('📋 Patient records found: ${patientsResponse.length}');
 
       if (patientsResponse.isEmpty) {
-        print('ℹ️ No Patient records found for organization: $currentOrganizationId');
+        print(
+            'ℹ️ No Patient records found for organization: $currentOrganizationId');
         return [];
       }
 
@@ -186,7 +187,7 @@ class AdminPatientListFunctions {
   Future<List<Map<String, dynamic>>> loadDoctorsFromSupabase() async {
     try {
       print('=== DEBUG: Fetching Doctor/Employee records ===');
-      
+
       // Ensure we have organization ID
       if (currentOrganizationId == null) {
         await getCurrentOrganizationId();
@@ -195,13 +196,12 @@ class AdminPatientListFunctions {
           return [];
         }
       }
-      
+
       print('Current organization ID: $currentOrganizationId');
 
       // Fetch employees ONLY from current organization (including image field)
-      final orgUsersResponse = await supabase
-          .from('Organization_User')
-          .select('''
+      final orgUsersResponse =
+          await supabase.from('Organization_User').select('''
             *, 
             User!inner(
               *, 
@@ -210,8 +210,7 @@ class AdminPatientListFunctions {
                 image
               )
             )
-          ''')
-          .eq('organization_id', currentOrganizationId!);
+          ''').eq('organization_id', currentOrganizationId!);
 
       print('Organization_User records found: ${orgUsersResponse.length}');
 
@@ -229,7 +228,8 @@ class AdminPatientListFunctions {
         final person = user?['Person'];
 
         final position = orgUser['position']?.toString().toLowerCase() ?? '';
-        final department = orgUser['department']?.toString().toLowerCase() ?? '';
+        final department =
+            orgUser['department']?.toString().toLowerCase() ?? '';
 
         print('Processing employee from org $currentOrganizationId:');
         print('  - Position: ${orgUser['position']}');
@@ -315,10 +315,8 @@ class AdminPatientListFunctions {
       print('=== DEBUG: Loading assignments ===');
 
       // Extract patient IDs from users (these are Patient table IDs)
-      final Set<String> patientIds = users
-          .map((user) => user['id'].toString())
-          .toSet()
-          .cast<String>();
+      final Set<String> patientIds =
+          users.map((user) => user['id'].toString()).toSet().cast<String>();
 
       if (patientIds.isEmpty) {
         print('No patient IDs found');
@@ -396,7 +394,8 @@ class AdminPatientListFunctions {
             users[userIndex]['assignedDoctor'] = doctorName;
             users[userIndex]['assignedDoctorId'] = doctorId;
             users[userIndex]['assignmentId'] = assignment['patient_id'];
-            users[userIndex]['doctor_image'] = doctorInfo?['image']; // Add doctor's image
+            users[userIndex]['doctor_image'] =
+                doctorInfo?['image']; // Add doctor's image
 
             print('    -> ✅ Updated user ${users[userIndex]['name']}');
           } else {

@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Hive Blockchain Custom JSON Service for Web
-/// 
+///
 /// This service creates custom JSON operations for logging medical file
 /// uploads to the Hive blockchain. Works in web environment.
-/// 
+///
 /// Required Environment Variables:
 /// - HIVE_ACCOUNT_NAME: Your Hive blockchain account name
 class HiveCustomJsonService {
@@ -30,46 +30,46 @@ class HiveCustomJsonService {
   /// Throws:
   /// - Exception if HIVE_ACCOUNT_NAME is not configured
   static Map<String, dynamic> createMedicalLogCustomJson({
-  required String fileName,
-  required String fileHash,
-  DateTime? timestamp,
-  String action = 'upload', // Add this parameter with default value
-}) {
-  if (_hiveAccountName.isEmpty) {
-    throw Exception('HIVE_ACCOUNT_NAME not found in environment variables');
+    required String fileName,
+    required String fileHash,
+    DateTime? timestamp,
+    String action = 'upload', // Add this parameter with default value
+  }) {
+    if (_hiveAccountName.isEmpty) {
+      throw Exception('HIVE_ACCOUNT_NAME not found in environment variables');
+    }
+
+    // Use provided timestamp or current time
+    final logTimestamp = timestamp ?? DateTime.now();
+
+    // Create the medical log payload
+    final medicalLogData = {
+      "action": action, // Use the parameter instead of hardcoded "upload"
+      "user_id": _hiveAccountName,
+      "file_name": fileName,
+      "file_hash": fileHash,
+      "timestamp": logTimestamp.toUtc().toIso8601String(),
+    };
+
+    // Convert payload to JSON string
+    final jsonPayload = jsonEncode(medicalLogData);
+
+    // Create the custom_json operation following Hive blockchain format
+    final customJsonOperation = [
+      "custom_json",
+      {
+        "id": "medical_logs",
+        "json": jsonPayload,
+        "required_auths": <String>[],
+        "required_posting_auths": [_hiveAccountName],
+      },
+    ];
+
+    return {
+      "operation": customJsonOperation,
+      "payload_data": medicalLogData, // For debugging/logging purposes
+    };
   }
-
-  // Use provided timestamp or current time
-  final logTimestamp = timestamp ?? DateTime.now();
-
-  // Create the medical log payload
-  final medicalLogData = {
-    "action": action, // Use the parameter instead of hardcoded "upload"
-    "user_id": _hiveAccountName,
-    "file_name": fileName,
-    "file_hash": fileHash,
-    "timestamp": logTimestamp.toUtc().toIso8601String(),
-  };
-
-  // Convert payload to JSON string
-  final jsonPayload = jsonEncode(medicalLogData);
-
-  // Create the custom_json operation following Hive blockchain format
-  final customJsonOperation = [
-    "custom_json",
-    {
-      "id": "medical_logs",
-      "json": jsonPayload,
-      "required_auths": <String>[],
-      "required_posting_auths": [_hiveAccountName],
-    },
-  ];
-
-  return {
-    "operation": customJsonOperation,
-    "payload_data": medicalLogData, // For debugging/logging purposes
-  };
-}
 
   /// Creates a custom JSON string ready for Hive blockchain submission
   ///

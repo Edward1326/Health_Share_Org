@@ -15,7 +15,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
   List<Map<String, dynamic>> employees = [];
   bool isLoading = true;
   String? errorMessage;
-  Map<String, dynamic>? _selectedEmployee; // Track selected employee for profile view
+  Map<String, dynamic>?
+      _selectedEmployee; // Track selected employee for profile view
 
   static const primaryGreen = DashboardTheme.primaryGreen;
   static const textGray = DashboardTheme.textGray;
@@ -29,7 +30,10 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
 
   Future<void> _loadEmployees() async {
     try {
-      setState(() { isLoading = true; errorMessage = null; });
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
 
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null) throw Exception("No user logged in");
@@ -44,9 +48,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
         throw Exception("User not in organization");
       }
 
-      final employeesResponse = await supabase
-          .from('Organization_User')
-          .select('''
+      final employeesResponse =
+          await supabase.from('Organization_User').select('''
             position,
             department,
             User!inner(
@@ -58,14 +61,13 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 image
               )
             )
-          ''')
-          .eq('organization_id', orgResponse['organization_id']);
+          ''').eq('organization_id', orgResponse['organization_id']);
 
       final loadedEmployees = <Map<String, dynamic>>[];
       for (var orgUser in employeesResponse) {
         final user = orgUser['User'];
         final person = user?['Person'];
-        
+
         if (person != null && user != null) {
           String name = 'Unknown';
           if (person['first_name'] != null && person['last_name'] != null) {
@@ -84,63 +86,60 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
         }
       }
 
-      setState(() { employees = loadedEmployees; isLoading = false; });
+      setState(() {
+        employees = loadedEmployees;
+        isLoading = false;
+      });
     } catch (e) {
       print('Error loading employees: $e');
-      setState(() { errorMessage = 'Error: $e'; isLoading = false; });
+      setState(() {
+        errorMessage = 'Error: $e';
+        isLoading = false;
+      });
     }
   }
 
   Future<void> _deleteEmployee(String email) async {
-  try {
-    // First, get the user_id and person_id
-    final userResponse = await supabase
-        .from('User')
-        .select('id, person_id')
-        .eq('email', email)
-        .maybeSingle();
-    
-    if (userResponse != null) {
-      final userId = userResponse['id'];
-      final personId = userResponse['person_id'];
-      
-      // Delete in order: Organization_User -> User -> Person
-      // 1. Delete from Organization_User
-      await supabase
-          .from('Organization_User')
-          .delete()
-          .eq('user_id', userId);
-      
-      // 2. Delete from User
-      await supabase
+    try {
+      // First, get the user_id and person_id
+      final userResponse = await supabase
           .from('User')
-          .delete()
-          .eq('id', userId);
-      
-      // 3. Delete from Person (if person_id exists)
-      if (personId != null) {
-        await supabase
-            .from('Person')
-            .delete()
-            .eq('id', personId);
+          .select('id, person_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse != null) {
+        final userId = userResponse['id'];
+        final personId = userResponse['person_id'];
+
+        // Delete in order: Organization_User -> User -> Person
+        // 1. Delete from Organization_User
+        await supabase.from('Organization_User').delete().eq('user_id', userId);
+
+        // 2. Delete from User
+        await supabase.from('User').delete().eq('id', userId);
+
+        // 3. Delete from Person (if person_id exists)
+        if (personId != null) {
+          await supabase.from('Person').delete().eq('id', personId);
+        }
+
+        _loadEmployees();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Employee removed successfully!')),
+          );
+        }
       }
-      
-      _loadEmployees();
+    } catch (e) {
+      print('Error deleting employee: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Employee removed successfully!')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
-  } catch (e) {
-    print('Error deleting employee: $e');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
   }
-}
 
   Future<void> _updatePosition(String email, String newPosition) async {
     try {
@@ -149,13 +148,11 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
           .select('id')
           .eq('email', email)
           .maybeSingle();
-      
+
       if (userResponse != null) {
-        await supabase
-            .from('Organization_User')
-            .update({'position': newPosition})
-            .eq('user_id', userResponse['id']);
-        
+        await supabase.from('Organization_User').update(
+            {'position': newPosition}).eq('user_id', userResponse['id']);
+
         _loadEmployees();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -172,10 +169,11 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
     }
   }
 
-  Widget _buildEmployeeAvatar(Map<String, dynamic> employee, {double radius = 16}) {
+  Widget _buildEmployeeAvatar(Map<String, dynamic> employee,
+      {double radius = 16}) {
     final imageUrl = employee['image'] as String?;
     final name = employee['name'] as String;
-    
+
     if (imageUrl != null && imageUrl.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
@@ -268,9 +266,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
               ),
             ],
           ),
-          
           const SizedBox(height: 24),
-          
           if (errorMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
@@ -293,7 +289,6 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
             ),
             const SizedBox(height: 16),
           ],
-          
           if (isLoading)
             Container(
               height: 400,
@@ -352,20 +347,33 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(8)),
             ),
             child: const Row(
               children: [
-                Expanded(flex: 2, child: Text('Employee', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(flex: 2, child: Text('Email', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(flex: 2, child: Text('Phone', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Employee',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Email',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Phone',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Department',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Status',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 120), // Increased for View button + menu
               ],
             ),
           ),
-          
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -377,7 +385,9 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: index < employees.length - 1 ? Colors.grey.shade200 : Colors.transparent,
+                      color: index < employees.length - 1
+                          ? Colors.grey.shade200
+                          : Colors.transparent,
                     ),
                   ),
                 ),
@@ -395,12 +405,14 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                               children: [
                                 Text(
                                   employee['name']!,
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w500),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   employee['role']!,
-                                  style: TextStyle(fontSize: 12, color: textGray),
+                                  style:
+                                      TextStyle(fontSize: 12, color: textGray),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
@@ -409,27 +421,32 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         ],
                       ),
                     ),
-                    
+
                     Expanded(
                       flex: 2,
-                      child: Text(employee['email']!, overflow: TextOverflow.ellipsis),
+                      child: Text(employee['email']!,
+                          overflow: TextOverflow.ellipsis),
                     ),
-                    
+
                     Expanded(
                       flex: 2,
                       child: Text(
-                        employee['phone']!.isNotEmpty ? employee['phone']! : 'N/A',
+                        employee['phone']!.isNotEmpty
+                            ? employee['phone']!
+                            : 'N/A',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    
+
                     Expanded(
-                      child: Text(employee['department']!, overflow: TextOverflow.ellipsis),
+                      child: Text(employee['department']!,
+                          overflow: TextOverflow.ellipsis),
                     ),
-                    
+
                     Expanded(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFDCFCE7),
                           borderRadius: BorderRadius.circular(16),
@@ -445,7 +462,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         ),
                       ),
                     ),
-                    
+
                     // Actions - View button + Menu
                     SizedBox(
                       width: 120,
@@ -462,38 +479,47 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: primaryGreen,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(6),
                               ),
                             ),
-                            child: const Text('View', style: TextStyle(fontSize: 13)),
+                            child: const Text('View',
+                                style: TextStyle(fontSize: 13)),
                           ),
                           const SizedBox(width: 8),
                           // Menu Button
                           PopupMenuButton(
                             icon: const Icon(Icons.more_horiz, color: textGray),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
                             elevation: 8,
                             color: Colors.white,
                             itemBuilder: (context) => [
                               PopupMenuItem(
                                 value: 'edit',
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4),
                                   child: Row(
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
                                           color: primaryGreen.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
-                                        child: const Icon(Icons.edit_rounded, size: 18, color: primaryGreen),
+                                        child: const Icon(Icons.edit_rounded,
+                                            size: 18, color: primaryGreen),
                                       ),
                                       const SizedBox(width: 12),
-                                      const Text('Edit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                      const Text('Edit',
+                                          style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500)),
                                     ],
                                   ),
                                 ),
@@ -501,19 +527,26 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                               PopupMenuItem(
                                 value: 'delete',
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4),
                                   child: Row(
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
                                           color: Colors.red.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
-                                        child: const Icon(Icons.delete_rounded, size: 18, color: Colors.red),
+                                        child: const Icon(Icons.delete_rounded,
+                                            size: 18, color: Colors.red),
                                       ),
                                       const SizedBox(width: 12),
-                                      const Text('Remove', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.red)),
+                                      const Text('Remove',
+                                          style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.red)),
                                     ],
                                   ),
                                 ),
@@ -563,7 +596,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Column(
                   children: [
@@ -573,7 +607,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         color: Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.edit_rounded, color: Colors.white, size: 40),
+                      child: const Icon(Icons.edit_rounded,
+                          color: Colors.white, size: 40),
                     ),
                   ],
                 ),
@@ -582,9 +617,17 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    Text('Edit Employee', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                    Text('Edit Employee',
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800])),
                     const SizedBox(height: 8),
-                    Text(employee['name']!, style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                    Text(employee['name']!,
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500)),
                     const SizedBox(height: 24),
                     TextField(
                       controller: controller,
@@ -592,10 +635,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         labelText: 'Position',
                         filled: true,
                         fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: primaryGreen, width: 2),
+                          borderSide:
+                              const BorderSide(color: primaryGreen, width: 2),
                         ),
                       ),
                     ),
@@ -607,9 +652,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                             onPressed: () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            child: const Text('Cancel', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            child: const Text('Cancel',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -617,16 +665,20 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                           child: ElevatedButton(
                             onPressed: () {
                               if (controller.text.trim().isNotEmpty) {
-                                _updatePosition(employee['email'], controller.text.trim());
+                                _updatePosition(
+                                    employee['email'], controller.text.trim());
                                 Navigator.pop(context);
                               }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: primaryGreen,
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            child: const Text('Update', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            child: const Text('Update',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],
@@ -663,7 +715,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Column(
                   children: [
@@ -673,7 +726,8 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         color: Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.person_remove_rounded, color: Colors.white, size: 40),
+                      child: const Icon(Icons.person_remove_rounded,
+                          color: Colors.white, size: 40),
                     ),
                   ],
                 ),
@@ -682,12 +736,15 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Text('Remove Employee', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const Text('Remove Employee',
+                        style: TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Text(
                       'Are you sure you want to remove ${employee['name']} from the organization?\n\nThis action cannot be undone.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
+                      style: TextStyle(
+                          fontSize: 14, color: Colors.grey[600], height: 1.5),
                     ),
                     const SizedBox(height: 24),
                     Row(
@@ -697,9 +754,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                             onPressed: () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            child: const Text('Cancel', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            child: const Text('Cancel',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -712,9 +772,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.red.shade500,
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            child: const Text('Remove', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            child: const Text('Remove',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],

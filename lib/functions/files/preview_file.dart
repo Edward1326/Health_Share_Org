@@ -15,23 +15,55 @@ class FullscreenFilePreviewWeb extends StatefulWidget {
   });
 
   @override
-  State<FullscreenFilePreviewWeb> createState() => _FullscreenFilePreviewWebState();
+  State<FullscreenFilePreviewWeb> createState() =>
+      _FullscreenFilePreviewWebState();
 }
 
 class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
   String? _mimeType;
   late String _extension;
   String? _iframeViewId;
+  bool _isLoading = true;
+  bool _hasError = false;
 
   @override
   void initState() {
     super.initState();
-    _extension = widget.fileName.split('.').last.toLowerCase();
-    _mimeType = lookupMimeType(widget.fileName) ?? _getMimeTypeFromExtension(_extension);
-    
-    // For PDF and other embeddable content, create iframe
-    if (_shouldUseIframe()) {
-      _createIframeView();
+    _loadFile();
+  }
+
+  Future<void> _loadFile() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
+    try {
+      _extension = widget.fileName.split('.').last.toLowerCase();
+      _mimeType = lookupMimeType(widget.fileName) ??
+          _getMimeTypeFromExtension(_extension);
+
+      // For PDF and other embeddable content, create iframe
+      if (_shouldUseIframe()) {
+        _createIframeView();
+      }
+
+      // Small delay to ensure content is ready
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading file: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
@@ -40,11 +72,14 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
     const mimeTypes = {
       'pdf': 'application/pdf',
       'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xlsx':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'pptx':
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'txt': 'text/plain',
       'json': 'application/json',
       'xml': 'application/xml',
@@ -63,34 +98,39 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
 
   /// Check if file should use iframe for preview
   bool _shouldUseIframe() {
-    return _extension == 'pdf' || 
-           _mimeType?.startsWith('video/') == true ||
-           _mimeType?.startsWith('audio/') == true;
+    return _extension == 'pdf' ||
+        _mimeType?.startsWith('video/') == true ||
+        _mimeType?.startsWith('audio/') == true;
   }
 
   /// Create iframe view for PDF, video, or audio
   void _createIframeView() {
-    final blob = html.Blob([widget.bytes], _mimeType);
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    
-    _iframeViewId = 'iframe-${DateTime.now().millisecondsSinceEpoch}';
-    
-    // Register iframe view factory
-    ui_web.platformViewRegistry.registerViewFactory(
-      _iframeViewId!,
-      (int viewId) {
-        // For PDFs, append #toolbar=0 to hide browser's PDF toolbar
-        final finalUrl = _extension == 'pdf' ? '$url#toolbar=0' : url;
-        
-        final iframe = html.IFrameElement()
-          ..src = finalUrl
-          ..style.border = 'none'
-          ..style.width = '100%'
-          ..style.height = '100%';
-        
-        return iframe;
-      },
-    );
+    try {
+      final blob = html.Blob([widget.bytes], _mimeType);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      _iframeViewId = 'iframe-${DateTime.now().millisecondsSinceEpoch}';
+
+      // Register iframe view factory
+      ui_web.platformViewRegistry.registerViewFactory(
+        _iframeViewId!,
+        (int viewId) {
+          // For PDFs, append #toolbar=0 to hide browser's PDF toolbar
+          final finalUrl = _extension == 'pdf' ? '$url#toolbar=0' : url;
+
+          final iframe = html.IFrameElement()
+            ..src = finalUrl
+            ..style.border = 'none'
+            ..style.width = '100%'
+            ..style.height = '100%';
+
+          return iframe;
+        },
+      );
+    } catch (e) {
+      print('Error creating iframe view: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -105,7 +145,7 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
       final blob = html.Blob([widget.bytes], _mimeType);
       final url = html.Url.createObjectUrlFromBlob(blob);
       html.window.open(url, '_blank');
-      
+
       // Cleanup after a delay
       Future.delayed(const Duration(seconds: 2), () {
         html.Url.revokeObjectUrl(url);
@@ -124,6 +164,99 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(
+          widget.fileName,
+          style: const TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (!_isLoading &&
+              !_hasError &&
+              (_extension == 'pdf' ||
+                  _mimeType?.startsWith('video/') == true ||
+                  _mimeType?.startsWith('audio/') == true))
+            IconButton(
+              icon: const Icon(Icons.open_in_new),
+              onPressed: _openInNewTab,
+              tooltip: 'Open in New Tab',
+            ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    // Show loading indicator
+    if (_isLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 60,
+              height: 60,
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Loading ${widget.fileName}...',
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _formatFileSize(widget.bytes.length),
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show error if loading failed
+    if (_hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            const Text(
+              'Failed to load file',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.fileName,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadFile,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show content based on file type
     Widget content;
 
     // PDF Preview (embedded iframe)
@@ -232,36 +365,30 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
       content = _buildUnsupportedView();
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(
-          widget.fileName,
-          style: const TextStyle(color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (_extension == 'pdf' || 
-              _mimeType?.startsWith('video/') == true ||
-              _mimeType?.startsWith('audio/') == true)
-            IconButton(
-              icon: const Icon(Icons.open_in_new),
-              onPressed: _openInNewTab,
-              tooltip: 'Open in New Tab',
-            ),
-        ],
-      ),
-      body: content,
-    );
+    return content;
   }
 
   /// Check if file is a text file
   bool _isTextFile(String extension) {
     const textExtensions = [
-      'txt', 'json', 'xml', 'csv', 'log', 'md', 
-      'html', 'css', 'js', 'dart', 'py', 'java',
-      'cpp', 'c', 'h', 'ts', 'jsx', 'tsx',
+      'txt',
+      'json',
+      'xml',
+      'csv',
+      'log',
+      'md',
+      'html',
+      'css',
+      'js',
+      'dart',
+      'py',
+      'java',
+      'cpp',
+      'c',
+      'h',
+      'ts',
+      'jsx',
+      'tsx',
     ];
     return textExtensions.contains(extension);
   }
@@ -269,9 +396,19 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
   /// Check if file is a document that cannot be previewed in browser
   bool _isDocumentFile(String extension) {
     const docExtensions = [
-      'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-      'zip', 'rar', '7z', 'tar', 'gz',
-      'epub', 'mobi',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+      'zip',
+      'rar',
+      '7z',
+      'tar',
+      'gz',
+      'epub',
+      'mobi',
     ];
     return docExtensions.contains(extension);
   }
@@ -340,7 +477,8 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
             ),
             child: Column(
               children: [
-                const Icon(Icons.visibility_off, color: Colors.white70, size: 48),
+                const Icon(Icons.visibility_off,
+                    color: Colors.white70, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   'Preview not available for ${_getAppTypeName()} files',
@@ -348,9 +486,9 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                Text(
+                const Text(
                   'Browser preview is not supported for this file type',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  style: TextStyle(color: Colors.white60, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -398,7 +536,8 @@ class _FullscreenFilePreviewWebState extends State<FullscreenFilePreviewWeb> {
             ),
             child: Column(
               children: [
-                const Icon(Icons.visibility_off, color: Colors.white70, size: 48),
+                const Icon(Icons.visibility_off,
+                    color: Colors.white70, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   'Preview not supported for .$_extension files',

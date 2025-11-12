@@ -21,21 +21,22 @@ class InputValidators {
     if (value == null || value.trim().isEmpty) {
       return 'Please enter $fieldName';
     }
-    
+
     final trimmedValue = value.trim();
-    
+
     if (trimmedValue.length < 2) {
       return '$fieldName must be at least 2 characters';
     }
-    
+
     if (RegExp(r'[0-9]').hasMatch(trimmedValue)) {
       return '$fieldName cannot contain numbers';
     }
-    
-    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]').hasMatch(trimmedValue)) {
+
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]')
+        .hasMatch(trimmedValue)) {
       return '$fieldName cannot contain special characters';
     }
-    
+
     return null;
   }
 
@@ -157,13 +158,13 @@ class _SignupPageState extends State<SignupPage> {
   bool _isLoading = false;
   bool _isLoadingOrgs = true;
   String _loadingStatus = '';
-  
+
   // OTP verification state
   bool _isEmailVerified = false;
   bool _isVerifyingOTP = false;
   bool _isSendingOTP = false;
   bool _showOTPField = false;
-  
+
   // Password visibility
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -207,7 +208,7 @@ class _SignupPageState extends State<SignupPage> {
 
   Future<void> _sendOTP() async {
     final email = _emailController.text.trim();
-    
+
     if (email.isEmpty) {
       _showErrorSnackBar('Please enter your email address');
       return;
@@ -230,14 +231,15 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
       final result = await SignupService.sendOTPToEmail(email);
-      
+
       if (result.success) {
         setState(() {
           _showOTPField = true;
         });
         _showSuccessSnackBar(result.message ?? 'Verification code sent!');
       } else {
-        _showErrorSnackBar(result.errorMessage ?? 'Failed to send verification code');
+        _showErrorSnackBar(
+            result.errorMessage ?? 'Failed to send verification code');
       }
     } catch (e) {
       _showErrorSnackBar('Failed to send verification code: $e');
@@ -252,7 +254,7 @@ class _SignupPageState extends State<SignupPage> {
     final email = _emailController.text.trim();
     final otp = _otpController.text.trim();
     final password = _passwordController.text;
-    
+
     if (otp.isEmpty) {
       _showErrorSnackBar('Please enter the verification code');
       return;
@@ -269,7 +271,8 @@ class _SignupPageState extends State<SignupPage> {
     }
 
     if (!SignupService.isValidPassword(password)) {
-      _showErrorSnackBar('Password must be 8+ chars with uppercase, lowercase, number, and symbol');
+      _showErrorSnackBar(
+          'Password must be 8+ chars with uppercase, lowercase, number, and symbol');
       return;
     }
 
@@ -284,12 +287,13 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
       final result = await SignupService.verifyOTP(email, otp, password);
-      
+
       if (result.success) {
         setState(() {
           _isEmailVerified = true;
         });
-        _showSuccessSnackBar('Email verified and password set! You can now complete registration.');
+        _showSuccessSnackBar(
+            'Email verified and password set! You can now complete registration.');
       } else {
         _showErrorSnackBar(result.errorMessage ?? 'Verification failed');
       }
@@ -315,7 +319,8 @@ class _SignupPageState extends State<SignupPage> {
 
     if (!SignupService.canAttemptSignup()) {
       final remainingTime = SignupService.getRemainingSignupCooldownTime();
-      _showErrorSnackBar('Please wait $remainingTime seconds before trying again');
+      _showErrorSnackBar(
+          'Please wait $remainingTime seconds before trying again');
       return;
     }
 
@@ -343,7 +348,7 @@ class _SignupPageState extends State<SignupPage> {
 
       if (result.success) {
         _showSuccessSnackBar(result.message ?? 'Account created successfully!');
-        
+
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) {
           Navigator.pop(context);
@@ -391,7 +396,8 @@ class _SignupPageState extends State<SignupPage> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+              const Icon(Icons.check_circle_outline,
+                  color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text(message)),
             ],
@@ -425,7 +431,8 @@ class _SignupPageState extends State<SignupPage> {
             )
           : SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0, vertical: 20.0),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -445,7 +452,8 @@ class _SignupPageState extends State<SignupPage> {
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: SignupTheme.primaryGreen.withOpacity(0.1),
+                                color:
+                                    SignupTheme.primaryGreen.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
@@ -466,14 +474,17 @@ class _SignupPageState extends State<SignupPage> {
                             const SizedBox(height: 8),
                             const Text(
                               'Join your organization with secure encryption',
-                              style: TextStyle(fontSize: 15, color: SignupTheme.textGray),
+                              style: TextStyle(
+                                  fontSize: 15, color: SignupTheme.textGray),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 12),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 6),
                               decoration: BoxDecoration(
-                                color: SignupTheme.primaryGreen.withOpacity(0.1),
+                                color:
+                                    SignupTheme.primaryGreen.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Text(
@@ -494,13 +505,13 @@ class _SignupPageState extends State<SignupPage> {
                         padding: const EdgeInsets.all(20),
                         margin: const EdgeInsets.only(bottom: 24),
                         decoration: BoxDecoration(
-                          color: _isEmailVerified 
+                          color: _isEmailVerified
                               ? SignupTheme.primaryGreen.withOpacity(0.1)
                               : Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _isEmailVerified 
-                                ? SignupTheme.primaryGreen 
+                            color: _isEmailVerified
+                                ? SignupTheme.primaryGreen
                                 : Colors.grey.shade200,
                             width: _isEmailVerified ? 2 : 1,
                           ),
@@ -511,23 +522,25 @@ class _SignupPageState extends State<SignupPage> {
                             Row(
                               children: [
                                 Icon(
-                                  _isEmailVerified ? Icons.check_circle : Icons.email,
-                                  color: _isEmailVerified 
-                                      ? SignupTheme.primaryGreen 
+                                  _isEmailVerified
+                                      ? Icons.check_circle
+                                      : Icons.email,
+                                  color: _isEmailVerified
+                                      ? SignupTheme.primaryGreen
                                       : SignupTheme.textGray,
                                   size: 24,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    _isEmailVerified 
-                                        ? 'Email Verified ✓' 
+                                    _isEmailVerified
+                                        ? 'Email Verified ✓'
                                         : 'Step 1: Verify Your Email',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: _isEmailVerified 
-                                          ? SignupTheme.primaryGreen 
+                                      color: _isEmailVerified
+                                          ? SignupTheme.primaryGreen
                                           : SignupTheme.darkGray,
                                     ),
                                   ),
@@ -544,22 +557,26 @@ class _SignupPageState extends State<SignupPage> {
                                       keyboardType: TextInputType.emailAddress,
                                       enabled: !_isEmailVerified,
                                       inputFormatters: [
-                                        FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                                        FilteringTextInputFormatter.deny(
+                                            RegExp(r'\s')),
                                         LengthLimitingTextInputFormatter(100),
                                       ],
                                       decoration: InputDecoration(
                                         hintText: 'Enter your email',
                                         border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
-                                        contentPadding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 12),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 12),
                                       ),
                                       validator: (value) {
                                         if (value?.trim().isEmpty ?? true) {
                                           return 'Please enter your email';
                                         }
-                                        if (!SignupService.isValidEmail(value!)) {
+                                        if (!SignupService.isValidEmail(
+                                            value!)) {
                                           return 'Please enter a valid email';
                                         }
                                         return null;
@@ -589,7 +606,9 @@ class _SignupPageState extends State<SignupPage> {
                                                       Colors.white),
                                             ),
                                           )
-                                        : Text(_showOTPField ? 'Resend' : 'Send Code'),
+                                        : Text(_showOTPField
+                                            ? 'Resend'
+                                            : 'Send Code'),
                                   ),
                                 ],
                               ),
@@ -602,29 +621,35 @@ class _SignupPageState extends State<SignupPage> {
                                         controller: _otpController,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
                                           LengthLimitingTextInputFormatter(6),
                                         ],
                                         decoration: InputDecoration(
                                           hintText: 'Enter 6-digit code',
                                           border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
-                                          contentPadding: const EdgeInsets.symmetric(
-                                              horizontal: 16, vertical: 12),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 16, vertical: 12),
                                         ),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     ElevatedButton(
-                                      onPressed: _isVerifyingOTP ? null : _verifyOTP,
+                                      onPressed:
+                                          _isVerifyingOTP ? null : _verifyOTP,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: SignupTheme.primaryGreen,
+                                        backgroundColor:
+                                            SignupTheme.primaryGreen,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 20, vertical: 16),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                       ),
                                       child: _isVerifyingOTP
@@ -634,8 +659,8 @@ class _SignupPageState extends State<SignupPage> {
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
                                                 valueColor:
-                                                    AlwaysStoppedAnimation<Color>(
-                                                        Colors.white),
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
                                               ),
                                             )
                                           : const Text('Verify'),
@@ -696,7 +721,8 @@ class _SignupPageState extends State<SignupPage> {
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => InputValidators.validateName(value, 'First name'),
+                          validator: (value) =>
+                              InputValidators.validateName(value, 'First name'),
                         ),
                         icon: Icons.person,
                       ),
@@ -733,7 +759,8 @@ class _SignupPageState extends State<SignupPage> {
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                           ),
-                          validator: (value) => InputValidators.validateName(value, 'Last name'),
+                          validator: (value) =>
+                              InputValidators.validateName(value, 'Last name'),
                         ),
                         icon: Icons.person,
                       ),
@@ -829,7 +856,9 @@ class _SignupPageState extends State<SignupPage> {
                                 horizontal: 16, vertical: 12),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                _obscurePassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
                                 color: SignupTheme.textGray,
                                 size: 20,
                               ),
@@ -881,13 +910,16 @@ class _SignupPageState extends State<SignupPage> {
                                 horizontal: 16, vertical: 12),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                                _obscureConfirmPassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
                                 color: SignupTheme.textGray,
                                 size: 20,
                               ),
                               onPressed: () {
                                 setState(() {
-                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
                                 });
                               },
                             ),
@@ -912,7 +944,9 @@ class _SignupPageState extends State<SignupPage> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: (_isLoading || !_isEmailVerified) ? null : _signup,
+                          onPressed: (_isLoading || !_isEmailVerified)
+                              ? null
+                              : _signup,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: SignupTheme.primaryGreen,
                             foregroundColor: Colors.white,
@@ -933,8 +967,8 @@ class _SignupPageState extends State<SignupPage> {
                                   ),
                                 )
                               : Text(
-                                  _isEmailVerified 
-                                      ? 'Create Account' 
+                                  _isEmailVerified
+                                      ? 'Create Account'
                                       : 'Verify Email First',
                                   style: const TextStyle(
                                     fontSize: 16,

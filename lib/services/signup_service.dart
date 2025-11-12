@@ -36,11 +36,11 @@ class OTPVerificationResult {
 
 class SignupService {
   static final SupabaseClient _supabase = Supabase.instance.client;
-  
+
   // Rate limiting
   static DateTime? _lastSignupAttempt;
   static const int _signupCooldownSeconds = 30;
-  
+
   // OTP tracking
   static String? _pendingEmail;
   static DateTime? _otpSentTime;
@@ -83,11 +83,11 @@ class SignupService {
           .select('id')
           .eq('email', email.toLowerCase().trim())
           .maybeSingle();
-      
+
       if (userCheck != null) {
         return true;
       }
-      
+
       return false;
     } catch (e) {
       print('Error checking email: $e');
@@ -99,29 +99,29 @@ class SignupService {
     try {
       print('Generating RSA-2048 keys using Web Crypto API...');
       final stopwatch = Stopwatch()..start();
-      
+
       // Generate RSA-OAEP key pair using native browser crypto
       final keyPair = await RsaOaepPrivateKey.generateKey(
         2048, // modulus length
         BigInt.from(65537), // public exponent
         Hash.sha256,
       );
-      
+
       // Export keys to PKCS#8/SPKI format
       final privateKeyBytes = await keyPair.privateKey.exportPkcs8Key();
       final publicKeyBytes = await keyPair.publicKey.exportSpkiKey();
-      
+
       // Convert to PEM format
       final publicPem = _bytesToPem(publicKeyBytes, 'PUBLIC KEY');
       final privatePem = _bytesToPem(privateKeyBytes, 'PRIVATE KEY');
-      
+
       // Generate fingerprint
       final fingerprint = _generateKeyFingerprint(publicPem);
-      
+
       stopwatch.stop();
       print('RSA-2048 keys generated in ${stopwatch.elapsedMilliseconds}ms!');
       print('Key fingerprint: $fingerprint');
-      
+
       return {
         'publicKey': publicPem,
         'privateKey': privatePem,
@@ -155,7 +155,8 @@ class SignupService {
         final remainingTime = getRemainingOTPCooldownTime();
         return OTPVerificationResult(
           success: false,
-          errorMessage: 'Please wait $remainingTime seconds before resending OTP',
+          errorMessage:
+              'Please wait $remainingTime seconds before resending OTP',
         );
       }
 
@@ -175,7 +176,7 @@ class SignupService {
       }
 
       print('Sending OTP to email: $email');
-      
+
       await _supabase.auth.signInWithOtp(
         email: email.toLowerCase().trim(),
         shouldCreateUser: true,
@@ -190,22 +191,23 @@ class SignupService {
       );
     } on AuthException catch (e) {
       print('OTP send error: ${e.message}');
-      
-      if (e.message.contains('already registered') || 
+
+      if (e.message.contains('already registered') ||
           e.message.contains('already exists')) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'An account with this email already exists',
         );
       }
-      
+
       if (e.message.contains('Signups not allowed')) {
         return OTPVerificationResult(
           success: false,
-          errorMessage: 'Email signup is not enabled. Please contact your administrator.',
+          errorMessage:
+              'Email signup is not enabled. Please contact your administrator.',
         );
       }
-      
+
       return OTPVerificationResult(
         success: false,
         errorMessage: 'Failed to send verification code: ${e.message}',
@@ -220,12 +222,13 @@ class SignupService {
   }
 
   static Future<OTPVerificationResult> verifyOTP(
-    String email, 
-    String otp, 
+    String email,
+    String otp,
     String password,
   ) async {
     try {
-      if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
+      if (_pendingEmail == null ||
+          _pendingEmail != email.toLowerCase().trim()) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'Please request a new verification code',
@@ -235,12 +238,13 @@ class SignupService {
       if (!isValidPassword(password)) {
         return OTPVerificationResult(
           success: false,
-          errorMessage: 'Password must be 8+ chars with uppercase, lowercase, and numbers',
+          errorMessage:
+              'Password must be 8+ chars with uppercase, lowercase, and numbers',
         );
       }
 
       print('Verifying OTP for email: $email');
-      
+
       final response = await _supabase.auth.verifyOTP(
         email: email.toLowerCase().trim(),
         token: otp.trim(),
@@ -249,16 +253,16 @@ class SignupService {
 
       if (response.session != null && response.user != null) {
         print('OTP verified, auth user created: ${response.user!.id}');
-        
+
         print('Setting password...');
         try {
           final updateResponse = await _supabase.auth.updateUser(
             UserAttributes(password: password),
           );
-          
+
           if (updateResponse.user != null) {
             print('Password set successfully');
-            
+
             return OTPVerificationResult(
               success: true,
               message: 'Email verified and password set successfully',
@@ -290,14 +294,14 @@ class SignupService {
       }
     } on AuthException catch (e) {
       print('OTP verification error: ${e.message}');
-      
+
       if (e.message.contains('invalid') || e.message.contains('expired')) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'Invalid or expired verification code',
         );
       }
-      
+
       return OTPVerificationResult(
         success: false,
         errorMessage: 'Verification failed: ${e.message}',
@@ -325,10 +329,10 @@ class SignupService {
     required bool emailVerified,
   }) async {
     final stopwatch = Stopwatch()..start();
-    
+
     String? authUserId;
     bool shouldCleanupAuth = false;
-    
+
     try {
       if (!emailVerified) {
         return SignupResult(
@@ -338,7 +342,8 @@ class SignupService {
       }
 
       final currentUser = _supabase.auth.currentUser;
-      if (currentUser == null || currentUser.email?.toLowerCase() != email.toLowerCase().trim()) {
+      if (currentUser == null ||
+          currentUser.email?.toLowerCase() != email.toLowerCase().trim()) {
         return SignupResult(
           success: false,
           errorMessage: 'Session expired. Please verify your email again.',
@@ -357,7 +362,7 @@ class SignupService {
           .select('id')
           .eq('id', organizationId)
           .maybeSingle();
-      
+
       if (orgCheck == null) {
         throw Exception('Invalid organization selected');
       }
@@ -367,15 +372,15 @@ class SignupService {
       final publicPem = keyPair['publicKey']!;
       final privatePem = keyPair['privateKey']!;
       final fingerprint = keyPair['fingerprint']!;
-      
+
       print('Keys generated successfully (${stopwatch.elapsedMilliseconds}ms)');
 
       print('Creating database records...');
-      
+
       String? personId;
       bool userCreated = false;
       bool orgUserCreated = false;
-      
+
       try {
         print('Inserting Person record...');
         final personInsertResponse = await _supabase
@@ -407,7 +412,7 @@ class SignupService {
         });
         userCreated = true;
         print('User record created successfully');
-          
+
         print('Inserting Organization_User record...');
         await _supabase.from('Organization_User').insert({
           'user_id': authUserId,
@@ -418,20 +423,22 @@ class SignupService {
         });
         orgUserCreated = true;
         print('Organization_User record created successfully');
-
       } catch (dbError) {
         print('Database error: $dbError');
-        
+
         // Cleanup database records
         if (orgUserCreated) {
           try {
-            await _supabase.from('Organization_User').delete().eq('user_id', authUserId!);
+            await _supabase
+                .from('Organization_User')
+                .delete()
+                .eq('user_id', authUserId!);
             print('Cleaned up Organization_User');
           } catch (e) {
             print('Failed to clean up Organization_User: $e');
           }
         }
-        
+
         if (userCreated) {
           try {
             await _supabase.from('User').delete().eq('id', authUserId!);
@@ -440,7 +447,7 @@ class SignupService {
             print('Failed to clean up User: $e');
           }
         }
-        
+
         if (personId != null) {
           try {
             await _supabase.from('Person').delete().eq('id', personId);
@@ -449,7 +456,7 @@ class SignupService {
             print('Failed to clean up Person: $e');
           }
         }
-        
+
         rethrow;
       }
 
@@ -459,23 +466,24 @@ class SignupService {
       _otpSentTime = null;
 
       stopwatch.stop();
-      print('User registration completed in ${stopwatch.elapsedMilliseconds}ms!');
+      print(
+          'User registration completed in ${stopwatch.elapsedMilliseconds}ms!');
 
       return SignupResult(
         success: true,
         message: 'Account created successfully with 2048-bit RSA encryption!',
         userId: authUserId,
       );
-
     } on PostgrestException catch (e) {
       stopwatch.stop();
-      print('Database error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
-      
+      print(
+          'Database error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
+
       // Cleanup auth user if registration failed
       if (shouldCleanupAuth && authUserId != null) {
         await _cleanupAuthUser(authUserId, email);
       }
-      
+
       return SignupResult(
         success: false,
         errorMessage: _getDatabaseErrorMessage(e.message, e.details, e.hint),
@@ -483,12 +491,12 @@ class SignupService {
     } catch (e) {
       stopwatch.stop();
       print('Registration error after ${stopwatch.elapsedMilliseconds}ms: $e');
-      
+
       // Cleanup auth user if registration failed
       if (shouldCleanupAuth && authUserId != null) {
         await _cleanupAuthUser(authUserId, email);
       }
-      
+
       return SignupResult(
         success: false,
         errorMessage: 'Failed to register user: $e',
@@ -509,7 +517,8 @@ class SignupService {
         print('Admin delete not available, signing out instead: $adminError');
         // Fallback: Sign out the user (leaves auth record but prevents login without proper data)
         await _supabase.auth.signOut();
-        print('User signed out - auth record remains but cannot login without completing registration');
+        print(
+            'User signed out - auth record remains but cannot login without completing registration');
       }
     } catch (cleanupError) {
       print('Failed to cleanup auth user: $cleanupError');
@@ -517,28 +526,29 @@ class SignupService {
     }
   }
 
-  static String _getDatabaseErrorMessage(String? message, String? details, String? hint) {
+  static String _getDatabaseErrorMessage(
+      String? message, String? details, String? hint) {
     final fullMessage = message ?? '';
     final fullDetails = details ?? '';
-    
-    if (fullMessage.contains('unique constraint') || 
+
+    if (fullMessage.contains('unique constraint') ||
         fullMessage.contains('duplicate key') ||
         fullDetails.contains('unique constraint') ||
         fullDetails.contains('duplicate key')) {
       return 'An account with this information already exists';
     } else if (fullMessage.contains('foreign key') ||
-               fullDetails.contains('foreign key')) {
+        fullDetails.contains('foreign key')) {
       return 'Invalid organization selected';
     } else if (fullMessage.contains('not-null') ||
-               fullDetails.contains('not-null') ||
-               fullMessage.contains('null value')) {
+        fullDetails.contains('not-null') ||
+        fullMessage.contains('null value')) {
       return 'Required information is missing';
     } else if (fullMessage.contains('check constraint')) {
       return 'Invalid data format provided';
     } else if (fullMessage.contains('permission denied')) {
       return 'Permission denied - please contact support';
     }
-    
+
     return 'Database error occurred - please try again';
   }
 
@@ -555,15 +565,13 @@ class SignupService {
     }
 
     try {
-      final response = await _supabase
-          .from('Organization')
-          .select('id, name')
-          .order('name');
-      
+      final response =
+          await _supabase.from('Organization').select('id, name').order('name');
+
       final organizations = List<Map<String, dynamic>>.from(response);
       _cachedOrganizations = organizations;
       _organizationsCacheTime = DateTime.now();
-      
+
       return organizations;
     } catch (e) {
       print('Error loading organizations: $e');
@@ -584,7 +592,8 @@ class SignupService {
 
   static bool isValidPassword(String password) {
     return password.length >= 8 &&
-           RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])').hasMatch(password);
+        RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])')
+            .hasMatch(password);
   }
 
   static bool isValidPhoneNumber(String phone) {

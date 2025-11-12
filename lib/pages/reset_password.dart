@@ -221,9 +221,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 24),
-                    
+
                     // Title
                     const Text(
                       'Set New Password',
@@ -234,9 +234,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    
+
                     const SizedBox(height: 8),
-                    
+
                     // Subtitle
                     const Text(
                       'Please enter your new password below',
@@ -246,7 +246,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    
+
                     const SizedBox(height: 32),
 
                     // New Password Label
@@ -258,7 +258,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         color: Color(0xFF2C3E50),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 8),
 
                     // New Password Field
@@ -313,14 +313,15 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           if (!value.contains(RegExp(r'[0-9]'))) {
                             return 'Password must contain at least one number';
                           }
-                          if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+                          if (!value
+                              .contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
                             return 'Password must contain at least one special character';
                           }
                           return null;
                         },
                       ),
                     ),
-                    
+
                     const SizedBox(height: 20),
 
                     // Confirm Password Label
@@ -332,7 +333,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         color: Color(0xFF2C3E50),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 8),
 
                     // Confirm Password Field
@@ -385,7 +386,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         },
                       ),
                     ),
-                    
+
                     const SizedBox(height: 32),
 
                     // Reset Password Button
@@ -408,8 +409,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : const Text(
@@ -421,7 +422,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                               ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 24),
 
                     // Instructions Box

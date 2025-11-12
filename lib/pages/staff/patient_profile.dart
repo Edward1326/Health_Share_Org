@@ -67,7 +67,7 @@ class _PatientProfileViewState extends State<PatientProfileView> {
               .select('Person!inner(*)')
               .eq('id', userId)
               .single();
-          
+
           if (personResponse['Person'] != null) {
             personData = personResponse['Person'];
           }
@@ -84,14 +84,11 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           .eq('status', 'active');
 
       if (assignments.isNotEmpty) {
-        final doctorIds = assignments
-            .map((a) => a['doctor_id'].toString())
-            .toSet()
-            .toList();
+        final doctorIds =
+            assignments.map((a) => a['doctor_id'].toString()).toSet().toList();
 
-        final doctorResponse = await supabase
-            .from('Organization_User')
-            .select('''
+        final doctorResponse =
+            await supabase.from('Organization_User').select('''
               id,
               position,
               department,
@@ -102,8 +99,7 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                   image
                 )
               )
-            ''')
-            .in_('id', doctorIds);
+            ''').in_('id', doctorIds);
 
         final List<Map<String, dynamic>> doctors = [];
         for (final doctor in doctorResponse) {
@@ -149,13 +145,13 @@ class _PatientProfileViewState extends State<PatientProfileView> {
       }
 
       final userEmail = currentUser.email!;
-      
+
       final currentUserResponse = await supabase
           .from('User')
           .select('id')
           .eq('email', userEmail)
           .single();
-      
+
       final currentDoctorUserId = currentUserResponse['id'];
 
       final patientUserId = widget.patientData['User']?['id'];
@@ -213,16 +209,17 @@ class _PatientProfileViewState extends State<PatientProfileView> {
   String _getFullName() {
     final person = widget.patientData['User']?['Person'];
     if (person == null) return 'Unknown Patient';
-    
+
     final firstName = person['first_name'] ?? '';
     final middleName = person['middle_name'] ?? '';
     final lastName = person['last_name'] ?? '';
-    
+
     if (firstName.isEmpty && lastName.isEmpty) {
       return 'Unknown Patient';
     }
-    
-    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
+
+    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'
+        .trim();
   }
 
   String _formatDateTime(String? dateTimeString) {
@@ -310,7 +307,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: PatientsTheme.primaryGreen,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -333,7 +331,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
               children: [
                 _buildTabButton('Profile', 0, Icons.person_outline),
                 _buildTabButton('Medical Files', 1, Icons.folder_outlined),
-                _buildTabButton('Medical Info', 2, Icons.medical_services_outlined),
+                _buildTabButton(
+                    'Medical Info', 2, Icons.medical_services_outlined),
               ],
             ),
           ),
@@ -399,7 +398,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
       );
     }
 
-    final person = patientDetails?['User']?['Person'] ?? widget.patientData['User']?['Person'];
+    final person = patientDetails?['User']?['Person'] ??
+        widget.patientData['User']?['Person'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +434,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
               ),
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: PatientsTheme.approvedGreen.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -494,7 +495,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
         // Assigned Doctors Section
         Row(
           children: [
-            const Icon(Icons.medical_services, size: 18, color: PatientsTheme.primaryGreen),
+            const Icon(Icons.medical_services,
+                size: 18, color: PatientsTheme.primaryGreen),
             const SizedBox(width: 8),
             const Text(
               'Care Team',
@@ -518,9 +520,11 @@ class _PatientProfileViewState extends State<PatientProfileView> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.info_outline, size: 18, color: PatientsTheme.textGray),
+                Icon(Icons.info_outline,
+                    size: 18, color: PatientsTheme.textGray),
                 SizedBox(width: 8),
-                Text('No other doctors assigned', style: TextStyle(color: PatientsTheme.textGray)),
+                Text('No other doctors assigned',
+                    style: TextStyle(color: PatientsTheme.textGray)),
               ],
             ),
           )
@@ -555,7 +559,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                     ),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: CircleAvatar(
                       backgroundColor: PatientsTheme.primaryGreen,
                       radius: 20,
@@ -570,7 +575,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                     ),
                     title: Text(
                       doctor['name'] ?? 'Unknown Doctor',
-                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w500, fontSize: 14),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,17 +584,20 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                         if (doctor['position'] != null)
                           Text(
                             doctor['position'],
-                            style: const TextStyle(fontSize: 12, color: PatientsTheme.textGray),
+                            style: const TextStyle(
+                                fontSize: 12, color: PatientsTheme.textGray),
                           ),
                         if (doctor['department'] != null)
                           Text(
                             doctor['department'],
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade600),
                           ),
                       ],
                     ),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: PatientsTheme.approvedGreen.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -677,7 +686,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
       );
     }
 
-    final person = patientDetails?['User']?['Person'] ?? widget.patientData['User']?['Person'];
+    final person = patientDetails?['User']?['Person'] ??
+        widget.patientData['User']?['Person'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -691,7 +701,6 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           ),
         ),
         const SizedBox(height: 12),
-
         _buildInfoCard(
           'Blood Type',
           person?['blood_type'] ?? 'Not specified',
@@ -699,7 +708,6 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           Colors.red,
         ),
         const SizedBox(height: 12),
-
         _buildInfoCard(
           'Allergies',
           person?['allergies'] ?? 'None specified',
@@ -708,7 +716,6 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           isMultiline: true,
         ),
         const SizedBox(height: 12),
-
         _buildInfoCard(
           'Medical Conditions',
           person?['medical_conditions'] ?? 'None specified',
@@ -717,7 +724,6 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           isMultiline: true,
         ),
         const SizedBox(height: 12),
-
         _buildInfoCard(
           'Disabilities',
           person?['disabilities'] ?? 'None specified',
@@ -726,7 +732,6 @@ class _PatientProfileViewState extends State<PatientProfileView> {
           isMultiline: true,
         ),
         const SizedBox(height: 12),
-
         _buildInfoCard(
           'Date of Birth',
           person?['date_of_birth'] != null
@@ -739,7 +744,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
     );
   }
 
-  Widget _buildPatientAvatar(Map<String, dynamic>? person, {double radius = 20}) {
+  Widget _buildPatientAvatar(Map<String, dynamic>? person,
+      {double radius = 20}) {
     final imageUrl = person?['image'] as String?;
     final fullName = _getFullName();
 
@@ -805,7 +811,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
 
   String _getPatientInitials(String fullName) {
     if (fullName.trim().isEmpty) return 'P';
-    final names = fullName.trim().split(' ').where((name) => name.isNotEmpty).toList();
+    final names =
+        fullName.trim().split(' ').where((name) => name.isNotEmpty).toList();
     if (names.length >= 2) {
       return '${names[0][0]}${names[1][0]}'.toUpperCase();
     } else if (names.isNotEmpty && names[0].isNotEmpty) {
@@ -835,7 +842,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
         ],
       ),
       child: Row(
-        crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment:
+            isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -890,15 +898,28 @@ class _PatientProfileViewState extends State<PatientProfileView> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(8)),
             ),
             child: const Row(
               children: [
-                Expanded(flex: 3, child: Text('File Name', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Category', style: TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
-                Expanded(child: Text('Type', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Uploaded By', style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(child: Text('Date', style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    flex: 3,
+                    child: Text('File Name',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Category',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('Type',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Uploaded By',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
+                Expanded(
+                    child: Text('Date',
+                        style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 100),
               ],
             ),
@@ -913,7 +934,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
               final fileType = file['file_type'] ?? 'unknown';
               final category = file['category'] ?? 'other';
               final fileName = file['filename'] ?? 'Unknown File';
-              final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+              final createdAt = DateTime.tryParse(file['uploaded_at'] ?? '') ??
+                  DateTime.now();
               final uploader = file['uploader'];
               final uploaderName = uploader != null
                   ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
@@ -940,7 +962,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: _getFileTypeColor(fileType).withOpacity(0.1),
+                              color:
+                                  _getFileTypeColor(fileType).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Icon(
@@ -953,7 +976,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                           Expanded(
                             child: Text(
                               fileName,
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w500),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -963,7 +987,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                     Expanded(
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: _getCategoryColor(category).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(4),
@@ -998,7 +1023,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                     Expanded(
                       child: Text(
                         _formatDate(createdAt),
-                        style: const TextStyle(fontSize: 12, color: PatientsTheme.textGray),
+                        style: const TextStyle(
+                            fontSize: 12, color: PatientsTheme.textGray),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1015,7 +1041,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                             tooltip: 'Preview',
                           ),
                           PopupMenuButton(
-                            icon: const Icon(Icons.more_vert, size: 18, color: PatientsTheme.textGray),
+                            icon: const Icon(Icons.more_vert,
+                                size: 18, color: PatientsTheme.textGray),
                             itemBuilder: (context) => [
                               const PopupMenuItem(
                                 value: 'details',
@@ -1032,9 +1059,11 @@ class _PatientProfileViewState extends State<PatientProfileView> {
                                   value: 'delete',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.delete, color: Colors.red, size: 16),
+                                      Icon(Icons.delete,
+                                          color: Colors.red, size: 16),
                                       SizedBox(width: 8),
-                                      Text('Delete', style: TextStyle(color: Colors.red)),
+                                      Text('Delete',
+                                          style: TextStyle(color: Colors.red)),
                                     ],
                                   ),
                                 ),
@@ -1170,7 +1199,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
   }
 
   void _showFileDetails(Map<String, dynamic> file) {
-    final uploadedAt = DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
+    final uploadedAt =
+        DateTime.tryParse(file['uploaded_at'] ?? '') ?? DateTime.now();
     final uploader = file['uploader'];
     final uploaderName = uploader != null
         ? '${uploader['Person']['first_name']} ${uploader['Person']['last_name']}'
@@ -1186,7 +1216,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
+                color:
+                    _getFileTypeColor(file['file_type'] ?? '').withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -1214,23 +1245,32 @@ class _PatientProfileViewState extends State<PatientProfileView> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildDetailRow('Filename', file['filename'] ?? 'Unknown'),
-              _buildDetailRow('Category', (file['category'] ?? 'other').replaceAll('_', ' ').toUpperCase()),
-              _buildDetailRow('File Type', (file['file_type'] ?? 'unknown').toUpperCase()),
-              _buildDetailRow('File Size', _formatFileSize(file['file_size'] ?? 0)),
+              _buildDetailRow(
+                  'Category',
+                  (file['category'] ?? 'other')
+                      .replaceAll('_', ' ')
+                      .toUpperCase()),
+              _buildDetailRow(
+                  'File Type', (file['file_type'] ?? 'unknown').toUpperCase()),
+              _buildDetailRow(
+                  'File Size', _formatFileSize(file['file_size'] ?? 0)),
               _buildDetailRow('Uploaded By', uploaderName),
-              _buildDetailRow('Uploaded At', _formatDateTime(uploadedAt.toIso8601String())),
+              _buildDetailRow(
+                  'Uploaded At', _formatDateTime(uploadedAt.toIso8601String())),
               _buildDetailRow('File ID', file['id'] ?? 'Unknown'),
               if (file['ipfs_cid'] != null)
                 _buildDetailRow('IPFS CID', file['ipfs_cid'], monospace: true),
               if (file['sha256_hash'] != null)
-                _buildDetailRow('SHA256 Hash', file['sha256_hash'], monospace: true),
+                _buildDetailRow('SHA256 Hash', file['sha256_hash'],
+                    monospace: true),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(foregroundColor: PatientsTheme.primaryGreen),
+            style: TextButton.styleFrom(
+                foregroundColor: PatientsTheme.primaryGreen),
             child: const Text('Close'),
           ),
         ],
@@ -1287,7 +1327,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(foregroundColor: PatientsTheme.textGray),
+            style:
+                TextButton.styleFrom(foregroundColor: PatientsTheme.textGray),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
@@ -1299,7 +1340,8 @@ class _PatientProfileViewState extends State<PatientProfileView> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Delete'),
           ),

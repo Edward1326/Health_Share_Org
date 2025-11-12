@@ -223,8 +223,7 @@ class HiveTransactionSignerWeb {
     final buffer = <int>[];
     buffer.addAll(_serializeUint16(transaction['ref_block_num'] as int));
     buffer.addAll(_serializeUint32(transaction['ref_block_prefix'] as int));
-    final expirationTimestamp =
-        DateTime.parse(
+    final expirationTimestamp = DateTime.parse(
           (transaction['expiration'] as String) + 'Z',
         ).millisecondsSinceEpoch ~/
         1000;

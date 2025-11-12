@@ -44,20 +44,20 @@ class HiveFetchWeb {
 
       final response = await http
           .post(
-            Uri.parse(_hiveNodeUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Flutter-Hive-Client-Web/1.0',
-            },
-            body: jsonEncode(requestBody),
-          )
+        Uri.parse(_hiveNodeUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Flutter-Hive-Client-Web/1.0',
+        },
+        body: jsonEncode(requestBody),
+      )
           .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw Exception('Request timeout after 30 seconds');
-            },
-          );
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
 
       print('Response status: ${response.statusCode}');
       print('Response body length: ${response.body.length} bytes');
@@ -122,20 +122,20 @@ class HiveFetchWeb {
 
       final response = await http
           .post(
-            Uri.parse(_hiveNodeUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Flutter-Hive-Client-Web/1.0',
-            },
-            body: jsonEncode(requestBody),
-          )
+        Uri.parse(_hiveNodeUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Flutter-Hive-Client-Web/1.0',
+        },
+        body: jsonEncode(requestBody),
+      )
           .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw Exception('Request timeout after 30 seconds');
-            },
-          );
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
 
       print('Response status: ${response.statusCode}');
 
@@ -199,20 +199,20 @@ class HiveFetchWeb {
 
       final response = await http
           .post(
-            Uri.parse(_hiveNodeUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Flutter-Hive-Client-Web/1.0',
-            },
-            body: jsonEncode(requestBody),
-          )
+        Uri.parse(_hiveNodeUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Flutter-Hive-Client-Web/1.0',
+        },
+        body: jsonEncode(requestBody),
+      )
           .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw Exception('Request timeout after 30 seconds');
-            },
-          );
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
 
       print('Response status: ${response.statusCode}');
 

@@ -29,10 +29,12 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _contactNumberController = TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
   final TextEditingController _bloodTypeController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
-  final TextEditingController _medicalConditionsController = TextEditingController();
+  final TextEditingController _medicalConditionsController =
+      TextEditingController();
   final TextEditingController _disabilitiesController = TextEditingController();
 
   @override
@@ -73,7 +75,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       print('DEBUG: User query results: $userListResponse');
 
       Map<String, dynamic> userResponse;
-      
+
       // If no user found by ID, try by email
       if (userListResponse.isEmpty) {
         print('DEBUG: No user found by ID, trying by email: ${user.email}');
@@ -91,11 +93,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       final userEmail = userResponse['email'];
 
       // Get Person data for personal information
-      final personResponse = await supabase
-          .from('Person')
-          .select()
-          .eq('id', personId)
-          .single();
+      final personResponse =
+          await supabase.from('Person').select().eq('id', personId).single();
 
       print('DEBUG: Person data: $personResponse');
 
@@ -114,7 +113,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         _contactNumberController.text = adminData!['contact_number'] ?? '';
         _bloodTypeController.text = adminData!['blood_type'] ?? '';
         _allergiesController.text = adminData!['allergies'] ?? '';
-        _medicalConditionsController.text = adminData!['medical_conditions'] ?? '';
+        _medicalConditionsController.text =
+            adminData!['medical_conditions'] ?? '';
         _disabilitiesController.text = adminData!['disabilities'] ?? '';
       });
 
@@ -242,32 +242,32 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   String _formatDateTime(String? dateTimeString) {
-  if (dateTimeString == null) return 'Not available';
-  try {
-    final dateTime = DateTime.parse(dateTimeString);
-    
-    // Format with date and time
-    final day = dateTime.day.toString().padLeft(2, '0');
-    final month = dateTime.month.toString().padLeft(2, '0');
-    final year = dateTime.year;
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    
-    return '$day/$month/$year $hour:$minute';
-  
-  } catch (e) {
-    return 'Invalid date';
+    if (dateTimeString == null) return 'Not available';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+
+      // Format with date and time
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final year = dateTime.year;
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+
+      return '$day/$month/$year $hour:$minute';
+    } catch (e) {
+      return 'Invalid date';
+    }
   }
-}
 
   String _getFullName() {
     if (adminData == null) return 'Unknown Admin';
-    
+
     final firstName = adminData!['first_name'] ?? '';
     final middleName = adminData!['middle_name'] ?? '';
     final lastName = adminData!['last_name'] ?? '';
-    
-    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
+
+    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'
+        .trim();
   }
 
   @override
@@ -333,10 +333,9 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                       child: CircleAvatar(
                         radius: 50,
                         backgroundColor: const Color(0xFF4A8B3A),
-                        backgroundImage:
-                            adminData!['image'] != null
-                                ? NetworkImage(adminData!['image'])
-                                : null,
+                        backgroundImage: adminData!['image'] != null
+                            ? NetworkImage(adminData!['image'])
+                            : null,
                         child: adminData!['image'] == null
                             ? const Icon(
                                 Icons.person,
@@ -350,9 +349,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                       bottom: 0,
                       right: 0,
                       child: GestureDetector(
-                        onTap: isUploadingImage
-                            ? null
-                            : _pickAndUploadImage,
+                        onTap: isUploadingImage ? null : _pickAndUploadImage,
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -369,9 +366,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation<
-                                            Color>(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
                                       Colors.white,
                                     ),
                                   ),
@@ -566,7 +561,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   Widget _buildInfoCard(
-      String title, String content, IconData icon, Color iconColor, {bool isMultiline = false}) {
+      String title, String content, IconData icon, Color iconColor,
+      {bool isMultiline = false}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -581,7 +577,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         ],
       ),
       child: Row(
-        crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment:
+            isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -714,7 +711,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                     maxLines: 2,
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Medical Information
                   const Align(
                     alignment: Alignment.centerLeft,
@@ -765,7 +762,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               },
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF6C757D),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               child: const Text(
                 'Cancel',
@@ -780,7 +778,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -840,7 +839,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         alignLabelWithHint: maxLines > 1,
       ),
     );

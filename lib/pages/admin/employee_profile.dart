@@ -5,7 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class EmployeeProfileView extends StatefulWidget {
   final Map<String, dynamic> employeeData;
   final VoidCallback onBack;
-  final bool isViewOnly; // true when admin is viewing, false when user edits own profile
+  final bool
+      isViewOnly; // true when admin is viewing, false when user edits own profile
 
   const EmployeeProfileView({
     Key? key,
@@ -29,10 +30,12 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
   final TextEditingController _middleNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _contactNumberController = TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
   final TextEditingController _bloodTypeController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
-  final TextEditingController _medicalConditionsController = TextEditingController();
+  final TextEditingController _medicalConditionsController =
+      TextEditingController();
   final TextEditingController _disabilitiesController = TextEditingController();
 
   @override
@@ -60,7 +63,7 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
       setState(() => isLoading = true);
 
       final email = widget.employeeData['email'];
-      
+
       // Get User data
       final userResponse = await supabase
           .from('User')
@@ -78,11 +81,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
           .single();
 
       // Get Person data
-      final personResponse = await supabase
-          .from('Person')
-          .select()
-          .eq('id', personId)
-          .single();
+      final personResponse =
+          await supabase.from('Person').select().eq('id', personId).single();
 
       setState(() {
         employeeDetails = {
@@ -99,10 +99,12 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
         _middleNameController.text = employeeDetails!['middle_name'] ?? '';
         _lastNameController.text = employeeDetails!['last_name'] ?? '';
         _addressController.text = employeeDetails!['address'] ?? '';
-        _contactNumberController.text = employeeDetails!['contact_number'] ?? '';
+        _contactNumberController.text =
+            employeeDetails!['contact_number'] ?? '';
         _bloodTypeController.text = employeeDetails!['blood_type'] ?? '';
         _allergiesController.text = employeeDetails!['allergies'] ?? '';
-        _medicalConditionsController.text = employeeDetails!['medical_conditions'] ?? '';
+        _medicalConditionsController.text =
+            employeeDetails!['medical_conditions'] ?? '';
         _disabilitiesController.text = employeeDetails!['disabilities'] ?? '';
       });
     } catch (e) {
@@ -153,13 +155,15 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
   }
 
   String _getFullName() {
-    if (employeeDetails == null) return widget.employeeData['name'] ?? 'Unknown';
-    
+    if (employeeDetails == null)
+      return widget.employeeData['name'] ?? 'Unknown';
+
     final firstName = employeeDetails!['first_name'] ?? '';
     final middleName = employeeDetails!['middle_name'] ?? '';
     final lastName = employeeDetails!['last_name'] ?? '';
-    
-    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'.trim();
+
+    return '$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName'
+        .trim();
   }
 
   void _showSnackBar(String message) {
@@ -240,7 +244,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4A8B3A),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -282,13 +287,16 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF4A8B3A).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    employeeDetails?['position'] ?? widget.employeeData['role'] ?? 'Staff',
+                    employeeDetails?['position'] ??
+                        widget.employeeData['role'] ??
+                        'Staff',
                     style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF4A8B3A),
@@ -298,13 +306,16 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    employeeDetails?['department'] ?? widget.employeeData['department'] ?? 'General',
+                    employeeDetails?['department'] ??
+                        widget.employeeData['department'] ??
+                        'General',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Colors.blue,
@@ -339,7 +350,9 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
 
           _buildInfoCard(
             'Contact Number',
-            employeeDetails?['contact_number'] ?? widget.employeeData['phone'] ?? 'Not specified',
+            employeeDetails?['contact_number'] ??
+                widget.employeeData['phone'] ??
+                'Not specified',
             Icons.phone,
             Colors.blue,
           ),
@@ -498,7 +511,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
         ],
       ),
       child: Row(
-        crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment:
+            isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -626,7 +640,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              style: TextButton.styleFrom(foregroundColor: const Color(0xFF6C757D)),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF6C757D)),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -635,7 +650,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
                 backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('Save'),
             ),
@@ -675,7 +691,8 @@ class _EmployeeProfileViewState extends State<EmployeeProfileView> {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF4A8B3A), width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         alignLabelWithHint: maxLines > 1,
       ),
     );

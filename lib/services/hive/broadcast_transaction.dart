@@ -64,21 +64,21 @@ class HiveTransactionBroadcasterWeb {
       print('Sending HTTP POST request...');
       final response = await http
           .post(
-            Uri.parse(_hiveNodeUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Flutter-Web-Hive-Client/1.0',
-            },
-            body: requestJson,
-          )
+        Uri.parse(_hiveNodeUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Flutter-Web-Hive-Client/1.0',
+        },
+        body: requestJson,
+      )
           .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              print('Request timed out after 30 seconds');
-              throw Exception('Request timeout');
-            },
-          );
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('Request timed out after 30 seconds');
+          throw Exception('Request timeout');
+        },
+      );
 
       print('Response received:');
       print('  - Status Code: ${response.statusCode}');
@@ -175,21 +175,21 @@ class HiveTransactionBroadcasterWeb {
       print('Sending condenser HTTP POST request...');
       final response = await http
           .post(
-            Uri.parse(_hiveNodeUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Flutter-Web-Hive-Client/1.0',
-            },
-            body: requestJson,
-          )
+        Uri.parse(_hiveNodeUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Flutter-Web-Hive-Client/1.0',
+        },
+        body: requestJson,
+      )
           .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              print('Condenser request timed out after 30 seconds');
-              throw Exception('Condenser request timeout');
-            },
-          );
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('Condenser request timed out after 30 seconds');
+          throw Exception('Condenser request timeout');
+        },
+      );
 
       print('Condenser response received:');
       print('  - Status Code: ${response.statusCode}');

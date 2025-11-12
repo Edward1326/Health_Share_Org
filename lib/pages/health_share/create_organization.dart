@@ -31,21 +31,22 @@ class InputValidators {
     if (value == null || value.trim().isEmpty) {
       return 'Please enter $fieldName';
     }
-    
+
     final trimmedValue = value.trim();
-    
+
     if (trimmedValue.length < 2) {
       return '$fieldName must be at least 2 characters';
     }
-    
+
     if (RegExp(r'[0-9]').hasMatch(trimmedValue)) {
       return '$fieldName cannot contain numbers';
     }
-    
-    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]').hasMatch(trimmedValue)) {
+
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>+=_\[\]\\\/;`~]')
+        .hasMatch(trimmedValue)) {
       return '$fieldName cannot contain special characters';
     }
-    
+
     return null;
   }
 
@@ -62,7 +63,7 @@ class InputValidators {
     // Format 1: 09XXXXXXXXX (11 digits starting with 09)
     // Format 2: +639XXXXXXXXX (13 characters with +63)
     // Format 3: 639XXXXXXXXX (12 digits starting with 63)
-    
+
     if (cleanNumber.startsWith('+63')) {
       // +639XXXXXXXXX format
       if (cleanNumber.length != 13) {
@@ -108,7 +109,8 @@ class InputValidators {
     }
 
     // Basic email regex
-    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email)) {
+    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        .hasMatch(email)) {
       return 'Please enter a valid email address';
     }
 
@@ -167,15 +169,17 @@ class SignupService {
 
   static bool canAttemptSignup() {
     if (_lastSignupAttempt == null) return true;
-    
-    final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
+
+    final timeSinceLastAttempt =
+        DateTime.now().difference(_lastSignupAttempt!).inSeconds;
     return timeSinceLastAttempt >= _signupCooldownSeconds;
   }
 
   static int getRemainingCooldown() {
     if (_lastSignupAttempt == null) return 0;
-    
-    final timeSinceLastAttempt = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
+
+    final timeSinceLastAttempt =
+        DateTime.now().difference(_lastSignupAttempt!).inSeconds;
     final remaining = _signupCooldownSeconds - timeSinceLastAttempt;
     return remaining > 0 ? remaining : 0;
   }
@@ -212,14 +216,14 @@ class OTPService {
 
   static bool canResendOTP() {
     if (_otpSentTime == null) return true;
-    
+
     final timeSinceLastOTP = DateTime.now().difference(_otpSentTime!).inSeconds;
     return timeSinceLastOTP >= _otpCooldownSeconds;
   }
 
   static int getRemainingOTPCooldownTime() {
     if (_otpSentTime == null) return 0;
-    
+
     final timeSinceLastOTP = DateTime.now().difference(_otpSentTime!).inSeconds;
     final remaining = _otpCooldownSeconds - timeSinceLastOTP;
     return remaining > 0 ? remaining : 0;
@@ -245,7 +249,8 @@ class OTPService {
         final remainingTime = getRemainingOTPCooldownTime();
         return OTPVerificationResult(
           success: false,
-          errorMessage: 'Please wait $remainingTime seconds before resending OTP',
+          errorMessage:
+              'Please wait $remainingTime seconds before resending OTP',
         );
       }
 
@@ -266,7 +271,7 @@ class OTPService {
       }
 
       print('Sending OTP to email: $email');
-      
+
       await _supabase.auth.signInWithOtp(
         email: email.toLowerCase().trim(),
         shouldCreateUser: true,
@@ -281,15 +286,15 @@ class OTPService {
       );
     } on AuthException catch (e) {
       print('OTP send error: ${e.message}');
-      
-      if (e.message.contains('already registered') || 
+
+      if (e.message.contains('already registered') ||
           e.message.contains('already exists')) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'An account with this email already exists',
         );
       }
-      
+
       return OTPVerificationResult(
         success: false,
         errorMessage: 'Failed to send verification code: ${e.message}',
@@ -303,9 +308,11 @@ class OTPService {
     }
   }
 
-  static Future<OTPVerificationResult> verifyOTP(String email, String otp) async {
+  static Future<OTPVerificationResult> verifyOTP(
+      String email, String otp) async {
     try {
-      if (_pendingEmail == null || _pendingEmail != email.toLowerCase().trim()) {
+      if (_pendingEmail == null ||
+          _pendingEmail != email.toLowerCase().trim()) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'Please request a new verification code',
@@ -313,7 +320,7 @@ class OTPService {
       }
 
       print('Verifying OTP for email: $email');
-      
+
       final response = await _supabase.auth.verifyOTP(
         email: email.toLowerCase().trim(),
         token: otp.trim(),
@@ -334,14 +341,14 @@ class OTPService {
       }
     } on AuthException catch (e) {
       print('OTP verification error: ${e.message}');
-      
+
       if (e.message.contains('invalid') || e.message.contains('expired')) {
         return OTPVerificationResult(
           success: false,
           errorMessage: 'Invalid or expired verification code',
         );
       }
-      
+
       return OTPVerificationResult(
         success: false,
         errorMessage: 'Verification failed: ${e.message}',
@@ -421,7 +428,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
   }
 
   Future<void> _sendOTP() async {
-    final emailValidation = InputValidators.validateEmail(_adminEmailController.text);
+    final emailValidation =
+        InputValidators.validateEmail(_adminEmailController.text);
     if (emailValidation != null) {
       _showErrorSnackBar(emailValidation);
       return;
@@ -431,7 +439,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       _sendingOTP = true;
     });
 
-    final result = await OTPService.sendOTPToEmail(_adminEmailController.text.trim());
+    final result =
+        await OTPService.sendOTPToEmail(_adminEmailController.text.trim());
 
     setState(() {
       _sendingOTP = false;
@@ -441,9 +450,11 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       setState(() {
         _otpSent = true;
       });
-      _showSuccessSnackBar(result.message ?? 'Verification code sent to your email');
+      _showSuccessSnackBar(
+          result.message ?? 'Verification code sent to your email');
     } else {
-      _showErrorSnackBar(result.errorMessage ?? 'Failed to send verification code');
+      _showErrorSnackBar(
+          result.errorMessage ?? 'Failed to send verification code');
     }
   }
 
@@ -475,7 +486,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
       setState(() {
         _otpVerified = true;
       });
-      _showSuccessSnackBar('Email verified! You can now complete the registration.');
+      _showSuccessSnackBar(
+          'Email verified! You can now complete the registration.');
     } else {
       _showErrorSnackBar(result.errorMessage ?? 'Verification failed');
     }
@@ -507,7 +519,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
 
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
-        throw Exception('Authentication session expired. Please verify email again.');
+        throw Exception(
+            'Authentication session expired. Please verify email again.');
       }
 
       print('Setting password for admin user...');
@@ -647,7 +660,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
           content: Text(message),
           backgroundColor: Colors.red[600],
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           duration: const Duration(seconds: 4),
         ),
       );
@@ -661,7 +675,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
           content: Text(message),
           backgroundColor: primaryGreen,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           duration: const Duration(seconds: 6),
         ),
       );
@@ -746,11 +761,14 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                 _buildInputField(
                   child: TextFormField(
                     controller: _organizationNameController,
-                    inputFormatters: [InputFormatters.organizationNameFormatter],
+                    inputFormatters: [
+                      InputFormatters.organizationNameFormatter
+                    ],
                     style: const TextStyle(color: darkText, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Organization Name',
-                      hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                      hintStyle: TextStyle(
+                          color: textGray.withOpacity(0.6), fontSize: 14),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
@@ -771,7 +789,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                     style: const TextStyle(color: darkText, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Organization License (Optional)',
-                      hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                      hintStyle: TextStyle(
+                          color: textGray.withOpacity(0.6), fontSize: 14),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
@@ -803,7 +822,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                           keyboardType: TextInputType.emailAddress,
                           enabled: !_otpVerified,
                           inputFormatters: [
-                            FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                            FilteringTextInputFormatter.deny(
+                                RegExp(r'\s')), // No spaces
                             LengthLimitingTextInputFormatter(100),
                           ],
                           style: TextStyle(
@@ -812,12 +832,14 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                           ),
                           decoration: InputDecoration(
                             hintText: 'Admin Email',
-                            hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                            hintStyle: TextStyle(
+                                color: textGray.withOpacity(0.6), fontSize: 14),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 14),
                             suffixIcon: _otpVerified
-                                ? Icon(Icons.check_circle, color: primaryGreen, size: 20)
+                                ? Icon(Icons.check_circle,
+                                    color: primaryGreen, size: 20)
                                 : null,
                           ),
                           validator: InputValidators.validateEmail,
@@ -830,7 +852,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                             onPressed: _sendingOTP ? null : _sendOTP,
                             style: TextButton.styleFrom(
                               foregroundColor: primaryGreen,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                             ),
                             child: _sendingOTP
                                 ? SizedBox(
@@ -869,10 +892,13 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                               FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(6),
                             ],
-                            style: const TextStyle(color: darkText, fontSize: 14),
+                            style:
+                                const TextStyle(color: darkText, fontSize: 14),
                             decoration: InputDecoration(
                               hintText: 'Enter 6-digit verification code',
-                              hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                              hintStyle: TextStyle(
+                                  color: textGray.withOpacity(0.6),
+                                  fontSize: 14),
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16, vertical: 14),
@@ -930,12 +956,14 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin First Name',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) => InputValidators.validateName(value, 'First name'),
+                      validator: (value) =>
+                          InputValidators.validateName(value, 'First name'),
                     ),
                     icon: Icons.person_rounded,
                   ),
@@ -952,7 +980,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Middle Name (Optional)',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -973,12 +1002,14 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Last Name',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                       ),
-                      validator: (value) => InputValidators.validateName(value, 'Last name'),
+                      validator: (value) =>
+                          InputValidators.validateName(value, 'Last name'),
                     ),
                     icon: Icons.person_rounded,
                   ),
@@ -995,7 +1026,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Phone Number (09XX XXX XXXX)',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -1017,7 +1049,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Address',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -1033,19 +1066,23 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       controller: _adminPasswordController,
                       obscureText: _obscurePassword,
                       inputFormatters: [
-                        FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                        FilteringTextInputFormatter.deny(
+                            RegExp(r'\s')), // No spaces
                         LengthLimitingTextInputFormatter(100),
                       ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Admin Password',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                            _obscurePassword
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
                             color: textGray,
                             size: 20,
                           ),
@@ -1056,7 +1093,8 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                           },
                         ),
                       ),
-                      validator: (value) => SignupService.validatePassword(value ?? ''),
+                      validator: (value) =>
+                          SignupService.validatePassword(value ?? ''),
                     ),
                     icon: Icons.lock_rounded,
                   ),
@@ -1080,25 +1118,30 @@ class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
                       inputFormatters: [
-                        FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                        FilteringTextInputFormatter.deny(
+                            RegExp(r'\s')), // No spaces
                         LengthLimitingTextInputFormatter(100),
                       ],
                       style: const TextStyle(color: darkText, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Confirm Admin Password',
-                        hintStyle: TextStyle(color: textGray.withOpacity(0.6), fontSize: 14),
+                        hintStyle: TextStyle(
+                            color: textGray.withOpacity(0.6), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscureConfirmPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                            _obscureConfirmPassword
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
                             color: textGray,
                             size: 20,
                           ),
                           onPressed: () {
                             setState(() {
-                              _obscureConfirmPassword = !_obscureConfirmPassword;
+                              _obscureConfirmPassword =
+                                  !_obscureConfirmPassword;
                             });
                           },
                         ),

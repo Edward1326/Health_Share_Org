@@ -7,17 +7,19 @@ import 'admin_dashboard.dart'; // Import for DashboardTheme
 // Modern Hospital Profile Content Widget
 class HospitalProfileContentWidget extends StatefulWidget {
   final String? organizationId;
-  
+
   const HospitalProfileContentWidget({
     Key? key,
     this.organizationId,
   }) : super(key: key);
 
   @override
-  State<HospitalProfileContentWidget> createState() => _HospitalProfileContentWidgetState();
+  State<HospitalProfileContentWidget> createState() =>
+      _HospitalProfileContentWidgetState();
 }
 
-class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWidget> {
+class _HospitalProfileContentWidgetState
+    extends State<HospitalProfileContentWidget> {
   final supabase = Supabase.instance.client;
   final ImagePicker _picker = ImagePicker();
 
@@ -49,10 +51,11 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Get organization ID from route if not already set
     if (currentOrganizationId == null) {
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null && args['organizationId'] != null) {
         currentOrganizationId = args['organizationId'];
         _initializeAndLoad();
@@ -138,7 +141,9 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 
   Future<void> _loadOrganizationData() async {
     try {
-      setState(() { isLoading = true; });
+      setState(() {
+        isLoading = true;
+      });
 
       if (currentOrganizationId == null) {
         throw Exception('No organization ID available');
@@ -169,13 +174,16 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
       });
     } catch (error) {
       print('❌ Error loading organization: $error');
-      setState(() { isLoading = false; });
+      setState(() {
+        isLoading = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error loading organization data: $error'),
             backgroundColor: Colors.red,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -194,9 +202,12 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 
       if (image == null) return;
 
-      setState(() { isUploadingImage = true; });
+      setState(() {
+        isUploadingImage = true;
+      });
 
-      final fileName = 'organization_${currentOrganizationId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName =
+          'organization_${currentOrganizationId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final bytes = await image.readAsBytes();
       await _uploadImageBytes(bytes, fileName);
     } catch (error) {
@@ -205,27 +216,30 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
           SnackBar(
             content: Text('Error uploading image: $error'),
             backgroundColor: Colors.red,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } finally {
-      setState(() { isUploadingImage = false; });
+      setState(() {
+        isUploadingImage = false;
+      });
     }
   }
 
   Future<void> _uploadImageBytes(Uint8List bytes, String fileName) async {
     await supabase.storage.from('profile-images').uploadBinary(fileName, bytes);
-    final imageUrl = supabase.storage.from('profile-images').getPublicUrl(fileName);
+    final imageUrl =
+        supabase.storage.from('profile-images').getPublicUrl(fileName);
     await _updateOrganizationImage(imageUrl);
   }
 
   Future<void> _updateOrganizationImage(String imageUrl) async {
     await supabase
         .from('Organization')
-        .update({'image': imageUrl})
-        .eq('id', currentOrganizationId!);
+        .update({'image': imageUrl}).eq('id', currentOrganizationId!);
 
     await _loadOrganizationData();
 
@@ -272,7 +286,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               ],
             ),
             backgroundColor: DashboardTheme.approvedGreen,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -283,7 +298,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
           SnackBar(
             content: Text('Error updating profile: $error'),
             backgroundColor: Colors.red,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -292,23 +308,22 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
   }
 
   String _formatDateTime(String? dateTimeString) {
-  if (dateTimeString == null) return 'Not available';
-  try {
-    final dateTime = DateTime.parse(dateTimeString);
-    
-    // Format with date and time
-    final day = dateTime.day.toString().padLeft(2, '0');
-    final month = dateTime.month.toString().padLeft(2, '0');
-    final year = dateTime.year;
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    
-    return '$day/$month/$year $hour:$minute';
-  
-  } catch (e) {
-    return 'Invalid date';
+    if (dateTimeString == null) return 'Not available';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+
+      // Format with date and time
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final year = dateTime.year;
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+
+      return '$day/$month/$year $hour:$minute';
+    } catch (e) {
+      return 'Invalid date';
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +361,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
             ),
             const SizedBox(height: 8),
             Text(
-              currentOrganizationId != null 
+              currentOrganizationId != null
                   ? 'Organization ID: $currentOrganizationId'
                   : 'No organization ID available',
               style: const TextStyle(
@@ -422,14 +437,14 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               ),
             ],
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Profile card
           _buildProfileCard(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Information sections
           _buildInformationSections(),
         ],
@@ -514,7 +529,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
                                   height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                 )
                               : const Icon(
@@ -558,7 +574,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               ],
             ),
           ),
-          
+
           // Quick stats row
           Container(
             padding: const EdgeInsets.all(20),
@@ -594,7 +610,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
     );
   }
 
-  Widget _buildQuickStat(IconData icon, String label, String value, Color color) {
+  Widget _buildQuickStat(
+      IconData icon, String label, String value, Color color) {
     return Row(
       children: [
         Container(
@@ -684,13 +701,16 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
     );
   }
 
-  Widget _buildInfoItem(IconData icon, String label, String value, Color color, {bool isLast = false}) {
+  Widget _buildInfoItem(IconData icon, String label, String value, Color color,
+      {bool isLast = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        border: isLast ? null : const Border(
-          bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1),
-        ),
+        border: isLast
+            ? null
+            : const Border(
+                bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1),
+              ),
       ),
       child: Row(
         children: [
@@ -797,7 +817,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
                     hint: 'Enter license number',
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Contact Information
                   const Align(
                     alignment: Alignment.centerLeft,
@@ -843,7 +863,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               onPressed: () => Navigator.of(context).pop(),
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF6C757D),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               child: const Text(
                 'Cancel',
@@ -858,7 +879,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4A8B3A),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -909,7 +931,8 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
         filled: true,
         fillColor: Colors.white,
         alignLabelWithHint: maxLines > 1,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         labelStyle: const TextStyle(
           fontSize: 14,
           color: Color(0xFF6C757D),
@@ -930,7 +953,7 @@ class _HospitalProfileContentWidgetState extends State<HospitalProfileContentWid
 // Updated Hospital Profile Page using modular layout
 class ModernAdminProfilePage extends StatelessWidget {
   final String? organizationId;
-  
+
   const ModernAdminProfilePage({
     Key? key,
     this.organizationId,
@@ -939,7 +962,8 @@ class ModernAdminProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Try to get organizationId from route if not provided
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final orgId = organizationId ?? args?['organizationId'];
 
     // Always use modular layout with sidebar
