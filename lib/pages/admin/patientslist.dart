@@ -292,7 +292,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                   borderRadius: BorderRadius.circular(8),
                   items: const [
                     DropdownMenuItem(value: 'all', child: Text('All')),
-                    DropdownMenuItem(value: 'pending', child: Text('Pending')),
                     DropdownMenuItem(
                         value: 'assigned', child: Text('Assigned')),
                     DropdownMenuItem(

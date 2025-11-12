@@ -955,39 +955,6 @@ class FileUploadService {
                 ),
               ),
               const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                style: const TextStyle(color: darkText, fontSize: 14),
-                decoration: InputDecoration(
-                  labelText: 'Display Name *',
-                  labelStyle: TextStyle(
-                      color: textGray,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500),
-                  hintText: 'Enter a descriptive name',
-                  hintStyle:
-                      TextStyle(color: textGray.withOpacity(0.5), fontSize: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: borderColor, width: 1.5),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: primaryGreen, width: 2),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: borderColor, width: 1.5),
-                  ),
-                  prefixIcon: const Icon(Icons.edit_outlined,
-                      color: primaryGreen, size: 20),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-              ),
-              const SizedBox(height: 16),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedCategory,
