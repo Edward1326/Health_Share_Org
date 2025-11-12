@@ -451,6 +451,13 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
             itemCount: _filteredUsers.length,
             itemBuilder: (context, index) {
               final user = _filteredUsers[index];
+
+              // Skip declined or rejected patients in the UI
+              if (user['status'] == 'declined' ||
+                  user['status'] == 'rejected') {
+                return const SizedBox.shrink();
+              }
+
               return AnimatedBuilder(
                 animation: _fadeAnimation,
                 builder: (context, child) {
@@ -517,7 +524,7 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                           SizedBox(
                             width: 40,
                             child: user['status'] == 'invited'
-                                ? const SizedBox() // Hide menu button for invited patients
+                                ? const SizedBox()
                                 : PopupMenuButton(
                                     icon: const Icon(Icons.more_horiz,
                                         color: textGray),

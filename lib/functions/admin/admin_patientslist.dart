@@ -414,6 +414,8 @@ class AdminPatientListFunctions {
 
   /// Search users to invite (excludes users already in this organization)
   /// Search users to invite (excludes users already in this organization AND excludes staff/doctors)
+  // UPDATE 1: Fix the searchUsersToInvite function to exclude only active patients
+  // UPDATE 1: Fix the searchUsersToInvite function to exclude only active patients
   Future<List<Map<String, dynamic>>> searchUsersToInvite(String query) async {
     if (query.isEmpty) {
       return [];
@@ -447,16 +449,20 @@ class AdminPatientListFunctions {
         return [];
       }
 
-      // Get list of user IDs already in this organization as patients
+      // Get list of user IDs already in this organization as ACTIVE patients
+      // Exclude 'declined' or 'rejected' status so they can be invited again
       final existingPatients = await supabase
           .from('Patient')
           .select('user_id')
-          .eq('organization_id', currentOrganizationId!);
+          .eq('organization_id', currentOrganizationId!)
+          .neq('status', 'declined') // Allow declined patients to be re-invited
+          .neq(
+              'status', 'rejected'); // Allow rejected patients to be re-invited
 
       final existingUserIds =
           existingPatients.map((p) => p['user_id'].toString()).toSet();
 
-      print('Existing patient user IDs in org: $existingUserIds');
+      print('Existing active patient user IDs in org: $existingUserIds');
 
       // Get list of user IDs who are staff/doctors in ANY organization
       final staffUsers =
@@ -474,9 +480,9 @@ class AdminPatientListFunctions {
         final person = user['Person'];
         final userId = user['id'].toString();
 
-        // Skip if user is already a patient in this organization
+        // Skip if user is already an active patient in this organization
         if (existingUserIds.contains(userId)) {
-          print('Skipping existing patient: $userId');
+          print('Skipping existing active patient: $userId');
           continue;
         }
 
@@ -506,7 +512,7 @@ class AdminPatientListFunctions {
             'email': email,
             'phone': person['contact_number'] ?? '',
             'address': person['address'] ?? '',
-            'image': person['image'], // Add profile image
+            'image': person['image'],
             'person': person,
           });
 
@@ -524,7 +530,7 @@ class AdminPatientListFunctions {
     }
   }
 
-  /// Invite user to organization
+// UPDATE 2: Fix the inviteUser function to handle existing declined/rejected records
   Future<Map<String, dynamic>> inviteUser(
       Map<String, dynamic> userToInvite) async {
     try {
@@ -541,7 +547,7 @@ class AdminPatientListFunctions {
       print('User ID: ${userToInvite['user_id']}');
       print('Organization ID: $currentOrganizationId');
 
-      // Check if user is already a patient in this organization
+      // Check if user has an existing patient record
       final existingPatient = await supabase
           .from('Patient')
           .select('*')
@@ -549,25 +555,47 @@ class AdminPatientListFunctions {
           .eq('organization_id', currentOrganizationId!)
           .maybeSingle();
 
+      dynamic result;
+
       if (existingPatient != null) {
-        throw Exception(
-            '${userToInvite['name']} is already a patient in this organization');
+        final currentStatus = existingPatient['status'];
+
+        // If already active, invited, or pending, don't allow re-invite
+        if (currentStatus == 'invited' ||
+            currentStatus == 'pending' ||
+            currentStatus == 'active') {
+          throw Exception(
+              '${userToInvite['name']} is already a patient in this organization');
+        }
+
+        // If declined or rejected, update the record to invited status
+        print('Updating existing declined/rejected patient record');
+        result = await supabase
+            .from('Patient')
+            .update({
+              'status': 'invited',
+            })
+            .eq('id', existingPatient['id'])
+            .select()
+            .single();
+      } else {
+        // Create new patient record with invited status
+        final patientData = {
+          'user_id': userToInvite['user_id'],
+          'organization_id': currentOrganizationId,
+          'status': 'invited',
+          'created_at': DateTime.now().toIso8601String(),
+        };
+
+        print('Creating new patient record: $patientData');
+        result = await supabase
+            .from('Patient')
+            .insert(patientData)
+            .select()
+            .single();
       }
 
-      // Create patient record with invited status
-      final patientData = {
-        'user_id': userToInvite['user_id'],
-        'organization_id': currentOrganizationId,
-        'status': 'invited',
-        'created_at': DateTime.now().toIso8601String(),
-      };
-
-      print('Creating patient record: $patientData');
-
-      final result =
-          await supabase.from('Patient').insert(patientData).select().single();
-
-      print('Patient record created: $result');
+      print('Patient record created/updated: $result');
 
       // Return new patient data
       return {
@@ -577,7 +605,7 @@ class AdminPatientListFunctions {
         'email': userToInvite['email'],
         'phone': userToInvite['phone'],
         'address': userToInvite['address'],
-        'image': userToInvite['image'], // Preserve profile image
+        'image': userToInvite['image'],
         'lastVisit': DateTime.now().toString().split(' ')[0],
         'status': 'invited',
         'assignedDoctor': null,
