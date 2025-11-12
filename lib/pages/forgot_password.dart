@@ -128,7 +128,22 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
+  DateTime? _lastOtpSentTime;
+  static const _otpCooldownSeconds = 60; // 60 seconds cooldown
+
   Future<void> _resendOTP() async {
+    // Check if cooldown period has passed
+    if (_lastOtpSentTime != null) {
+      final secondsSinceLastSend =
+          DateTime.now().difference(_lastOtpSentTime!).inSeconds;
+      if (secondsSinceLastSend < _otpCooldownSeconds) {
+        final remainingSeconds = _otpCooldownSeconds - secondsSinceLastSend;
+        _showErrorSnackBar(
+            'Please wait $remainingSeconds seconds before resending');
+        return;
+      }
+    }
+
     setState(() {
       _isResending = true;
     });
@@ -136,15 +151,22 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       await _supabase.auth.signInWithOtp(
         email: _userEmail,
-        emailRedirectTo: null,
       );
+
+      _lastOtpSentTime = DateTime.now(); // Record the time
 
       if (mounted) {
         _showSuccessSnackBar('New verification code sent');
       }
     } catch (e) {
+      print('Resend OTP error: $e');
       if (mounted) {
-        _showErrorSnackBar('Failed to resend code. Please try again.');
+        if (e.toString().contains('429')) {
+          _showErrorSnackBar(
+              'Too many requests. Please wait a minute before trying again.');
+        } else {
+          _showErrorSnackBar('Failed to resend code. Please try again.');
+        }
       }
     } finally {
       if (mounted) {
@@ -614,53 +636,57 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               ),
             ),
             child: TextFormField(
-              controller: _newPasswordController,
-              obscureText: _isObscured1,
-              decoration: InputDecoration(
-                hintText: 'Enter your new password',
-                hintStyle: const TextStyle(
-                  color: Color(0xFF9CA3AF),
-                  fontSize: 14,
-                ),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _isObscured1
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: const Color(0xFF6C757D),
-                    size: 20,
+                controller: _newPasswordController,
+                obscureText: _isObscured1,
+                decoration: InputDecoration(
+                  hintText: 'Enter your new password',
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF9CA3AF),
+                    fontSize: 14,
                   ),
-                  onPressed: () {
-                    setState(() {
-                      _isObscured1 = !_isObscured1;
-                    });
-                  },
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isObscured1
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: const Color(0xFF6C757D),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isObscured1 = !_isObscured1;
+                      });
+                    },
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                 ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a new password';
-                }
-                if (value.length < 8) {
-                  return 'Password must be at least 8 characters';
-                }
-                if (!value.contains(RegExp(r'[A-Z]'))) {
-                  return 'Must contain at least one uppercase letter';
-                }
-                if (!value.contains(RegExp(r'[0-9]'))) {
-                  return 'Must contain at least one number';
-                }
-                if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
-                  return 'Must contain at least one special character';
-                }
-                return null;
-              },
-            ),
+                // Replace the validator in your _newPasswordController TextFormField with this:
+
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a new password';
+                  }
+                  if (value.length < 8) {
+                    return 'Password must be at least 8 characters';
+                  }
+                  if (!value.contains(RegExp(r'[a-z]'))) {
+                    return 'Must contain at least one lowercase letter';
+                  }
+                  if (!value.contains(RegExp(r'[A-Z]'))) {
+                    return 'Must contain at least one uppercase letter';
+                  }
+                  if (!value.contains(RegExp(r'[0-9]'))) {
+                    return 'Must contain at least one number';
+                  }
+                  if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+                    return 'Must contain at least one special character';
+                  }
+                  return null;
+                }),
           ),
 
           const SizedBox(height: 20),
