@@ -771,26 +771,6 @@ class _SignupPageState extends State<SignupPage> {
                           controller: _contactNumberController,
                           keyboardType: TextInputType.phone,
                           inputFormatters: [
-                            InputFormatters.phoneFormatter,
-                            LengthLimitingTextInputFormatter(15),
-                          ],
-                          decoration: const InputDecoration(
-                            hintText: 'Phone Number (09XX XXX XXXX)',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                          ),
-                          validator: InputValidators.validatePhilippinePhone,
-                        ),
-                        icon: Icons.phone,
-                      ),
-
-                      // Contact info with validation
-                      _buildInputField(
-                        child: TextFormField(
-                          controller: _contactNumberController,
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [
                             FilteringTextInputFormatter
                                 .digitsOnly, // Only allow digits
                             LengthLimitingTextInputFormatter(

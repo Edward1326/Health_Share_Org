@@ -441,9 +441,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                     child: Text('Status',
                         style: TextStyle(fontWeight: FontWeight.w500),
                         textAlign: TextAlign.center)),
-                Expanded(
-                    child: Text('Doctor',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
                 SizedBox(width: 40),
               ],
             ),
@@ -514,17 +511,6 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              user['assignedDoctor'] ?? 'Unassigned',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: user['assignedDoctor'] != null
-                                    ? Colors.black
-                                    : textGray,
                               ),
                             ),
                           ),
