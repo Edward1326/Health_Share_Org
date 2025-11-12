@@ -771,9 +771,25 @@ class _LoginPageState extends State<LoginPage> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Center(
-          child: CustomPaint(
-            size: const Size(60, 60),
-            painter: HealthShareLogoPainter(),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Image.asset(
+              'assets/images/healthshare_logo.png',
+              width: 60,
+              height: 60,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
         const SizedBox(height: 32),
