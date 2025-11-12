@@ -516,75 +516,79 @@ class _PatientContentWidgetState extends State<PatientContentWidget>
                           ),
                           SizedBox(
                             width: 40,
-                            child: PopupMenuButton(
-                              icon:
-                                  const Icon(Icons.more_horiz, color: textGray),
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'view',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.visibility, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('View'),
+                            child: user['status'] == 'invited'
+                                ? const SizedBox() // Hide menu button for invited patients
+                                : PopupMenuButton(
+                                    icon: const Icon(Icons.more_horiz,
+                                        color: textGray),
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'view',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.visibility, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('View'),
+                                          ],
+                                        ),
+                                      ),
+                                      if (user['status'] != 'pending')
+                                        const PopupMenuItem(
+                                          value: 'assign',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.medical_services,
+                                                  size: 16),
+                                              SizedBox(width: 8),
+                                              Text('Assign Doctor'),
+                                            ],
+                                          ),
+                                        ),
+                                      if (user['status'] == 'pending') ...[
+                                        const PopupMenuItem(
+                                          value: 'approve',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.check,
+                                                  color: Colors.green,
+                                                  size: 16),
+                                              SizedBox(width: 8),
+                                              Text('Approve'),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'reject',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.close,
+                                                  color: Colors.red, size: 16),
+                                              SizedBox(width: 8),
+                                              Text('Reject',
+                                                  style: TextStyle(
+                                                      color: Colors.red)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ],
+                                    onSelected: (value) {
+                                      switch (value) {
+                                        case 'view':
+                                          _showDetailsDialog(user);
+                                          break;
+                                        case 'assign':
+                                          _onAssignDoctor(user);
+                                          break;
+                                        case 'approve':
+                                          _onApprove(user);
+                                          break;
+                                        case 'reject':
+                                          _onReject(user);
+                                          break;
+                                      }
+                                    },
                                   ),
-                                ),
-                                if (user['status'] != 'pending')
-                                  const PopupMenuItem(
-                                    value: 'assign',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.medical_services, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Assign Doctor'),
-                                      ],
-                                    ),
-                                  ),
-                                if (user['status'] == 'pending') ...[
-                                  const PopupMenuItem(
-                                    value: 'approve',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.check,
-                                            color: Colors.green, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Approve'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'reject',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.close,
-                                            color: Colors.red, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Reject',
-                                            style:
-                                                TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                              onSelected: (value) {
-                                switch (value) {
-                                  case 'view':
-                                    _showDetailsDialog(user);
-                                    break;
-                                  case 'assign':
-                                    _onAssignDoctor(user);
-                                    break;
-                                  case 'approve':
-                                    _onApprove(user);
-                                    break;
-                                  case 'reject':
-                                    _onReject(user);
-                                    break;
-                                }
-                              },
-                            ),
                           ),
                         ],
                       ),

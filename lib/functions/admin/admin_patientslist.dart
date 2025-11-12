@@ -413,6 +413,7 @@ class AdminPatientListFunctions {
   }
 
   /// Search users to invite (excludes users already in this organization)
+  /// Search users to invite (excludes users already in this organization AND excludes staff/doctors)
   Future<List<Map<String, dynamic>>> searchUsersToInvite(String query) async {
     if (query.isEmpty) {
       return [];
@@ -433,12 +434,12 @@ class AdminPatientListFunctions {
 
       // Get users that match the EMAIL search query (including image)
       final searchResponse = await supabase.from('User').select('''
+      *,
+      Person(
         *,
-        Person(
-          *,
-          image
-        )
-      ''').like('email', '$query%');
+        image
+      )
+    ''').like('email', '$query%');
 
       print('Search response: ${searchResponse.length} users found');
 
@@ -457,6 +458,15 @@ class AdminPatientListFunctions {
 
       print('Existing patient user IDs in org: $existingUserIds');
 
+      // Get list of user IDs who are staff/doctors in ANY organization
+      final staffUsers =
+          await supabase.from('Organization_User').select('user_id');
+
+      final staffUserIds =
+          staffUsers.map((s) => s['user_id'].toString()).toSet();
+
+      print('Staff/Doctor user IDs (all orgs): $staffUserIds');
+
       // Build available users list
       final List<Map<String, dynamic>> availableUsers = [];
 
@@ -467,6 +477,12 @@ class AdminPatientListFunctions {
         // Skip if user is already a patient in this organization
         if (existingUserIds.contains(userId)) {
           print('Skipping existing patient: $userId');
+          continue;
+        }
+
+        // Skip if user is a staff member/doctor in any organization
+        if (staffUserIds.contains(userId)) {
+          print('Skipping staff/doctor: $userId');
           continue;
         }
 
