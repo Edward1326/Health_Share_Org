@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/login.dart';
 import 'pages/health_share/create_organization.dart';
 import 'pages/staff/staff_dashboard.dart';
-import 'pages/reset_password.dart';
+import 'pages/forgot_password.dart';
 import 'pages/admin/hospital_profile.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'pages/admin/admin_profile.dart';
@@ -43,7 +43,7 @@ class MyApp extends StatelessWidget {
         '/create_organization': (context) => const CreateOrganizationPage(),
         '/health_share': (context) => const CreateOrganizationPage(),
         '/staff_dashboard': (context) => const StaffDashboard(),
-        '/reset_password': (context) => const ResetPasswordPage(),
+        '/reset_password': (context) => const ForgotPasswordPage(),
         '/profile': (context) => const HospitalProfileContentWidget(),
         '/staff_profile': (context) => const StaffProfilePage(),
         '/admin_profile': (context) => const AdminProfilePage(),

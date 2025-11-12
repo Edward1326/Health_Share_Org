@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup.dart';
 import '../pages/admin/admin_dashboard.dart';
 import '../pages/staff/staff_dashboard.dart';
-import '../pages/reset_password.dart';
+import '../pages/forgot_password.dart';
 import 'login_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -98,7 +98,7 @@ class _LoginPageState extends State<LoginPage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const ResetPasswordPage(),
+                builder: (context) => const ForgotPasswordPage(),
               ),
             );
           }
@@ -248,258 +248,15 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // Replace the _forgotPassword method with this simpler version:
+
   Future<void> _forgotPassword() async {
-    final input = _emailOrUsernameController.text.trim();
-
-    if (input.isEmpty) {
-      _showErrorSnackBar('Please enter your email first.');
-      return;
-    }
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        content: Row(
-          children: [
-            const CircularProgressIndicator(
-              color: Color(0xFF6B8E5A),
-            ),
-            const SizedBox(width: 20),
-            const Text('Sending reset email...'),
-          ],
-        ),
+    // Navigate directly to forgot password page
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ForgotPasswordPage(),
       ),
-    );
-
-    try {
-      final result = await LoginService.resetPassword(
-        emailOrUsername: input,
-        redirectTo: 'your-app-scheme://reset-password',
-      );
-
-      Navigator.of(context).pop(); // Close loading dialog
-
-      if (result.success) {
-        _showPasswordResetDialog(result.email!);
-      } else {
-        _showErrorSnackBar(result.errorMessage ?? 'Failed to send reset email');
-      }
-    } catch (e) {
-      Navigator.of(context).pop(); // Close loading dialog
-      _showErrorSnackBar(
-          'Failed to send password reset email. Please try again.');
-    }
-  }
-
-  void _showPasswordResetDialog(String email) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Success icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6B8E5A).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.mark_email_read_rounded,
-                  color: Color(0xFF6B8E5A),
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Title
-              const Text(
-                'Check Your Email',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-
-              // Subtitle
-              const Text(
-                'We\'ve sent a password reset link to',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF6C757D),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-
-              // Email
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F9FA),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  email,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF2C3E50),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Instructions
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F9FA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFE1E5E9),
-                    width: 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInstructionItem(
-                      '1',
-                      'Check your email inbox and spam folder',
-                    ),
-                    const SizedBox(height: 12),
-                    _buildInstructionItem(
-                      '2',
-                      'Click the password reset link',
-                    ),
-                    const SizedBox(height: 12),
-                    _buildInstructionItem(
-                      '3',
-                      'Create a new password for your account',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(
-                          color: Color(0xFFE1E5E9),
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Got it',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF6C757D),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ResetPasswordPage(),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6B8E5A),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Reset Now',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInstructionItem(String number, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: const Color(0xFF6B8E5A),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Center(
-            child: Text(
-              number,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF495057),
-              height: 1.5,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
