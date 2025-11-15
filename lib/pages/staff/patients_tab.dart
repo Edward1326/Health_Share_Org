@@ -36,10 +36,151 @@ class _ModernPatientsContentWidgetState
   bool _loadingDetails = false;
   int _selectedTabIndex = 0;
 
+  // Sorting state for patients table
+  String _patientsSortColumn = 'name';
+  bool _patientsSortAscending = true;
+
+  // Sorting state for files table
+  String _filesSortColumn = 'uploaded_at';
+  bool _filesSortAscending = false;
+
   @override
   void initState() {
     super.initState();
     _loadPatients();
+  }
+
+  void _sortPatients(String column) {
+    setState(() {
+      if (_patientsSortColumn == column) {
+        _patientsSortAscending = !_patientsSortAscending;
+      } else {
+        _patientsSortColumn = column;
+        _patientsSortAscending = true;
+      }
+
+      _patients.sort((a, b) {
+        dynamic aValue;
+        dynamic bValue;
+
+        switch (column) {
+          case 'name':
+            aValue = _buildFullName(a['User']['Person']).toLowerCase();
+            bValue = _buildFullName(b['User']['Person']).toLowerCase();
+            break;
+          case 'email':
+            aValue = (a['User']['email'] ?? '').toLowerCase();
+            bValue = (b['User']['email'] ?? '').toLowerCase();
+            break;
+          case 'status':
+            aValue = (a['status'] ?? '').toLowerCase();
+            bValue = (b['status'] ?? '').toLowerCase();
+            break;
+          default:
+            return 0;
+        }
+
+        final comparison = aValue.compareTo(bValue);
+        return _patientsSortAscending ? comparison : -comparison;
+      });
+    });
+  }
+
+  void _sortFiles(String column) {
+    setState(() {
+      if (_filesSortColumn == column) {
+        _filesSortAscending = !_filesSortAscending;
+      } else {
+        _filesSortColumn = column;
+        _filesSortAscending = true;
+      }
+
+      _selectedPatientFiles.sort((a, b) {
+        final fileA = a['Files'];
+        final fileB = b['Files'];
+        dynamic aValue;
+        dynamic bValue;
+
+        switch (column) {
+          case 'filename':
+            aValue = (fileA['filename'] ?? '').toLowerCase();
+            bValue = (fileB['filename'] ?? '').toLowerCase();
+            break;
+          case 'category':
+            aValue = (fileA['category'] ?? '').toLowerCase();
+            bValue = (fileB['category'] ?? '').toLowerCase();
+            break;
+          case 'file_type':
+            aValue = (fileA['file_type'] ?? '').toLowerCase();
+            bValue = (fileB['file_type'] ?? '').toLowerCase();
+            break;
+          case 'uploader':
+            final uploaderA = fileA['uploader'];
+            final uploaderB = fileB['uploader'];
+            aValue = uploaderA != null
+                ? '${uploaderA['Person']['first_name']} ${uploaderA['Person']['last_name']}'
+                    .toLowerCase()
+                : '';
+            bValue = uploaderB != null
+                ? '${uploaderB['Person']['first_name']} ${uploaderB['Person']['last_name']}'
+                    .toLowerCase()
+                : '';
+            break;
+          case 'uploaded_at':
+            aValue =
+                DateTime.tryParse(fileA['uploaded_at'] ?? '') ?? DateTime(1970);
+            bValue =
+                DateTime.tryParse(fileB['uploaded_at'] ?? '') ?? DateTime(1970);
+            break;
+          default:
+            return 0;
+        }
+
+        final comparison = aValue is DateTime
+            ? aValue.compareTo(bValue)
+            : aValue.toString().compareTo(bValue.toString());
+        return _filesSortAscending ? comparison : -comparison;
+      });
+    });
+  }
+
+  Widget _buildSortableHeader(String label, String column, bool isFilesTable) {
+    final isSorted = isFilesTable
+        ? _filesSortColumn == column
+        : _patientsSortColumn == column;
+    final isAscending =
+        isFilesTable ? _filesSortAscending : _patientsSortAscending;
+
+    return InkWell(
+      onTap: () {
+        if (isFilesTable) {
+          _sortFiles(column);
+        } else {
+          _sortPatients(column);
+        }
+      },
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(width: 4),
+          if (isSorted)
+            Icon(
+              isAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              size: 16,
+              color: PatientsTheme.primaryGreen,
+            )
+          else
+            const Icon(
+              Icons.unfold_more,
+              size: 16,
+              color: PatientsTheme.textGray,
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadPatients() async {
@@ -507,21 +648,19 @@ class _ModernPatientsContentWidgetState
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(8)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Expanded(
                     flex: 2,
-                    child: Text('Patient',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
+                    child: _buildSortableHeader('Patient', 'name', false)),
                 Expanded(
                     flex: 2,
-                    child: Text('Contact',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
+                    child: _buildSortableHeader('Contact', 'email', false)),
                 Expanded(
-                    child: Text('Status',
-                        style: TextStyle(fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center)),
-                SizedBox(width: 100),
+                    child: Center(
+                  child: _buildSortableHeader('Status', 'status', false),
+                )),
+                const SizedBox(width: 100),
               ],
             ),
           ),
@@ -1081,11 +1220,9 @@ class _ModernPatientsContentWidgetState
       );
     }
 
-    // ✅ Fixed: Call _buildFilesTable() instead of _buildFilesTab()
     return _buildFilesTable();
   }
 
-// Make sure you have this method to actually display the files
   Widget _buildFilesTable() {
     return Container(
       decoration: BoxDecoration(
@@ -1103,26 +1240,23 @@ class _ModernPatientsContentWidgetState
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(8)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Expanded(
                     flex: 3,
-                    child: Text('File Name',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
+                    child: _buildSortableHeader('File Name', 'filename', true)),
                 Expanded(
-                    child: Text('Category',
-                        style: TextStyle(fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center)),
+                    child: Center(
+                  child: _buildSortableHeader('Category', 'category', true),
+                )),
                 Expanded(
-                    child: Text('Type',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
+                    child: _buildSortableHeader('Type', 'file_type', true)),
                 Expanded(
-                    child: Text('Uploaded By',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
+                    child:
+                        _buildSortableHeader('Uploaded By', 'uploader', true)),
                 Expanded(
-                    child: Text('Date',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                SizedBox(width: 100),
+                    child: _buildSortableHeader('Date', 'uploaded_at', true)),
+                const SizedBox(width: 100),
               ],
             ),
           ),
@@ -1433,7 +1567,6 @@ class _ModernPatientsContentWidgetState
 
   // Helper methods
 
-  /// Check if current user can delete the file (only if they uploaded it)
   bool _canDeleteFile(Map<String, dynamic> file) {
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
@@ -1441,26 +1574,20 @@ class _ModernPatientsContentWidgetState
         return false;
       }
 
-      // Get the uploader's email from the file
       final uploader = file['uploader'];
       if (uploader == null) {
         return false;
       }
 
-      // For files with nested User structure
       String? uploaderEmail;
       if (uploader is Map) {
         uploaderEmail = uploader['email'] as String?;
       }
 
-      // If we couldn't get the email, check uploaded_by user_id
       if (uploaderEmail == null) {
-        // We'll need to compare user IDs instead
-        // This requires having loaded the current user's ID
         return false;
       }
 
-      // Check if current user's email matches the uploader's email
       return currentUser.email == uploaderEmail;
     } catch (e) {
       print('Error checking file delete permission: $e');
@@ -1575,7 +1702,6 @@ class _ModernPatientsContentWidgetState
   }
 
   String _formatDate(DateTime date) {
-    // Format with date and time
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year;
@@ -1706,8 +1832,6 @@ class _ModernPatientsContentWidgetState
   }
 
   void _confirmDeleteFile(Map<String, dynamic> file) {
-    // Capture the navigator before any async operations
-
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1723,9 +1847,9 @@ class _ModernPatientsContentWidgetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Are you sure you want to delete this file?',
-              style: const TextStyle(fontSize: 14),
+              style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 12),
             Container(
