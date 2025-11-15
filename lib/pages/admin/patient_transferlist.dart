@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'admin_dashboard.dart';
 
-// Add this import at the top of main_dashboard_layout.dart:
-// import 'patient_transferlist.dart';
-
 class PatientTransferContentWidget extends StatefulWidget {
   const PatientTransferContentWidget({Key? key}) : super(key: key);
 
@@ -27,6 +24,14 @@ class _PatientTransferContentWidgetState
   bool _isLoading = true;
   String? _currentOrgId;
 
+  // Sorting state for My Patients tab
+  String _myPatientsSortColumn = 'name';
+  bool _myPatientsSortAscending = true;
+
+  // Sorting state for Transfer Requests tab
+  String _transferRequestsSortColumn = 'name';
+  bool _transferRequestsSortAscending = true;
+
   @override
   void initState() {
     super.initState();
@@ -44,8 +49,6 @@ class _PatientTransferContentWidgetState
     setState(() => _isLoading = true);
 
     try {
-      // Get current user's organization
-      // Relationship: Auth User -> User -> Person -> Organization_User
       final authUserId = _supabase.auth.currentUser?.id;
       if (authUserId == null) {
         print('No authenticated user found');
@@ -65,12 +68,8 @@ class _PatientTransferContentWidgetState
       print('Auth User ID: $authUserId');
 
       try {
-        // Correct relationship path:
-        // Auth User -> Person.auth_user_id -> User.person_id -> Organization_User.user_id
-
         print('Querying Person table for auth_user_id: $authUserId');
 
-        // Step 1: Get Person record using auth_user_id
         final personResponse = await _supabase
             .from('Person')
             .select('id, first_name, last_name')
@@ -97,7 +96,6 @@ class _PatientTransferContentWidgetState
         final personId = personResponse['id'];
         print('Person ID: $personId');
 
-        // Step 2: Get User record using person_id
         final userResponse = await _supabase
             .from('User')
             .select('id, email')
@@ -124,7 +122,6 @@ class _PatientTransferContentWidgetState
         final userId = userResponse['id'];
         print('User ID: $userId');
 
-        // Step 3: Get Organization_User record using user_id
         final orgUserResponse = await _supabase
             .from('Organization_User')
             .select('organization_id, position, department')
@@ -151,8 +148,6 @@ class _PatientTransferContentWidgetState
 
         _currentOrgId = orgUserResponse['organization_id'];
         print('Organization ID: $_currentOrgId');
-        print('Position: ${orgUserResponse['position']}');
-        print('Department: ${orgUserResponse['department']}');
       } catch (e) {
         print('Error fetching organization: $e');
         if (mounted) {
@@ -167,10 +162,7 @@ class _PatientTransferContentWidgetState
         return;
       }
 
-      // Load my patients (approved patients in my organization)
-      final myPatientsResponse = await _supabase
-          .from('Patient')
-          .select('''
+      final myPatientsResponse = await _supabase.from('Patient').select('''
             *,
             User!Patient_user_id_fkey (
               email,
@@ -179,12 +171,8 @@ class _PatientTransferContentWidgetState
                 last_name
               )
             )
-          ''')
-          .eq('organization_id', _currentOrgId!)
-          .eq('status', 'accepted')
-          .order('created_at', ascending: false);
+          ''').eq('organization_id', _currentOrgId!).eq('status', 'accepted');
 
-      // Load incoming transfer requests (status = 'transferring' to my organization)
       final transferRequestsResponse = await _supabase
           .from('Patient')
           .select('''
@@ -198,10 +186,8 @@ class _PatientTransferContentWidgetState
             )
           ''')
           .eq('organization_id', _currentOrgId!)
-          .eq('status', 'transferring')
-          .order('created_at', ascending: false);
+          .eq('status', 'transferring');
 
-      // Load all hospitals except current one
       final hospitalsResponse = await _supabase
           .from('Organization')
           .select('id, name')
@@ -213,6 +199,8 @@ class _PatientTransferContentWidgetState
         _transferRequests =
             List<Map<String, dynamic>>.from(transferRequestsResponse);
         _hospitals = List<Map<String, dynamic>>.from(hospitalsResponse);
+        _sortMyPatients();
+        _sortTransferRequests();
         _isLoading = false;
       });
     } catch (e) {
@@ -229,6 +217,92 @@ class _PatientTransferContentWidgetState
     }
   }
 
+  void _sortMyPatients() {
+    _myPatients.sort((a, b) {
+      int compare = 0;
+      final userA = a['User'];
+      final userB = b['User'];
+      final personA = userA?['Person'];
+      final personB = userB?['Person'];
+
+      switch (_myPatientsSortColumn) {
+        case 'name':
+          final nameA =
+              '${personA?['first_name'] ?? ''} ${personA?['last_name'] ?? ''}'
+                  .trim();
+          final nameB =
+              '${personB?['first_name'] ?? ''} ${personB?['last_name'] ?? ''}'
+                  .trim();
+          compare = nameA.compareTo(nameB);
+          break;
+        case 'email':
+          compare = (userA?['email'] ?? '').compareTo(userB?['email'] ?? '');
+          break;
+        case 'joined':
+          final dateA = a['joined_at'] ?? '';
+          final dateB = b['joined_at'] ?? '';
+          compare = dateA.toString().compareTo(dateB.toString());
+          break;
+      }
+      return _myPatientsSortAscending ? compare : -compare;
+    });
+  }
+
+  void _sortTransferRequests() {
+    _transferRequests.sort((a, b) {
+      int compare = 0;
+      final userA = a['User'];
+      final userB = b['User'];
+      final personA = userA?['Person'];
+      final personB = userB?['Person'];
+
+      switch (_transferRequestsSortColumn) {
+        case 'name':
+          final nameA =
+              '${personA?['first_name'] ?? ''} ${personA?['last_name'] ?? ''}'
+                  .trim();
+          final nameB =
+              '${personB?['first_name'] ?? ''} ${personB?['last_name'] ?? ''}'
+                  .trim();
+          compare = nameA.compareTo(nameB);
+          break;
+        case 'email':
+          compare = (userA?['email'] ?? '').compareTo(userB?['email'] ?? '');
+          break;
+        case 'requested':
+          final dateA = a['created_at'] ?? '';
+          final dateB = b['created_at'] ?? '';
+          compare = dateA.toString().compareTo(dateB.toString());
+          break;
+      }
+      return _transferRequestsSortAscending ? compare : -compare;
+    });
+  }
+
+  void _onSortMyPatients(String column) {
+    setState(() {
+      if (_myPatientsSortColumn == column) {
+        _myPatientsSortAscending = !_myPatientsSortAscending;
+      } else {
+        _myPatientsSortColumn = column;
+        _myPatientsSortAscending = true;
+      }
+      _sortMyPatients();
+    });
+  }
+
+  void _onSortTransferRequests(String column) {
+    setState(() {
+      if (_transferRequestsSortColumn == column) {
+        _transferRequestsSortAscending = !_transferRequestsSortAscending;
+      } else {
+        _transferRequestsSortColumn = column;
+        _transferRequestsSortAscending = true;
+      }
+      _sortTransferRequests();
+    });
+  }
+
   Future<void> _transferPatient(Map<String, dynamic> patient) async {
     final selectedHospital = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -238,8 +312,6 @@ class _PatientTransferContentWidgetState
     if (selectedHospital == null) return;
 
     try {
-      // Update patient's organization and status to 'transferring'
-      // New hospital must approve before patient sees invitation
       await _supabase.from('Patient').update({
         'organization_id': selectedHospital['id'],
         'status': 'transferring',
@@ -257,7 +329,6 @@ class _PatientTransferContentWidgetState
         );
       }
 
-      // Reload data
       _loadData();
     } catch (e) {
       print('Error transferring patient: $e');
@@ -303,8 +374,6 @@ class _PatientTransferContentWidgetState
     if (confirm != true) return;
 
     try {
-      // Change status from 'transferring' to 'invited'
-      // Patient will now see the invitation in their app
       await _supabase.from('Patient').update({
         'status': 'invited',
       }).eq('id', patient['id']);
@@ -364,13 +433,6 @@ class _PatientTransferContentWidgetState
     if (confirm != true) return;
 
     try {
-      // For simplicity, we could either:
-      // 1. Delete the patient record (if you want to cancel completely)
-      // 2. Or change organization back and keep status as 'approved'
-      // Let's go with option 2 - you'll need to track the original org somehow
-      // For now, let's just delete the transfer request
-
-      // Actually, let's just change status to 'rejected' so you can track it
       await _supabase.from('Patient').update({
         'status': 'rejected',
       }).eq('id', patient['id']);
@@ -398,11 +460,52 @@ class _PatientTransferContentWidgetState
     }
   }
 
+  Widget _buildSortableHeader(
+      String label, String column, bool isMyPatientsTab) {
+    final isActive = isMyPatientsTab
+        ? _myPatientsSortColumn == column
+        : _transferRequestsSortColumn == column;
+    final isAscending = isMyPatientsTab
+        ? _myPatientsSortAscending
+        : _transferRequestsSortAscending;
+
+    return InkWell(
+      onTap: () {
+        if (isMyPatientsTab) {
+          _onSortMyPatients(column);
+        } else {
+          _onSortTransferRequests(column);
+        }
+      },
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isActive
+                  ? DashboardTheme.primaryGreen
+                  : DashboardTheme.darkGray,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            isActive
+                ? (isAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                : Icons.unfold_more,
+            size: 16,
+            color: isActive ? DashboardTheme.primaryGreen : Colors.grey,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Tab Bar
         Container(
           color: Colors.white,
           child: TabBar(
@@ -434,8 +537,6 @@ class _PatientTransferContentWidgetState
             ],
           ),
         ),
-
-        // Tab Views
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -477,25 +578,60 @@ class _PatientTransferContentWidgetState
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(24),
-        itemCount: _myPatients.length,
-        itemBuilder: (context, index) {
-          final patient = _myPatients[index];
-          final user = patient['User'];
-          final person = user['Person'];
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        children: [
+          // Sortable Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border.all(color: Colors.grey.shade200),
             ),
-            child: Padding(
+            child: Row(
+              children: [
+                const SizedBox(width: 60), // Avatar space
+                Expanded(
+                  flex: 2,
+                  child: _buildSortableHeader('Patient Name', 'name', true),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: _buildSortableHeader('Email', 'email', true),
+                ),
+                Expanded(
+                  child: _buildSortableHeader('Joined Date', 'joined', true),
+                ),
+                const SizedBox(width: 120), // Action button space
+              ],
+            ),
+          ),
+          // Patient List
+          ...List.generate(_myPatients.length, (index) {
+            final patient = _myPatients[index];
+            final user = patient['User'];
+            final person = user['Person'];
+            final isLast = index == _myPatients.length - 1;
+
+            return Container(
               padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  left: BorderSide(color: Colors.grey.shade200),
+                  right: BorderSide(color: Colors.grey.shade200),
+                  bottom: BorderSide(
+                    color: isLast ? Colors.grey.shade200 : Colors.grey.shade100,
+                  ),
+                ),
+                borderRadius: isLast
+                    ? const BorderRadius.vertical(bottom: Radius.circular(12))
+                    : null,
+              ),
               child: Row(
                 children: [
-                  // Patient Avatar
                   CircleAvatar(
                     radius: 30,
                     backgroundColor:
@@ -510,62 +646,60 @@ class _PatientTransferContentWidgetState
                     ),
                   ),
                   const SizedBox(width: 16),
-
-                  // Patient Info
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${person['first_name']} ${person['last_name']}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: DashboardTheme.darkGray,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          user['email'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: DashboardTheme.textGray,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Joined: ${_formatDate(patient['joined_at'])}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: DashboardTheme.textGray,
-                          ),
-                        ),
-                      ],
+                    flex: 2,
+                    child: Text(
+                      '${person['first_name']} ${person['last_name']}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: DashboardTheme.darkGray,
+                      ),
                     ),
                   ),
-
-                  // Transfer Button
-                  ElevatedButton.icon(
-                    onPressed: () => _transferPatient(patient),
-                    icon: const Icon(Icons.send, size: 18),
-                    label: const Text('Transfer'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: DashboardTheme.primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      user['email'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: DashboardTheme.textGray,
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _formatDate(patient['joined_at']),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: DashboardTheme.textGray,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _transferPatient(patient),
+                      icon: const Icon(Icons.send, size: 18),
+                      label: const Text('Transfer'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DashboardTheme.primaryGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
-            ),
-          );
-        },
+            );
+          }),
+        ],
       ),
     );
   }
@@ -596,29 +730,62 @@ class _PatientTransferContentWidgetState
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(24),
-        itemCount: _transferRequests.length,
-        itemBuilder: (context, index) {
-          final patient = _transferRequests[index];
-          final user = patient['User'];
-          final person = user['Person'];
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: DashboardTheme.pendingOrange.withOpacity(0.3),
-                width: 2,
-              ),
+        children: [
+          // Sortable Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border.all(color: Colors.grey.shade200),
             ),
-            child: Padding(
+            child: Row(
+              children: [
+                const SizedBox(width: 60), // Avatar space
+                Expanded(
+                  flex: 2,
+                  child: _buildSortableHeader('Patient Name', 'name', false),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: _buildSortableHeader('Email', 'email', false),
+                ),
+                Expanded(
+                  child: _buildSortableHeader('Requested', 'requested', false),
+                ),
+                const SizedBox(width: 180), // Action buttons space
+              ],
+            ),
+          ),
+          // Transfer Request List
+          ...List.generate(_transferRequests.length, (index) {
+            final patient = _transferRequests[index];
+            final user = patient['User'];
+            final person = user['Person'];
+            final isLast = index == _transferRequests.length - 1;
+
+            return Container(
               padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  left: BorderSide(
+                      color: DashboardTheme.pendingOrange.withOpacity(0.3),
+                      width: 2),
+                  right: BorderSide(color: Colors.grey.shade200),
+                  bottom: BorderSide(
+                    color: isLast ? Colors.grey.shade200 : Colors.grey.shade100,
+                  ),
+                ),
+                borderRadius: isLast
+                    ? const BorderRadius.vertical(bottom: Radius.circular(12))
+                    : null,
+              ),
               child: Row(
                 children: [
-                  // Patient Avatar
                   CircleAvatar(
                     radius: 30,
                     backgroundColor:
@@ -633,9 +800,8 @@ class _PatientTransferContentWidgetState
                     ),
                   ),
                   const SizedBox(width: 16),
-
-                  // Patient Info
                   Expanded(
+                    flex: 2,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -671,69 +837,74 @@ class _PatientTransferContentWidgetState
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          user['email'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: DashboardTheme.textGray,
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      user['email'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: DashboardTheme.textGray,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _formatDate(patient['created_at']),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: DashboardTheme.textGray,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => _approveTransfer(patient),
+                          icon: const Icon(Icons.check_circle, size: 16),
+                          label: const Text('Approve'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: DashboardTheme.approvedGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Transfer requested: ${_formatDate(patient['created_at'])}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: DashboardTheme.textGray,
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => _rejectTransfer(patient),
+                          icon: const Icon(Icons.cancel, size: 16),
+                          label: const Text('Reject'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                  // Action Buttons
-                  Column(
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _approveTransfer(patient),
-                        icon: const Icon(Icons.check_circle, size: 18),
-                        label: const Text('Approve'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: DashboardTheme.approvedGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _rejectTransfer(patient),
-                        icon: const Icon(Icons.cancel, size: 18),
-                        label: const Text('Reject'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
-            ),
-          );
-        },
+            );
+          }),
+        ],
       ),
     );
   }
@@ -780,7 +951,6 @@ class _TransferDialogState extends State<_TransferDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Search Field
             TextField(
               decoration: InputDecoration(
                 hintText: 'Search hospitals...',
@@ -794,8 +964,6 @@ class _TransferDialogState extends State<_TransferDialog> {
               },
             ),
             const SizedBox(height: 16),
-
-            // Hospital List
             Flexible(
               child: filteredHospitals.isEmpty
                   ? const Center(child: Text('No hospitals found'))

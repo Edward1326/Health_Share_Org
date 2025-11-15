@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'admin_dashboard.dart';
-import 'employee_profile.dart'; // Import the employee profile view
+import 'employee_profile.dart';
 
 class EmployeeContentWidget extends StatefulWidget {
   const EmployeeContentWidget({Key? key}) : super(key: key);
@@ -13,10 +13,18 @@ class EmployeeContentWidget extends StatefulWidget {
 class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Map<String, dynamic>> employees = [];
+  List<Map<String, dynamic>> filteredEmployees = [];
   bool isLoading = true;
   String? errorMessage;
-  Map<String, dynamic>?
-      _selectedEmployee; // Track selected employee for profile view
+  Map<String, dynamic>? _selectedEmployee;
+
+  // Sorting state
+  String _sortColumn = 'name';
+  bool _sortAscending = true;
+
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   static const primaryGreen = DashboardTheme.primaryGreen;
   static const textGray = DashboardTheme.textGray;
@@ -26,6 +34,21 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
   void initState() {
     super.initState();
     _loadEmployees();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+      _filterAndSortEmployees();
+    });
   }
 
   Future<void> _loadEmployees() async {
@@ -88,6 +111,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
 
       setState(() {
         employees = loadedEmployees;
+        _filterAndSortEmployees();
         isLoading = false;
       });
     } catch (e) {
@@ -99,9 +123,65 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
     }
   }
 
+  void _filterAndSortEmployees() {
+    // First filter
+    if (_searchQuery.isEmpty) {
+      filteredEmployees = List.from(employees);
+    } else {
+      filteredEmployees = employees.where((employee) {
+        final name = employee['name'].toString().toLowerCase();
+        final email = employee['email'].toString().toLowerCase();
+        final phone = employee['phone'].toString().toLowerCase();
+        final department = employee['department'].toString().toLowerCase();
+        final role = employee['role'].toString().toLowerCase();
+
+        return name.contains(_searchQuery) ||
+            email.contains(_searchQuery) ||
+            phone.contains(_searchQuery) ||
+            department.contains(_searchQuery) ||
+            role.contains(_searchQuery);
+      }).toList();
+    }
+
+    // Then sort
+    filteredEmployees.sort((a, b) {
+      int compare = 0;
+      switch (_sortColumn) {
+        case 'name':
+          compare = a['name'].toString().compareTo(b['name'].toString());
+          break;
+        case 'email':
+          compare = a['email'].toString().compareTo(b['email'].toString());
+          break;
+        case 'phone':
+          compare = a['phone'].toString().compareTo(b['phone'].toString());
+          break;
+        case 'department':
+          compare =
+              a['department'].toString().compareTo(b['department'].toString());
+          break;
+        case 'status':
+          compare = a['status'].toString().compareTo(b['status'].toString());
+          break;
+      }
+      return _sortAscending ? compare : -compare;
+    });
+  }
+
+  void _onSort(String column) {
+    setState(() {
+      if (_sortColumn == column) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumn = column;
+        _sortAscending = true;
+      }
+      _filterAndSortEmployees();
+    });
+  }
+
   Future<void> _deleteEmployee(String email) async {
     try {
-      // First, get the user_id and person_id
       final userResponse = await supabase
           .from('User')
           .select('id, person_id')
@@ -112,14 +192,9 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
         final userId = userResponse['id'];
         final personId = userResponse['person_id'];
 
-        // Delete in order: Organization_User -> User -> Person
-        // 1. Delete from Organization_User
         await supabase.from('Organization_User').delete().eq('user_id', userId);
-
-        // 2. Delete from User
         await supabase.from('User').delete().eq('id', userId);
 
-        // 3. Delete from Person (if person_id exists)
         if (personId != null) {
           await supabase.from('Person').delete().eq('id', personId);
         }
@@ -220,9 +295,37 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
     }
   }
 
+  Widget _buildSortableHeader(String label, String column, {int flex = 1}) {
+    final isActive = _sortColumn == column;
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: () => _onSort(column),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: isActive ? primaryGreen : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              isActive
+                  ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                  : Icons.unfold_more,
+              size: 16,
+              color: isActive ? primaryGreen : Colors.grey,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Show employee profile if one is selected
     if (_selectedEmployee != null) {
       return EmployeeProfileView(
         employeeData: _selectedEmployee!,
@@ -230,13 +333,12 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
           setState(() {
             _selectedEmployee = null;
           });
-          _loadEmployees(); // Refresh list in case data was updated
+          _loadEmployees();
         },
-        isViewOnly: true, // Admin viewing only
+        isViewOnly: true,
       );
     }
 
-    // Show employee list
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -267,6 +369,65 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
             ],
           ),
           const SizedBox(height: 24),
+
+          // Search Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, color: textGray, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText:
+                          'Search by name, email, phone, department, or role...',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(color: textGray, fontSize: 14),
+                    ),
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+                if (_searchQuery.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.clear, color: textGray, size: 20),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                    tooltip: 'Clear search',
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Results count
+          if (_searchQuery.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Found ${filteredEmployees.length} employee${filteredEmployees.length == 1 ? '' : 's'}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+
           if (errorMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
@@ -308,7 +469,7 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 ),
               ),
             )
-          else if (employees.isEmpty)
+          else if (filteredEmployees.isEmpty)
             Container(
               height: 400,
               decoration: BoxDecoration(
@@ -316,13 +477,38 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade200),
               ),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.people_outline, size: 80, color: Colors.grey),
-                    SizedBox(height: 24),
-                    Text('No employees found', style: TextStyle(fontSize: 18)),
+                    Icon(
+                      _searchQuery.isNotEmpty
+                          ? Icons.search_off
+                          : Icons.people_outline,
+                      size: 80,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      _searchQuery.isNotEmpty
+                          ? 'No employees found matching "$_searchQuery"'
+                          : 'No employees found',
+                      style: const TextStyle(fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_searchQuery.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                        icon: const Icon(Icons.clear),
+                        label: const Text('Clear search'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: primaryGreen,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -350,42 +536,29 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(8)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Expanded(
-                    flex: 2,
-                    child: Text('Employee',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(
-                    flex: 2,
-                    child: Text('Email',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(
-                    flex: 2,
-                    child: Text('Phone',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(
-                    child: Text('Department',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                Expanded(
-                    child: Text('Status',
-                        style: TextStyle(fontWeight: FontWeight.w500))),
-                SizedBox(width: 120), // Increased for View button + menu
+                _buildSortableHeader('Employee', 'name', flex: 2),
+                _buildSortableHeader('Email', 'email', flex: 2),
+                _buildSortableHeader('Phone', 'phone', flex: 2),
+                _buildSortableHeader('Department', 'department'),
+                _buildSortableHeader('Status', 'status'),
+                const SizedBox(width: 120),
               ],
             ),
           ),
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: employees.length,
+            itemCount: filteredEmployees.length,
             itemBuilder: (context, index) {
-              final employee = employees[index];
+              final employee = filteredEmployees[index];
               return Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: index < employees.length - 1
+                      color: index < filteredEmployees.length - 1
                           ? Colors.grey.shade200
                           : Colors.transparent,
                     ),
@@ -421,13 +594,11 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         ],
                       ),
                     ),
-
                     Expanded(
                       flex: 2,
                       child: Text(employee['email']!,
                           overflow: TextOverflow.ellipsis),
                     ),
-
                     Expanded(
                       flex: 2,
                       child: Text(
@@ -437,12 +608,10 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-
                     Expanded(
                       child: Text(employee['department']!,
                           overflow: TextOverflow.ellipsis),
                     ),
-
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -462,14 +631,11 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                         ),
                       ),
                     ),
-
-                    // Actions - View button + Menu
                     SizedBox(
                       width: 120,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          // View Button
                           ElevatedButton(
                             onPressed: () {
                               setState(() {
@@ -490,7 +656,6 @@ class _EmployeeContentWidgetState extends State<EmployeeContentWidget> {
                                 style: TextStyle(fontSize: 13)),
                           ),
                           const SizedBox(width: 8),
-                          // Menu Button
                           PopupMenuButton(
                             icon: const Icon(Icons.more_horiz, color: textGray),
                             shape: RoundedRectangleBorder(
