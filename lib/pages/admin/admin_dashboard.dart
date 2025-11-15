@@ -6,6 +6,7 @@ import 'hospital_profile.dart';
 import 'admin_profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'patient_transferlist.dart';
 
 // Theme colors - shared across all dashboard components
 class DashboardTheme {
@@ -277,7 +278,8 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
               widget.selectedNavIndex == 2),
           _buildNavItem(Icons.account_circle, 'My Profile', 3,
               widget.selectedNavIndex == 3),
-
+          _buildNavItem(Icons.swap_horiz, 'Patient Transfers', 4,
+              widget.selectedNavIndex == 4),
           const Spacer(),
 
           // Logout Button
@@ -357,6 +359,18 @@ class _MainDashboardLayoutState extends State<MainDashboardLayout> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => const AdminProfilePage(),
+                ),
+              );
+              break;
+            case 4: // Patient Transfers
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MainDashboardLayout(
+                    title: 'Patient Transfers',
+                    selectedNavIndex: 4,
+                    content: PatientTransferContentWidget(),
+                  ),
                 ),
               );
               break;
