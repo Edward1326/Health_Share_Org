@@ -766,6 +766,7 @@ class FileUploadService {
           'shared_with_user_id': patientUserId.toString(),
           'shared_by_user_id': uploaderId.toString(),
           'shared_at': uploadTimestamp.toIso8601String(),
+          'owned_by': patientUserId.toString(),
         });
 
         print('File sharing record created successfully');

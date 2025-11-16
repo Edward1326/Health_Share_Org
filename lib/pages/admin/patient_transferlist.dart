@@ -312,10 +312,22 @@ class _PatientTransferContentWidgetState
     if (selectedHospital == null) return;
 
     try {
+      final patientId = patient['id'];
+
+      // First, deactivate all existing doctor-patient assignments
+      await _supabase
+          .from('Doctor_User_Assignment')
+          .update({'status': 'inactive'})
+          .eq('patient_id', patientId)
+          .eq('status', 'active');
+
+      print('Deactivated all doctor assignments for patient: $patientId');
+
+      // Then update the patient's organization and status
       await _supabase.from('Patient').update({
         'organization_id': selectedHospital['id'],
         'status': 'transferring',
-      }).eq('id', patient['id']);
+      }).eq('id', patientId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -733,41 +745,43 @@ class _PatientTransferContentWidgetState
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          // Sortable Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 60), // Avatar space
-                Expanded(
-                  flex: 2,
-                  child: _buildSortableHeader('Patient Name', 'name', false),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _buildSortableHeader('Email', 'email', false),
-                ),
-                Expanded(
-                  child: _buildSortableHeader('Requested', 'requested', false),
-                ),
-                const SizedBox(width: 180), // Action buttons space
-              ],
+          // Sortable Header - wrapped with ClipRRect
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 60), // Avatar space
+                  Expanded(
+                    flex: 2,
+                    child: _buildSortableHeader('Patient Name', 'name', false),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: _buildSortableHeader('Email', 'email', false),
+                  ),
+                  Expanded(
+                    child:
+                        _buildSortableHeader('Requested', 'requested', false),
+                  ),
+                  const SizedBox(width: 200), // Action buttons space
+                ],
+              ),
             ),
           ),
-          // Transfer Request List
+          // Transfer Request List - wrapped with ClipRRect for last item
           ...List.generate(_transferRequests.length, (index) {
             final patient = _transferRequests[index];
             final user = patient['User'];
             final person = user['Person'];
             final isLast = index == _transferRequests.length - 1;
 
-            return Container(
+            final containerWidget = Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -780,9 +794,6 @@ class _PatientTransferContentWidgetState
                     color: isLast ? Colors.grey.shade200 : Colors.grey.shade100,
                   ),
                 ),
-                borderRadius: isLast
-                    ? const BorderRadius.vertical(bottom: Radius.circular(12))
-                    : null,
               ),
               child: Row(
                 children: [
@@ -860,40 +871,46 @@ class _PatientTransferContentWidgetState
                     ),
                   ),
                   SizedBox(
-                    width: 180,
+                    width: 200,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () => _approveTransfer(patient),
-                          icon: const Icon(Icons.check_circle, size: 16),
-                          label: const Text('Approve'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: DashboardTheme.approvedGreen,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        Flexible(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _approveTransfer(patient),
+                            icon: const Icon(Icons.check_circle, size: 14),
+                            label: const Text('Approve',
+                                style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: DashboardTheme.approvedGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => _rejectTransfer(patient),
-                          icon: const Icon(Icons.cancel, size: 16),
-                          label: const Text('Reject'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        Flexible(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _rejectTransfer(patient),
+                            icon: const Icon(Icons.cancel, size: 14),
+                            label: const Text('Reject',
+                                style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                           ),
                         ),
@@ -903,6 +920,17 @@ class _PatientTransferContentWidgetState
                 ],
               ),
             );
+
+            // Wrap the last item with ClipRRect to handle rounded corners properly
+            if (isLast) {
+              return ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(12)),
+                child: containerWidget,
+              );
+            }
+
+            return containerWidget;
           }),
         ],
       ),

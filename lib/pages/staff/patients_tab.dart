@@ -731,24 +731,24 @@ class _ModernPatientsContentWidgetState
                     ),
 
                     // Status (Centered)
+                    // Status (flex: 1)
                     Expanded(
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          patient['status']?.toUpperCase() ?? 'UNKNOWN',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
                           ),
-                          child: Text(
-                            patient['status'] ?? 'active',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: PatientsTheme.approvedGreen,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                          textAlign: TextAlign.left,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -1246,12 +1246,12 @@ class _ModernPatientsContentWidgetState
                     flex: 3,
                     child: _buildSortableHeader('File Name', 'filename', true)),
                 Expanded(
-                    child: Center(
-                  child: _buildSortableHeader('Category', 'category', true),
-                )),
+                    flex: 2,
+                    child: _buildSortableHeader('Category', 'category', true)),
                 Expanded(
                     child: _buildSortableHeader('Type', 'file_type', true)),
                 Expanded(
+                    flex: 2,
                     child:
                         _buildSortableHeader('Uploaded By', 'uploader', true)),
                 Expanded(
@@ -1326,24 +1326,23 @@ class _ModernPatientsContentWidgetState
 
                     // Category
                     Expanded(
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getCategoryColor(category).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _getCategoryColor(category).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          category.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            color: _getCategoryColor(category),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: Text(
-                            category.replaceAll('_', ' ').toUpperCase(),
-                            style: TextStyle(
-                              color: _getCategoryColor(category),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -1352,13 +1351,17 @@ class _ModernPatientsContentWidgetState
                     Expanded(
                       child: Text(
                         fileType.toUpperCase(),
-                        style: const TextStyle(fontSize: 12),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
 
                     // Uploader name
                     Expanded(
+                      flex: 2,
                       child: Text(
                         uploaderName,
                         style: const TextStyle(fontSize: 12),
