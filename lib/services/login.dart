@@ -21,16 +21,15 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _isCheckingAuth = true; // Add this to show loading while checking
+  bool _isCheckingAuth = true;
 
   @override
   void initState() {
     super.initState();
-    _checkExistingAuth(); // Check if user is already logged in
+    _checkExistingAuth();
     _setupAuthListener();
   }
 
-  // Check if user is already authenticated
   Future<void> _checkExistingAuth() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -39,7 +38,6 @@ class _LoginPageState extends State<LoginPage> {
       final userPosition = prefs.getString('userPosition');
       final organizationId = prefs.getString('organizationId');
 
-      // Also check Supabase session
       final session = Supabase.instance.client.auth.currentSession;
 
       if (isLoggedIn &&
@@ -47,7 +45,6 @@ class _LoginPageState extends State<LoginPage> {
           userPosition != null &&
           organizationId != null &&
           session != null) {
-        // User is already logged in, navigate to appropriate dashboard
         if (mounted) {
           if (userPosition == 'administrator') {
             Navigator.pushReplacement(
@@ -104,13 +101,11 @@ class _LoginPageState extends State<LoginPage> {
           }
         });
       } else if (event == AuthChangeEvent.signedOut) {
-        // Clear stored data when user signs out
         _clearLoginState();
       }
     });
   }
 
-  // Save login state to SharedPreferences
   Future<void> _saveLoginState(
       String userId, String userPosition, String organizationId) async {
     final prefs = await SharedPreferences.getInstance();
@@ -120,7 +115,6 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setBool('isLoggedIn', true);
   }
 
-  // Clear login state from SharedPreferences
   Future<void> _clearLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userId');
@@ -139,7 +133,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Check rate limiting before attempting login
     if (!LoginService.canAttemptLogin()) {
       final remainingTime = LoginService.getRemainingCooldownTime();
       _showErrorSnackBar(
@@ -158,7 +151,6 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (result.success) {
-        // Get organization ID directly from the login result
         String? organizationId;
 
         if (result.userDetails != null &&
@@ -175,16 +167,13 @@ class _LoginPageState extends State<LoginPage> {
           return;
         }
 
-        // Get user ID from Supabase session or userDetails
         final session = Supabase.instance.client.auth.currentSession;
         String? userId = session?.user.id;
 
-        // Fallback: try to get from userDetails if session doesn't have it
         if (userId == null && result.userDetails != null) {
           userId = result.userDetails!['id'] as String?;
         }
 
-        // If still null, show error
         if (userId == null) {
           _showErrorSnackBar(
               'Failed to get user information. Please try again.');
@@ -194,17 +183,14 @@ class _LoginPageState extends State<LoginPage> {
 
         final userPosition = result.userPosition ?? '';
 
-        // Save login state to SharedPreferences
         await _saveLoginState(userId, userPosition, organizationId);
 
         print('✅ Login successful for organization: $organizationId');
         print('✅ User ID: $userId');
         print('✅ User Position: $userPosition');
 
-        // Navigate based on user position
         if (mounted) {
           if (result.userPosition == 'administrator') {
-            // Navigate to admin dashboard and pass organization ID
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -218,7 +204,6 @@ class _LoginPageState extends State<LoginPage> {
               ),
             );
           } else {
-            // Navigate to staff dashboard
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -248,10 +233,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // Replace the _forgotPassword method with this simpler version:
-
   Future<void> _forgotPassword() async {
-    // Navigate directly to forgot password page
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -272,7 +254,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Show loading screen while checking authentication
     if (_isCheckingAuth) {
       return const Scaffold(
         backgroundColor: Colors.white,
@@ -290,7 +271,70 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: isSmallScreen ? _buildMobileLayout() : _buildDesktopLayout(),
+        child: Stack(
+          children: [
+            isSmallScreen ? _buildMobileLayout() : _buildDesktopLayout(),
+            // Credits Section - Bottom Right
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: _buildCreditsSection(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreditsSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFE1E5E9),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Developed by',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _buildDeveloperName('Job Aaron Pimentel'),
+          const SizedBox(height: 2),
+          _buildDeveloperName('Edward Anthony Quianzon'),
+          const SizedBox(height: 2),
+          _buildDeveloperName('Isiah Gilmore Veneracion'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeveloperName(String name) {
+    return Text(
+      name,
+      style: const TextStyle(
+        fontSize: 12,
+        color: Color(0xFF2C3E50),
+        fontWeight: FontWeight.w600,
+        height: 1.4,
       ),
     );
   }
@@ -789,7 +833,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// Custom painter for HealthShare logo
 class HealthShareLogoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
